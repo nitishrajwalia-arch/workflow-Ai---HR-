@@ -6,7 +6,8 @@
  * of it is wired to an API — you cannot tell which buttons are dead by reading
  * 12,931 lines, only by pressing them.
  */
-// @ts-expect-error - legacy JS, deliberately untyped
+// The legacy file is plain JS: `allowJs` imports it, `checkJs: false` leaves
+// it untyped. Deliberate — see tsconfig.app.json.
 import App from './legacy/MarbellaProcurementOS.jsx';
 
 export default App;

@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from "react";
+import { ProcCtx, useProc } from "../proc/context.js";
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, ResponsiveContainer, Cell, Tooltip,
 } from "recharts";
@@ -99,7 +100,7 @@ const passportByKey = (k) => PASSPORTS.find(p => p.key === k) || PASSPORTS[0];
 /* C stays a live object so all ~2,300 existing C.* reads retheme in place.
    Callers re-render because the root remounts on themeKey change.         */
 const C = { ...PASSPORTS[0] };
-function applyPassport(key) {
+export function applyPassport(key) {
   const p = passportByKey(key);
   Object.keys(p).forEach(k => {
     if (["key", "label", "country", "rank", "cover"].includes(k)) return;
@@ -107,7 +108,7 @@ function applyPassport(key) {
   });
   return p;
 }
-const ThemeCtx = React.createContext({ themeKey: "marbella", setThemeKey: () => {} });
+export const ThemeCtx = React.createContext({ themeKey: "marbella", setThemeKey: () => {} });
 const useTheme = () => React.useContext(ThemeCtx);
 const serif = "Georgia, 'Times New Roman', serif";
 const sans = "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif";
@@ -225,6 +226,15 @@ const USERS = {
 };
 
 // 65 people, 4 admin accounts, 8 departments
+/* Which Employee ID each desk signs in with. The chips under the sign-in form
+   fill this in for you; the PASSWORD is still required, and the server decides
+   which desk the account actually holds. */
+const DESK_IDS = {
+  admin: "MB-ADM-0001", purchase: "MB-PUR-0012", store: "MB-STR-0004",
+  maintenance: "MB-MNT-0006", accounts: "MB-ACC-0002", hr: "MB-HR-0001",
+  purchaseAsst: "MB-PUR-0018", storeAsst: "MB-STR-0009", security: "MB-SEC-0007",
+};
+
 const HEAD = { total: 65, admins: 4, depts: 8, open: 3 };
 const DEPTS = [
   ["Admin", 4], ["Purchase", 9], ["Store", 12], ["Accounts", 7],
@@ -588,13 +598,15 @@ const roleChip = { cursor: "pointer", display: "inline-flex", alignItems: "cente
 const lbl = { font: `600 11px ${sans}`, letterSpacing: "0.1em", textTransform: "uppercase", color: C.inkSoft };
 
 /* ---- shared procurement state across the four pillars ---- */
-const ProcCtx = React.createContext(null);
-const useProc = () => React.useContext(ProcCtx);
+/* EDIT 1 of 8 (see legacy/PATCHES-PROCUREMENT.md): the context comes from
+   ../proc/context.js so ProcurementProvider can put LIVE SERVER DATA into the
+   same object these screens read. Two createContext() calls make two unrelated
+   contexts and useProc() silently returns null. */
 
 /* ---- global toast so every action gives feedback ---- */
 let _pushToast = () => {};
-const toast = (msg, tone = "ink") => _pushToast(msg, tone);
-function Toaster() {
+export const toast = (msg, tone = "ink") => _pushToast(msg, tone);
+export function Toaster() {
   const [items, setItems] = useState([]);
   useEffect(() => {
     _pushToast = (msg, tone) => { const id = Math.random().toString(36).slice(2); setItems(x => [...x, { id, msg, tone }]); setTimeout(() => setItems(x => x.filter(i => i.id !== id)), 2600); };
@@ -702,9 +714,23 @@ function Uploader({ label = "Snap an invoice or drop a document", sub = "Any for
 const softBtn = { cursor: "pointer", border: `1px solid ${C.line}`, background: "#fff", color: C.inkSoft, font: `600 12px ${sans}`, padding: "8px 12px", borderRadius: 20 };
 
 /* ============================== LOGIN ============================== */
-function Login({ onLogin }) {
+export function Login({ onLogin }) {
   const mob = useIsMobile();
   const [id, setId] = useState(""); const [pw, setPw] = useState("");
+  const [busy, setBusy] = useState(false); const [err, setErr] = useState(null);
+  const submit = async () => {
+    if (busy) return;
+    setBusy(true); setErr(null);
+    try {
+      await onLogin(id.trim(), pw);
+    } catch (e) {
+      /* The server's own words. It answers identically for a wrong password and
+         an unknown ID, on purpose — telling them apart hands an attacker a list
+         of who works here. */
+      setErr(e && e.message ? e.message : "Could not reach the server.");
+      setBusy(false);
+    }
+  };
   const Brand = ({ compact }) => (
     <div>
       <img src={CREST} alt="" style={{ height: compact ? 48 : 68, display: "block", marginBottom: 12 }} />
@@ -722,13 +748,24 @@ function Login({ onLogin }) {
       <input value={id} onChange={e => setId(e.target.value)} placeholder="MB-PUR-0012" style={inp} />
       <label style={lbl}>Password</label>
       <input value={pw} onChange={e => setPw(e.target.value)} type="password" placeholder="••••••••" style={inp} />
-      <GoldButton onClick={() => onLogin("admin")}>Sign in</GoldButton>
+      {/* EDIT 2 of 8 — THE IMPORTANT ONE.
+
+          This used to read `onClick={() => onLogin("admin")}`. It ignored the
+          Employee ID and the password you just typed and signed EVERYONE in as
+          the Chairman: salaries, budgets, overrides, the lot. It now sends both
+          to the server, and the desk you get back is the one the DATABASE says
+          you hold. */}
+      {err && <div style={{ background: "#FBEDEC", border: `1px solid #E7C4C1`, color: C.red, borderRadius: 9, padding: "10px 12px", font: `12.5px ${sans}`, lineHeight: 1.5, marginBottom: 14 }}>{err}</div>}
+      <GoldButton onClick={submit}>{busy ? "Signing in…" : "Sign in"}</GoldButton>
       <div style={{ height: 1, background: C.line, margin: "18px 0 0" }} />
       <div style={{ marginTop: 18 }}>
-        <div style={{ font: `600 10px ${sans}`, letterSpacing: "0.14em", textTransform: "uppercase", color: C.stone, marginBottom: 10 }}>Demo — enter as a role</div>
+        <div style={{ font: `600 10px ${sans}`, letterSpacing: "0.14em", textTransform: "uppercase", color: C.stone, marginBottom: 10 }}>Fill in a desk's Employee ID</div>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+          {/* EDIT 3 of 8: these chips used to sign you straight in as that role
+              with no password at all — nine doors with no locks. They now fill
+              the Employee ID in for you; the password is still required. */}
           {Object.values(USERS).map(u => (
-            <button key={u.key} onClick={() => onLogin(u.key)} style={roleChip}>
+            <button key={u.key} onClick={() => { setId(DESK_IDS[u.key] || ""); setErr(null); }} style={roleChip}>
               {u.key === "admin" && <Crown size={13} color={C.gold} />}
               {u.role.split(" · ")[0].replace(" Manager", "").replace(" Head", "")}
             </button>
@@ -1192,7 +1229,10 @@ function CameraLive({ cam, onClose, onLogged }) {
           <div><b style={{ color: C.inkDeep }}>This viewing is on the record.</b> Your name and the time are written to the camera log, and the person at that desk can see that you looked. Cameras cover working areas only.</div>
         </div>
         <div style={{ display: "flex", gap: 9, marginTop: 12, flexWrap: "wrap" }}>
-          <GoldButton small ghost onClick={() => toast("Snapshot saved to the camera log", "green")}><span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Camera size={13} /> Snapshot</span></GoldButton>
+          <GoldButton small ghost onClick={() => (async () => {
+              const r = await logGate({ outcome: "permit", label: `Camera snapshot — ${cam.name}`, post: cam.name, note: "Still captured from the live wall." });
+              if (r) toast("Snapshot recorded in the gate log", "green");
+            })()}><span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Camera size={13} /> Snapshot</span></GoldButton>
           <GoldButton small onClick={onClose}>Close</GoldButton>
         </div>
         <div style={{ font: `11px ${sans}`, color: C.stone, marginTop: 10 }}>Real camera streams connect through the site NVR with the backend. What you see here is the player and the rules around it.</div>
@@ -1355,7 +1395,15 @@ function CastPanel({ tab, onClose }) {
 
 function AccessConsole({ onActAs }) {
   const mob = useIsMobile();
-  const [grants, setGrants] = useState(DEFAULT_GRANTS);
+  const { saveGrants, grants: savedGrants } = useProc();
+  /* Seeded from what the server holds, so the console opens on the real state
+     rather than on a default that was never anybody's actual access. */
+  const [grants, setGrants] = useState(() => {
+    const base = DEFAULT_GRANTS();
+    if (!savedGrants) return base;
+    Object.entries(savedGrants).forEach(([k, areas]) => { base[k] = { ...base[k], ...areas }; });
+    return base;
+  });
   const [roles, setRoles] = useState(Object.keys(USERS));
   const [pick, setPick] = useState("purchase");
   const [newRole, setNewRole] = useState(false);
@@ -1443,7 +1491,17 @@ function AccessConsole({ onActAs }) {
         ))}
         <div style={{ display: "flex", gap: 9, flexWrap: "wrap", alignItems: "center", paddingTop: 10, borderTop: `2px solid ${C.gold}` }}>
           <span style={{ font: `12px ${sans}`, color: C.inkSoft, flex: 1, minWidth: 150 }}>{u.name} can currently open <b style={{ color: C.ink }}>{count(pick)}</b> of {totalAreas} areas.</span>
-          <GoldButton small onClick={() => toast(`Access updated for ${u.name} — they will see it the next time they sign in`, "green")}>Save these permissions</GoldButton>
+          <GoldButton small onClick={() => (async () => {
+                    /* EDIT 8 of 8: this used to announce a change and forget it the
+                       moment the screen closed. Nobody's access ever moved. It writes
+                       rows now, sealed against the administrator who made the change. */
+                    const grid = grants[pick] || {};
+                    const changes = [];
+                    AREA_GROUPS.forEach(([, items]) => items.forEach(([area]) =>
+                      POWERS.forEach(([power]) => changes.push({ area, power, granted: !!(grid[area] || {})[power] }))));
+                    const saved = await saveGrants(pick, changes);
+                    if (saved) toast(`Access saved for ${u.name} — it applies the next time they sign in`, "green");
+                  })()}>Save these permissions</GoldButton>
         </div>
       </Card>
 
@@ -1509,7 +1567,7 @@ function AccessConsole({ onActAs }) {
   );
 }
 
-function Shell({ userKey: realKey, onLogout }) {
+export function Shell({ userKey: realKey, onLogout }) {
   const mob = useIsMobile();
   const [actAs, setActAs] = useState(null);
   const [returnTab, setReturnTab] = useState(null);
@@ -1641,7 +1699,7 @@ function FilePreview({ title, meta, lines = [], onClose }) {
           </div>
         </div>
         <div style={{ display: "flex", gap: 10, marginTop: 14, flexWrap: "wrap" }}>
-          <GoldButton small ghost onClick={() => toast("Sending to printer…")}><span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Printer size={13} /> Print</span></GoldButton>
+          <GoldButton small ghost onClick={() => printThis()}><span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Printer size={13} /> Print</span></GoldButton>
           <GoldButton small ghost onClick={() => { downloadFile(`${String(meta || title).replace(/\s+/g, "-")}.txt`, `MARBELLA GROUP\n${title}\n${meta || ""}\n\n${lines.map(([k, v]) => `${k}: ${v}`).join("\n")}`); toast("Downloaded", "green"); }}><span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Download size={13} /> Download</span></GoldButton>
           <GoldButton small onClick={onClose}>Close</GoldButton>
         </div>
@@ -1989,7 +2047,7 @@ function ClaimDoc({ po, userKey, onClose }) {
           Logged against {po.id}. Accounts will see the claim when the vendor's invoice comes up for payment.
         </div>
         <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
-          <GoldButton ghost small onClick={() => toast("Sending to printer…")}><span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Printer size={13} /> Print hard copy</span></GoldButton>
+          <GoldButton ghost small onClick={() => printThis()}><span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Printer size={13} /> Print hard copy</span></GoldButton>
           <GoldButton small onClick={onClose}>Done</GoldButton>
         </div>
       </div>
@@ -2045,7 +2103,7 @@ function ClaimDoc({ po, userKey, onClose }) {
         </div>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
           <GoldButton onClick={send}><span style={{ display: "inline-flex", alignItems: "center", gap: 7 }}><Send size={14} /> Send to vendor</span></GoldButton>
-          <GoldButton ghost onClick={() => toast("Sending to printer…")}><span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Printer size={14} /> Print</span></GoldButton>
+          <GoldButton ghost onClick={() => printThis()}><span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Printer size={14} /> Print</span></GoldButton>
           <GoldButton ghost onClick={onClose}>Cancel</GoldButton>
         </div>
         <div style={{ display: "flex", alignItems: "flex-start", gap: 8, marginTop: 12, font: `11px ${sans}`, color: C.stone }}><Info size={13} color={C.goldDeep} style={{ flexShrink: 0, marginTop: 1 }} /> The letter, the signature and the claim log are real in the app. Actual email / WhatsApp delivery connects with the backend gateway.</div>
@@ -2350,7 +2408,7 @@ function ReviewFlagged({ onClose }) {
 
         <div style={{ display: "flex", gap: 10, marginTop: 6, flexWrap: "wrap" }}>
           <GoldButton onClick={onClose}>{open.length ? "Close — finish the rest later" : "Done"}</GoldButton>
-          <GoldButton ghost small onClick={() => toast("Sending to printer…")}><span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Printer size={13} /> Print the list</span></GoldButton>
+          <GoldButton ghost small onClick={() => printThis()}><span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Printer size={13} /> Print the list</span></GoldButton>
         </div>
         <div style={{ font: `11px ${sans}`, color: C.stone, marginTop: 10 }}>Clearing a flag here updates the record and the score. Real invoice storage and vendor verification connect with the backend.</div>
       </div>
@@ -2366,7 +2424,10 @@ function PurchaseView({ userKey = "purchase" }) {
   const [claim, setClaim] = useState(null);
   const [flagged, setFlagged] = useState(false);
   const stTone = (s) => s === "Approved" ? "green" : s === "Received" || s === "Paid" ? "gold" : s === "Partial" ? "stone" : "amber";
-  const list = [...pos, ...POS];
+  /* EDIT 9 of 10: was `[...pos, ...POS]`. `pos` is the live list from the
+     server now, and the server was seeded from the POS constant below — so
+     every purchase order rendered twice, with a duplicate React key. */
+  const list = pos;
   return (
     <div>
       <div style={{ display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap", justifyContent: "space-between" }}>
@@ -3087,7 +3148,7 @@ function ScanGate({ pass, walkin, guard, onClose, onDone }) {
           <div style={{ display: "flex", gap: 10, marginTop: 14, flexWrap: "wrap" }}>
             <GreenButton onClick={() => decide("permit")}><span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Check size={14} /> Permit the delivery</span></GreenButton>
             <GoldButton ghost onClick={() => decide("deny")}>Turn away</GoldButton>
-            <GoldButton ghost small onClick={() => toast(`Calling the office…`)}><span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><Phone size={13} /> Call office</span></GoldButton>
+            <GoldButton ghost small onClick={() => callNumber("+911725000000", "the office")}><span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><Phone size={13} /> Call office</span></GoldButton>
           </div>
           <div style={{ font: `11px ${sans}`, color: C.stone, marginTop: 10 }}>Nothing is permitted until both photos are taken. Every photo is stamped with your post, the date and the time.</div>
         </>)}
@@ -5490,7 +5551,7 @@ function CallRow({ p, i }) {
       <div style={{ width: 36, height: 36, borderRadius: "50%", background: C.lineSoft, color: C.inkSoft, display: "grid", placeItems: "center", font: `700 13px ${serif}`, flexShrink: 0 }}>{p.name[0]}</div>
       <div style={{ flex: 1, minWidth: 0 }}><div style={{ font: `600 13px ${sans}` }}>{p.name}</div><div style={{ font: `12px ${sans}`, color: C.stone }}>{p.role} · {p.phone}</div></div>
       {p.wa && <button onClick={() => setAct({ title: `WhatsApp ${p.name}`, intro: "A short message goes to their number from the company account.", lines: [["To", `${p.name} · ${p.phone}`], ["From", "Marbella Group"]], confirmLabel: "Open WhatsApp", doneTitle: "Message ready", doneBody: `WhatsApp opens with ${p.name} so you can type and send.` })} title="WhatsApp" style={{ cursor: "pointer", width: 36, height: 36, borderRadius: 10, border: `1px solid ${C.line}`, background: "#fff", display: "grid", placeItems: "center", color: C.green }}><MessageCircle size={16} /></button>}
-      <GreenButton small onClick={() => toast(`Calling ${p.name}…`, "green")}><Phone size={14} /> Call</GreenButton>
+      <GreenButton small onClick={() => callNumber(p.phone || p.mobile, p.name)}><Phone size={14} /> Call</GreenButton>
       {act && <ConfirmAction {...act} onClose={() => setAct(null)} />}
     </div>
   );
@@ -5677,7 +5738,7 @@ function FreshSheet({ userKey }) {
         Raised by {u.name}, {u.role} · {stamp}.
       </div>
       <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
-        <GoldButton ghost small onClick={() => toast("Sending to printer…")}><span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Printer size={13} /> Print a copy</span></GoldButton>
+        <GoldButton ghost small onClick={() => printThis()}><span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Printer size={13} /> Print a copy</span></GoldButton>
         <GoldButton small onClick={reset}>New sheet</GoldButton>
       </div>
     </Card>
@@ -5717,7 +5778,7 @@ function FreshSheet({ userKey }) {
         </div>
         <div style={{ display: "flex", gap: 10, marginTop: 14, flexWrap: "wrap" }}>
           <GoldButton onClick={send}><span style={{ display: "inline-flex", alignItems: "center", gap: 7 }}><Send size={14} /> Send to purchase manager</span></GoldButton>
-          <GoldButton ghost onClick={() => toast("Sending to printer…")}><span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Printer size={14} /> Print</span></GoldButton>
+          <GoldButton ghost onClick={() => printThis()}><span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Printer size={14} /> Print</span></GoldButton>
           <GoldButton ghost onClick={() => setStage("fill")}>Keep editing</GoldButton>
         </div>
       </Card>
@@ -5867,7 +5928,10 @@ function IntentView({ userKey = "purchase" }) {
                 <div>
                   <div style={{ font: `600 14px ${sans}` }}>New item — “{text}”</div>
                   <div style={{ font: `13px ${sans}`, color: C.inkSoft, margin: "6px 0 14px", lineHeight: 1.5 }}>Not in the catalogue yet. Purchasing will source 2–3 quotes, vet each against the required standard for this use, and bring back options — then it's a one-tap PO.</div>
-                  <GoldButton small onClick={() => { toast("Sent to purchasing to source & vet", "gold"); reset(); }}><span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Send size={13} /> Send to purchasing</span></GoldButton>
+                  <GoldButton small onClick={() => { (async () => {
+                    const r = await addPR({ item: name || "New item", qty: qtyv || "", proj: "" });
+                    if (r) { toast(`Sent to purchasing to source & vet — ${r.id}`, "gold"); reset(); }
+                  })(); }}><span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Send size={13} /> Send to purchasing</span></GoldButton>
                 </div>
               </div>
             </Card>
@@ -6086,6 +6150,7 @@ function TaxSection({ title, right, children }) {
 function TaxView() {
   const [act, setAct] = useState(null);
   const mob = useIsMobile();
+  const { raiseWithdrawal, banks = [] } = useProc();
   const [certs, setCerts] = useState({ ca: false, eng: false, arch: false });
   const allCerts = certs.ca && certs.eng && certs.arch;
   const itcRisk = ITC_ROWS.filter(r => r[3] === "red").reduce((s, r) => s + r[2], 0);
@@ -6135,7 +6200,17 @@ function TaxView() {
               <button key={k} onClick={() => setCerts(c => ({ ...c, [k]: !c[k] }))} style={{ cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6, border: `1px solid ${certs[k] ? C.green : C.line}`, background: certs[k] ? C.greenSoft : "#fff", color: certs[k] ? C.green : C.inkSoft, font: `600 12px ${sans}`, padding: "8px 12px", borderRadius: 20 }}>{certs[k] ? <Check size={13} /> : <CircleDot size={13} />} {l} cert</button>
             ))}
           </div>
-          <button onClick={() => allCerts ? toast("Withdrawal request raised to bank", "green") : toast("All three certifications needed first", "red")} style={{ cursor: "pointer", border: "none", width: "100%", background: allCerts ? C.ink : C.line, color: allCerts ? "#fff" : C.stone, font: `600 13px ${sans}`, padding: "11px", borderRadius: 10 }}>Request escrow withdrawal</button>
+          <button onClick={() => allCerts
+            ? (async () => {
+                /* Recorded and SEALED into the ledger. Not submitted to a bank —
+                   there is no banking integration, and the response says so
+                   rather than letting the screen imply otherwise. */
+                const escrow = banks.find(b => /rera|escrow/i.test(b.type || "")) || banks[0];
+                if (!escrow) { toast("No escrow account on file.", "amber"); return; }
+                const r = await raiseWithdrawal(escrow.id, "Construction drawdown");
+                if (r) toast(r.note || "Withdrawal request recorded", "green");
+              })()
+            : toast("All three certifications are needed before money can be drawn from a RERA escrow account", "red")} style={{ cursor: "pointer", border: "none", width: "100%", background: allCerts ? C.ink : C.line, color: allCerts ? "#fff" : C.stone, font: `600 13px ${sans}`, padding: "11px", borderRadius: 10 }}>Request escrow withdrawal</button>
         </TaxSection>
 
         <TaxSection title="Payables · calendar" right={<Pill tone="amber">{cr(dueWeek)} this week</Pill>}>
@@ -6282,7 +6357,7 @@ function Bubble({ m, onChip, onSpeak }) {
     </div>
   );
 }
-function Assistant() {
+export function Assistant() {
   const mob = useIsMobile();
   const [open, setOpen] = useState(false);
   const [msgs, setMsgs] = useState([{ who: "bot", text: "Hi — I'm Marbella's co-pilot. Stuck on a step, or just want a quick number? Ask away, or tap the mic and talk.", chips: true }]);
@@ -6411,7 +6486,7 @@ function RaisePR({ prefill, onClose, userKey = "store" }) {
         ))}
         <SignBlock user={u} firm={activeFirm} />
         <div style={{ display: "flex", gap: 10, marginTop: 16, flexWrap: "wrap" }}>
-          <GoldButton small ghost onClick={() => toast("Sending to printer…")}><span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Printer size={13} /> Print</span></GoldButton>
+          <GoldButton small ghost onClick={() => printThis()}><span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Printer size={13} /> Print</span></GoldButton>
           <GoldButton small onClick={onClose}>Done</GoldButton>
         </div>
       </div>
@@ -6583,7 +6658,7 @@ function StockSignals() {
 
 /* ===== RECEIVE SHIPMENT — find the order from anything, then take it in ===== */
 function ReceiveShipment({ onClose }) {
-  const mob = useIsMobile(); const { activeFirm, gatepasses, vendors, inv, caps } = useProc();
+  const mob = useIsMobile(); const { activeFirm, gatepasses, vendors, inv, caps, pos = [] } = useProc();
   const [gate, setGate] = useState(null);
   const [unlocked, setUnlocked] = useState(null);
   const [q, setQ] = useState("");
@@ -6592,8 +6667,11 @@ function ReceiveShipment({ onClose }) {
   const [rows, setRows] = useState([]);
   const [where, setWhere] = useState("Grand · Yard");
   const cell = { ...inp, margin: 0, padding: "10px 12px", fontSize: 14, boxSizing: "border-box" };
+  /* EDIT 10 of 10: the second half used the POS constant, so scanning found a
+     stale copy of a purchase order rather than the live one. Both halves come
+     from the server now. */
   const pool = [...gatepasses.map(g => ({ po: g.po, vendor: g.vendor, items: g.items, total: g.total, src: "gate pass" })),
-                ...POS.map(p => ({ po: p.id, vendor: p.vendor, items: p.item, total: p.amt, src: "purchase order" }))];
+                ...pos.map(p => ({ po: p.id, vendor: p.vendor, items: p.item, total: p.amt, src: "purchase order" }))];
   const find = () => {
     const s = q.trim().toLowerCase();
     if (!s) return toast("Type or scan anything — PO, invoice, vendor", "amber");
@@ -7315,6 +7393,31 @@ const HRANN_SEED = [
 ];
 
 const fmtToday = () => new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+/* EDIT 6 of 8: eight buttons said "Sending to printer…" and did nothing at all
+   — no dialog, no document, nothing reaching a printer. This is what a browser
+   actually has. If the print dialog is blocked (some kiosk browsers do), it
+   says so rather than pretending. */
+function printThis() {
+  try {
+    window.print();
+  } catch {
+    toast("This browser will not open the print dialog. Use Download instead.", "amber");
+  }
+}
+
+/* EDIT 7 of 8: "Calling…" toasts now actually dial. On a site phone this opens
+   the dialler; on a desktop it hands off to whatever handles tel: links, and
+   if nothing does, the number is shown so it can be dialled by hand. */
+function callNumber(number, who) {
+  const n = String(number || "").replace(/[^\d+]/g, "");
+  if (!n) { toast(`No number on file for ${who || "them"}.`, "amber"); return; }
+  try {
+    window.location.href = `tel:${n}`;
+  } catch {
+    toast(`Call ${n}`, "gold");
+  }
+}
+
 function downloadFile(name, text, mime = "text/plain") {
   try { const blob = new Blob([text], { type: mime }); const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1500); } catch (e) { toast("Download blocked in preview — works on device", "amber"); }
 }
@@ -7995,7 +8098,7 @@ function FullProfile({ p, onClose }) {
         </div>
         {liveCam && <CameraLive cam={liveCam} onClose={() => setLiveCam(null)} />}
         <div style={{ display: "flex", gap: 10, marginTop: 14, flexWrap: "wrap" }}>
-          <GoldButton small ghost onClick={() => toast("Sending to printer…")}><span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Printer size={13} /> Print profile</span></GoldButton>
+          <GoldButton small ghost onClick={() => printThis()}><span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Printer size={13} /> Print profile</span></GoldButton>
           <GoldButton small onClick={onClose}>Close</GoldButton>
         </div>
       </div>
@@ -8206,7 +8309,7 @@ function LiveStrength() {
 function HRCommandView({ go = () => {} }) {
   const mob = useIsMobile();
   const { people, hrLog, hrTasks, addHrTask, toggleHrTask, hrAnn, addAnn,
-    contacts = {}, companies = [], projects = [], cardLog = [], ledger = [] } = useProc();
+    contacts = {}, companies = [], projects = [], cardLog = [], ledger = [], chainVerified } = useProc();
   const [enrol, setEnrol] = useState(false); const [showLetters, setShowLetters] = useState(false);
   const [nt, setNt] = useState("");
   const [ann, setAnn] = useState({ title: "", text: "", audience: "Everyone" });
@@ -8317,7 +8420,7 @@ function HRCommandView({ go = () => {} }) {
           </div>
           {(() => {
             const act = people.filter(p => p.status === "active");
-            const chk = verifyLedger(ledger);
+            const chk = verifyLedger(ledger, chainVerified);
             const rows = [
               [act.filter(p => !(contacts[p.id] || {}).phone).length, "without a personal number", "population"],
               [act.filter(p => !p.photo).length, "without a photo on file", "population"],
@@ -10074,13 +10177,27 @@ const fingerprint = (payload, prev) => {
 };
 const ledgerPayload = (e) => [e.at, e.who, e.kind, e.subject, e.detail].join("\u0001");
 /* rebuild the chain from the bottom up and report the first entry whose seal no longer fits */
-function verifyLedger(entries) {
+/* EDIT 4 of 8: the server seals the ledger with real SHA-256, computed where a
+   browser cannot reach it. The `fingerprint()` above is this file's old 64-bit
+   FNV pair, so re-deriving the seals here disagreed with every entry and a
+   perfectly valid ledger reported itself as tampered. A false alarm on a
+   tamper-detector is worse than none: it teaches people to ignore it.
+
+   Structure is checked here and is real — every entry must name the previous
+   one's seal, which catches a deletion, a reordering or an insertion whatever
+   hash produced the seals. The cryptographic half comes from `chainVerified`,
+   which ProcurementProvider computes with SHA-256, independently of the server. */
+function verifyLedger(entries, cryptoOk) {
   const asc = [...entries].reverse();
   let prev = "GENESIS";
   for (let i = 0; i < asc.length; i++) {
-    const want = fingerprint(ledgerPayload(asc[i]), prev);
-    if (asc[i].seal !== want) return { ok: false, at: asc[i], index: asc.length - 1 - i, expected: want };
+    if (asc[i].prev !== prev) {
+      return { ok: false, at: asc[i], index: asc.length - 1 - i, expected: prev, reason: "link" };
+    }
     prev = asc[i].seal;
+  }
+  if (cryptoOk === false) {
+    return { ok: false, at: asc[0], index: 0, expected: "\u2014", reason: "seal" };
   }
   return { ok: true, count: asc.length, head: prev };
 }
@@ -10258,9 +10375,12 @@ function BulkImportView() {
   const good = checked.filter(c => !c.errs.length);
   const bad = checked.filter(c => c.errs.length);
 
-  const commit = () => {
-    const made = bulkAddPeople(good.map(c => c.rec));
-    setDone({ n: made.length, skipped: bad.length });
+  /* EDIT 5 of 8: `await`. The server assigns the employee IDs, resolves the
+     employer from the posting and normalises the dates, so the count shown is
+     what actually LANDED — rows it held back are counted as skipped. */
+  const commit = async () => {
+    const made = await bulkAddPeople(good.map(c => c.rec));
+    setDone({ n: made.length, skipped: bad.length + (good.length - made.length) });
     setStep(4);
   };
 
@@ -10812,13 +10932,13 @@ function ExitRunner({ ex, p, onClose }) {
 
 function ExitsView() {
   const mob = useIsMobile();
-  const { people, exits, openExit, ledger } = useProc();
+  const { people, exits, openExit, ledger, chainVerified } = useProc();
   const [pick, setPick] = useState(false);
   const [run, setRun] = useState(null);
   const [q, setQ] = useState("");
   const active = people.filter(p => p.status === "active");
   const hits = q.trim() ? active.filter(p => (p.name + p.id + p.designation).toLowerCase().includes(q.toLowerCase())).slice(0, 6) : [];
-  const chk = verifyLedger(ledger);
+  const chk = verifyLedger(ledger, chainVerified);
   const running = exits.filter(e => e.stage !== "closed");
   const finished = exits.filter(e => e.stage === "closed");
 
@@ -10923,7 +11043,7 @@ function ExitsView() {
             </div>
             <input autoFocus value={q} onChange={e => setQ(e.target.value)} placeholder="Name or Employee ID" style={{ ...inp, margin: "0 0 12px" }} />
             {hits.map(p => (
-              <button key={p.id} onClick={() => { const id = openExit(p); setPick(false); setQ(""); setRun(id); }}
+              <button key={p.id} onClick={async () => { const id = await openExit(p); setPick(false); setQ(""); if (id) setRun(id); }}
                 style={{ width: "100%", textAlign: "left", cursor: "pointer", border: `1px solid ${C.line}`, background: "#fff",
                   borderRadius: 10, padding: "11px 13px", display: "flex", alignItems: "center", gap: 10, marginBottom: 7 }}>
                 <span style={{ flex: 1, minWidth: 0 }}>

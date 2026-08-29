@@ -196,10 +196,12 @@ export const api = {
 
 /* ------------------------------------------------------------------- auth */
 
-export async function login(email: string, password: string): Promise<SessionUser> {
+export async function login(identifier: string, password: string): Promise<SessionUser> {
   const data = await request<AuthTokens>('/auth/login', {
     method: 'POST',
-    body: { email, password },
+    // The Employee ID printed on the card, or an email. Site staff often have
+    // no company address, so the ID is the primary way in.
+    body: { identifier, password },
     // A 401 here is a wrong password, not an expired token. Let the server's
     // own wording reach the screen.
     noAuthRetry: true,

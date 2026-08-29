@@ -28,7 +28,8 @@ interface AuthValue {
   user: SessionUser | null;
   /** True until the first attempt to recover a session has finished. */
   checking: boolean;
-  signIn: (email: string, password: string) => Promise<void>;
+  /** Employee ID (MB-PUR-0012) or email, and the password. */
+  signIn: (identifier: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
 }
 
@@ -68,8 +69,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const signIn = useCallback(async (email: string, password: string) => {
-    setUser(await apiLogin(email, password));
+  const signIn = useCallback(async (identifier: string, password: string) => {
+    setUser(await apiLogin(identifier, password));
   }, []);
 
   const signOut = useCallback(async () => {

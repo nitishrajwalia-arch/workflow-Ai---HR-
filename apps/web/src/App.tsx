@@ -1,65 +1,80 @@
 /**
- * The application shell.
+ * Marbella — the application shell.
  *
- * Three layers, each with one job:
+ *   ErrorBoundary        one screen crashing must not white-page the system
+ *   AuthProvider         who is signed in
+ *   ProcurementProvider  fetches the world, exposes it as ProcCtx
+ *   Shell                the UI, essentially unmodified
  *
- *   ErrorBoundary  — one screen crashing must not white-page the whole system.
- *   AuthProvider   — who is signed in; shows the login screen when nobody is.
- *   ProcProvider   — fetches the world once and exposes it as the context the
- *                    existing 7,300-line UI already reads from.
- *
- * Inside those sits HRShell, which is that UI, essentially unmodified. See
- * src/legacy/PATCHES.md for the five small edits and why each one exists.
+ * The desk a person sees comes from `user.userKey`, which the SERVER decides.
+ * See src/legacy/PATCHES-PROCUREMENT.md for the eight edits to the UI file and
+ * why each one exists.
  */
 
-import { ProcProvider } from './proc/ProcProvider.js';
+import { useState } from 'react';
 import { AuthProvider, useAuth } from './auth/AuthProvider.js';
-import { LoginPage } from './auth/LoginPage.js';
 import { ErrorBoundary } from './components/ErrorBoundary.js';
-/* The legacy file is plain JavaScript. `allowJs` lets it be imported and
-   `checkJs: false` leaves it untyped, which is deliberate: it is 7,300 lines of
-   working, reviewed code, and annotating it is a separate project from getting
-   it onto a live server. */
-import { HRShell, Toaster, toast } from './legacy/MarbellaHR.jsx';
+import { ProcurementProvider } from './proc/ProcurementProvider.js';
+import {
+  Assistant,
+  Login,
+  Shell,
+  ThemeCtx,
+  Toaster,
+  applyPassport,
+  toast,
+} from './legacy/MarbellaProcurementOS.jsx';
 
 function SignedIn() {
   const { user, signOut } = useAuth();
+  const [themeKey, setThemeKeyRaw] = useState('marbella');
+  const setThemeKey = (k: string) => {
+    applyPassport(k);
+    setThemeKeyRaw(k);
+  };
 
   return (
-    <ProcProvider toast={toast as (m: string, tone?: string) => void}>
-      <div className="mb-app">
-        <div className="mb-topbar">
-          <span className="mb-topbar-who">
-            {user?.name} · {user?.role}
-          </span>
-          <button type="button" className="mb-signout" onClick={() => void signOut()}>
-            Sign out
-          </button>
+    // The legacy default is `setThemeKey: () => {}`, so TypeScript infers a
+    // zero-argument function from it. The real one takes the passport key.
+    <ThemeCtx.Provider value={{ themeKey, setThemeKey } as never}>
+      <ProcurementProvider toast={toast as (m: string, tone?: string) => void}>
+        <div key={themeKey} style={{ minHeight: '100vh' }}>
+          {/* The desk is the server's answer, not the browser's choice. */}
+          <Shell userKey={user!.userKey} onLogout={() => void signOut()} />
+          <Assistant />
         </div>
-        <HRShell />
-      </div>
-      <Toaster />
-    </ProcProvider>
+        <Toaster />
+      </ProcurementProvider>
+    </ThemeCtx.Provider>
   );
 }
 
 function Gate() {
-  const { user, checking } = useAuth();
+  const { user, checking, signIn } = useAuth();
 
   // Without this the login screen flashes on every page load while the refresh
-  // cookie is being exchanged, which reads as "it logged me out again".
+  // cookie is exchanged, which reads to a user as "it logged me out again".
   if (checking) {
     return (
       <div className="mb-centre">
         <div className="mb-centre-card">
-          <h1>Marbella HR</h1>
+          <h1>Marbella</h1>
           <p>Checking your session…</p>
         </div>
       </div>
     );
   }
 
-  return user ? <SignedIn /> : <LoginPage />;
+  if (!user) {
+    return (
+      <>
+        {/* `signIn` throws with the server's own message; Login shows it. */}
+        <Login onLogin={signIn} />
+        <Toaster />
+      </>
+    );
+  }
+  return <SignedIn />;
 }
 
 export default function App() {
