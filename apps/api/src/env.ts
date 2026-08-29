@@ -58,6 +58,19 @@ const schema = z.object({
   /** Serve /docs. Leave it on — an API nobody can read is an API nobody uses. */
   ENABLE_DOCS: bool.default(true),
 
+  /**
+   * The Chairman's override code, for going over a storage cap.
+   *
+   * This used to be `const ADMIN_PIN = "2417"` inside the browser bundle, which
+   * means it shipped to every laptop it was meant to stop. It lives here now,
+   * is compared server-side, is rate-limited to five tries a minute, and every
+   * attempt — right or wrong — is sealed into the ledger.
+   *
+   * Unset means no override is possible, which is a safe default: better that
+   * nobody can override than that everybody can.
+   */
+  OVERRIDE_PIN: z.string().min(4).optional(),
+
   /** Set behind a load balancer so rate limiting sees the real client IP. */
   TRUST_PROXY: bool.default(false),
 
