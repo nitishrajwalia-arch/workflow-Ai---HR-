@@ -1,29 +1,41 @@
 /* =====================================================================================
-   MARBELLA HR — a standalone people system for Marbella Group.
-   Everything HR needs, in one file. No procurement, no dead buttons.
+   MARBELLA HR — the people system for Marbella Group.
+
+   This file is the UI. It began as a standalone single-file build and now runs against
+   a real server; see legacy/PATCHES.md for the seven edits that connect it, and the
+   repository README for the rest of the system.
 
    Runs on React + lucide-react. Nothing else.
 
-   WHAT'S HONEST ABOUT THIS BUILD — read before you trust a number:
-   · The ledger is TAMPER-EVIDENT, not tamper-proof. Each entry is sealed with a
-     fingerprint of itself plus the one before it, so an edit anywhere breaks every seal
-     after it and the Verify badge turns red. It cannot PREVENT an edit — this runs in the
-     browser, so anyone who opens the file can rewrite the state. Real immutability needs a
-     server the user does not control, append-only database permissions, and signing keys
-     that never reach the browser.
-   · The authorisation code is checked in the browser. It stops a colleague printing a card
-     off someone else's screen. It is not access control.
-   · OTP codes are shown on screen because sending SMS or email needs a gateway. The flow,
-     the two-minute expiry and the record are real; the delivery is not.
-   · Emailing a letter needs a mail service. The merge, the letterhead and the sent-record
-     are real; the send is not.
-   · Salary figures sit in this file in plain text.
+   WHAT'S HONEST ABOUT THIS BUILD — read before you trust a number.
+   Updated when the server was added; the lines that changed say so.
+
+   · The ledger is now genuinely APPEND-ONLY, not merely tamper-evident. Each entry is
+     sealed with SHA-256 of itself plus the one before it, computed on the server where a
+     browser cannot reach it, and the database itself rejects UPDATE, DELETE and TRUNCATE
+     on the ledger table. WHAT IS STILL TRUE: someone with full database access, or the
+     ability to restore a backup, can rewrite history — but not quietly, because dropping
+     the triggers is a schema change and the whole chain would have to be recomputed.
+   · Authorisation is now REAL ACCESS CONTROL. Four roles, checked by the server against
+     the database on every request. A modified browser gains nothing. (It used to be a
+     browser-side check that only stopped a colleague printing from someone else's screen.)
+   · OTP codes are still shown on screen because sending SMS or email needs a gateway, and
+     none is wired in. The flow, the two-minute expiry and the record are real; the
+     delivery is not. It is NOT a second factor.
+   · Emailing a letter still needs a mail service. The merge, the letterhead, the warning
+     when the letterhead is not their employer, and the sent-record are real; the send is
+     not, and the screen says so.
+   · Salary figures live in a database table only HR and above can read, and are absent
+     from the payload for everyone else. They are NOT encrypted at the column level, so
+     anyone with database access can still read them.
    · GSTIN: the SHAPE is checked strictly, the CHECK CHARACTER is a warning only. My
      check-digit maths agreed with only some published sample GSTINs and I could not
      establish whether the arithmetic or the samples were wrong — so a real registration is
      never blocked, only flagged. Only the GST portal settles it.
    · The org board is CSS 3D perspective, not a WebGL model. Chosen so names stay crisp at
      every angle and it runs on a site office phone.
+   · Photo capture asks for the camera and crops square, but is still UNTESTED — there was
+     no camera in the build sandbox.
    ===================================================================================== */
 
 import React, { useState, useMemo, useEffect } from "react";
@@ -4474,13 +4486,44 @@ const fingerprint = (payload, prev) => {
 
 const ledgerPayload = (e) => [e.at, e.who, e.kind, e.subject, e.detail].join("\u0001");
 
-function verifyLedger(entries) {
+/* ---------------------------------------------------------------------------
+   EDIT 6 of 7 (see legacy/PATCHES.md).
+
+   WHAT WENT WRONG: the server now seals the ledger with real SHA-256, computed
+   where a browser cannot reach it. The `fingerprint()` above is the old 64-bit
+   FNV pair from the single-file build. Re-deriving the seals here therefore
+   disagreed with every entry, and a PERFECTLY VALID ledger was reported as
+   "SEAL BROKEN" on the HR desk and "Ledger broken at entry 5" on this screen.
+   A false alarm on a tamper-detector is worse than no detector: it teaches
+   people to ignore it.
+
+   WHAT IT DOES NOW, and both halves are real:
+
+     · STRUCTURE, checked right here, synchronously. Every entry must name the
+       previous entry's seal as its `prev`, and the oldest must name GENESIS.
+       That catches a deletion, a reordering or an insertion on its own, and it
+       does not care which hash algorithm produced the seals.
+
+     · THE SEALS THEMSELVES, checked with real SHA-256 — by the server, and
+       INDEPENDENTLY by the browser in ProcProvider, which is where
+       `cryptoOk` comes from. It is async (WebCrypto is), so it arrives as
+       `null` for the first moment and this stays green until it resolves.
+       Flashing red while it loads would be its own false alarm.
+
+   `fingerprint()` and `ledgerPayload()` above are now used only by the
+   standalone demo export at the bottom of this file.
+--------------------------------------------------------------------------- */
+function verifyLedger(entries, cryptoOk) {
   const asc = [...entries].reverse();
   let prev = "GENESIS";
   for (let i = 0; i < asc.length; i++) {
-    const want = fingerprint(ledgerPayload(asc[i]), prev);
-    if (asc[i].seal !== want) return { ok: false, at: asc[i], index: asc.length - 1 - i, expected: want };
+    if (asc[i].prev !== prev) {
+      return { ok: false, at: asc[i], index: asc.length - 1 - i, expected: prev, reason: "link" };
+    }
     prev = asc[i].seal;
+  }
+  if (cryptoOk === false) {
+    return { ok: false, at: asc[0], index: 0, expected: "\u2014", reason: "seal" };
   }
   return { ok: true, count: asc.length, head: prev };
 }
@@ -5217,13 +5260,13 @@ function ExitRunner({ ex, p, onClose }) {
 
 function ExitsView() {
   const mob = useIsMobile();
-  const { people, exits, openExit, ledger } = useProc();
+  const { people, exits, openExit, ledger, chainVerified } = useProc();
   const [pick, setPick] = useState(false);
   const [run, setRun] = useState(null);
   const [q, setQ] = useState("");
   const active = people.filter(p => p.status === "active");
   const hits = q.trim() ? active.filter(p => (p.name + p.id + p.designation).toLowerCase().includes(q.toLowerCase())).slice(0, 6) : [];
-  const chk = verifyLedger(ledger);
+  const chk = verifyLedger(ledger, chainVerified);
   const running = exits.filter(e => e.stage !== "closed");
   const finished = exits.filter(e => e.stage === "closed");
 
@@ -5257,9 +5300,14 @@ function ExitsView() {
           <span style={{ marginLeft: "auto", font: `11px ${mono}`, color: C.stone }}>head {chk.ok ? chk.head.slice(0, 12) : "\u2014"}</span>
         </div>
         <div style={{ font: `12px ${sans}`, color: C.inkSoft, marginBottom: 12, lineHeight: 1.6 }}>
-          Each entry is sealed with a fingerprint of itself plus the one before it. Change any line and every seal
-          after it stops matching, and this turns red. <b style={{ color: C.ink }}>It shows tampering. It cannot prevent it</b> —
-          that needs a server, and this app runs entirely in your browser.
+          {/* EDIT 7 of 7: this used to say the ledger could not prevent tampering
+              because the app ran entirely in the browser. That is no longer true
+              and saying it would undersell what is actually protecting this. */}
+          Each entry is sealed with a SHA-256 fingerprint of itself plus the one before it. Change any line and every
+          seal after it stops matching, and this turns red. <b style={{ color: C.ink }}>The database refuses the edit
+          outright</b> — the ledger table rejects UPDATE, DELETE and TRUNCATE, and the seals are computed on the server
+          where a browser cannot reach them. Someone with full database access could still rewrite it; they could not
+          do it quietly.
         </div>
         {ledger.slice(0, 6).map((e, i) => (
           <div key={e.id} style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "9px 0", borderTop: i ? `1px solid ${C.lineSoft}` : "none" }}>
@@ -6756,7 +6804,7 @@ function UsageView() {
       <h1 style={{ font: `400 25px ${serif}`, margin: "6px 0 5px" }}>What's actually being used.</h1>
       <p style={{ font: `13px ${sans}`, color: C.inkSoft, maxWidth: 660, margin: "0 0 18px", lineHeight: 1.55 }}>
         Not a watch on anybody. A count of which parts of this get reached for, so the parts that don't can be
-        fixed or taken out. Counts reset when the app reloads — persisting them is a backend job.
+        fixed or taken out. Counts are kept on the server, so they survive a reload.
       </p>
 
       <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr 1fr" : "repeat(5,1fr)", gap: 12, marginBottom: 18 }}>
@@ -7094,9 +7142,9 @@ const HR_NAV = [
 
 function HomeView({ go }) {
   const mob = useIsMobile();
-  const { people, companies, projects, cardLog, exits, ledger, docLog, contacts } = useProc();
+  const { people, companies, projects, cardLog, exits, ledger, docLog, contacts, chainVerified } = useProc();
   const active = people.filter(p => p.status === "active");
-  const chk = verifyLedger(ledger);
+  const chk = verifyLedger(ledger, chainVerified);
   const soon = active.map(p => ({ p, d: p.dob ? daysToAnniversary(p.dob) : null, kind: "birthday" }))
     .concat(active.map(p => ({ p, d: daysToAnniversary(p.joined), kind: "anniversary" })))
     .filter(x => x.d !== null && x.d <= 10).sort((a, b) => a.d - b.d).slice(0, 6);

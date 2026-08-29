@@ -11,7 +11,7 @@ when the current approach stops being the right one.
 fetches that whole object from `GET /api/v1/bootstrap` and supplies it in
 exactly the shape the screens already expect. Every action becomes an API call.
 
-**Five edits to the 7,312-line file.** All listed in
+**Seven edits to the 7,312-line file.** All listed in
 [`../apps/web/src/legacy/PATCHES.md`](../apps/web/src/legacy/PATCHES.md).
 
 ```

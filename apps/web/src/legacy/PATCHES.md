@@ -1,12 +1,12 @@
 # What changed in `MarbellaHR.jsx`, and why
 
-This is your 7,312-line file. **Five edits.** Nothing else was touched — no
+This is your 7,312-line file. **Seven edits.** Nothing else was touched — no
 screen was redesigned, no logic was rewritten, no styling was changed.
 
-Every edit is marked in the file itself with `EDIT n of 5` and a comment saying
+Every edit is marked in the file itself with `EDIT n of 7` and a comment saying
 what it replaced. Search for `EDIT ` to find them all.
 
-If you ship a new version of the single-file build, re-apply these five and it
+If you ship a new version of the single-file build, re-apply these seven and it
 will run against the server again.
 
 | # | Line (approx) | What | Why |
@@ -16,6 +16,8 @@ will run against the server again.
 | 3 | ~185, ~201 | `toast` and `Toaster` exported. | So the shell and `ProcProvider` can raise a toast when the server refuses something. Purely additive. |
 | 4 | ~4662 | `commit()` in Bulk intake is now `async` and `await`s `bulkAddPeople`. | The server assigns employee IDs, resolves the employer from the posting, and normalises dates — so the count has to come back from it. The screen now reports what actually **landed**; rows the server held back are counted as skipped, not added. |
 | 5 | ~5331 | The "who is leaving" button's `onClick` is `async` and `await`s `openExit`. | The exit id is assigned by the server. |
+| 6 | ~4477, ~5257, ~7130 | `verifyLedger` now checks the chain's **structure** synchronously and takes the **cryptographic** verdict from `chainVerified`. | **This was a real bug, caught by looking at the running app.** The server seals with SHA-256; the old `fingerprint()` in this file is the single-file build's 64-bit FNV pair. Re-deriving seals here disagreed with every entry, so a perfectly valid ledger showed **"SEAL BROKEN"** on the HR desk and **"Ledger broken at entry 5"** on Exits. A false alarm on a tamper-detector is worse than none: it teaches people to ignore it. |
+| 7 | 1-40, ~5270, ~6770 | Four pieces of copy that were true of the single-file build and are now false. | The ledger explainer said "it cannot prevent it — this app runs entirely in your browser". Usage said "counts reset when the app reloads". The header said authorisation was browser-side only and salary sat in the file in plain text. All four now describe what is actually true, caveats included. |
 
 ## What did NOT change
 
@@ -24,6 +26,26 @@ will run against the server again.
   which is useful for showing the UI on a laptop with nothing running.
 - All 20 letter templates, the CSS 3D org board, the card bureau's two
   deliberately unequal paths, every validation message, the whole palette.
+
+## What edit 6 does NOT do
+
+It does not make the check always pass. Verified in a real browser by
+intercepting `/bootstrap` and corrupting the ledger on the way in:
+
+| The ledger the browser was handed | What the UI said |
+| --- | --- |
+| untouched | seals intact (green) |
+| one entry's `detail` edited | **SEAL BROKEN** (red) |
+| one entry deleted | **SEAL BROKEN** (red) |
+| two entries swapped | **SEAL BROKEN** (red) |
+
+The structural half (does every entry name the previous one's seal?) runs
+synchronously here and catches deletion, reordering and insertion on its own.
+The cryptographic half is real SHA-256, computed by the server AND recomputed
+independently by the browser in `ProcProvider` — so a server lying about its own
+ledger health is caught too.
+
+---
 
 ## One behaviour that genuinely changed
 

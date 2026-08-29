@@ -123,6 +123,8 @@ export const bootstrapRoutes: FastifyPluginAsyncZod = async (app) => {
           zonesKilled: c.zonesKilled,
         })),
         ledger: ledgerRows.map((l) => ({
+          id: l.id,
+          seq: l.seq,
           at: l.at,
           who: l.who,
           kind: l.kind,

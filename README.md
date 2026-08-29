@@ -6,7 +6,7 @@ React front end. Fastify + PostgreSQL back end. One command to start, one
 command to deploy, and 137 tests that run against a real database.
 
 This is the single-file `MarbellaHR.jsx` build with a server underneath it. The
-UI is the same UI — **five edits**, all listed in
+UI is the same UI — **seven edits**, all listed in
 [`apps/web/src/legacy/PATCHES.md`](apps/web/src/legacy/PATCHES.md). Everything
 the old README listed under "Known gaps" because it needed a backend now has one.
 
@@ -191,7 +191,7 @@ at a time when it does — the per-screen endpoints all exist already.
 | [`docs/API.md`](docs/API.md)                                       | Every endpoint, with examples                                                                         |
 | [`docs/SECURITY.md`](docs/SECURITY.md)                             | What is protected, how, and what still is not                                                         |
 | [`docs/FRONTEND-INTEGRATION.md`](docs/FRONTEND-INTEGRATION.md)     | The `ProcCtx` contract and how to extend it                                                           |
-| [`apps/web/src/legacy/PATCHES.md`](apps/web/src/legacy/PATCHES.md) | The five edits to `MarbellaHR.jsx`                                                                    |
+| [`apps/web/src/legacy/PATCHES.md`](apps/web/src/legacy/PATCHES.md) | The seven edits to `MarbellaHR.jsx`                                                                   |
 
 Live API reference at **`/docs`** once the server is running.
 

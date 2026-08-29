@@ -153,8 +153,13 @@ export interface BootstrapPayload {
   people: BootstrapPerson[];
   /** Newest first, the order the UI displays. */
   cardLog: BootstrapCard[];
-  /** Newest first. Verify with verifyChainNewestFirst. */
-  ledger: SealedEntry[];
+  /**
+   * Newest first. Verify with verifyChainNewestFirst.
+   *
+   * Carries `id` and `seq` as well as the sealed fields: the UI uses `id` as a
+   * React key, and a list keyed on `undefined` re-renders wrongly and warns.
+   */
+  ledger: Array<SealedEntry & { id: string; seq: number }>;
   salaries: Record<string, BootstrapSalary>;
   devices: BootstrapDevice[];
   contacts: Record<string, BootstrapContact>;
