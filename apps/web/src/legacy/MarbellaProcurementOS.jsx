@@ -801,7 +801,10 @@ export function Login({ onLogin }) {
           <p style={{ color: "#D8C9A6", maxWidth: 400, lineHeight: 1.65, font: `italic 400 17px ${serif}`, margin: "0 0 6px" }}>{WELCOME_LINES[new Date().getDay() % WELCOME_LINES.length]}</p>
           <p style={{ color: "#A9B3C5", maxWidth: 380, lineHeight: 1.6, fontSize: 13 }}>Welcome to your desk. Everything you need is one tap away.</p>
         </div>
-        <div style={{ position: "relative", font: `12px ${mono}`, color: "#7B8598" }}>v0.1 · prototype</div>
+        {/* It stopped being a prototype when it got a server. Leaving the word
+            there tells everyone who signs in not to trust what they are looking
+            at, which is the opposite of true now. */}
+        <div style={{ position: "relative", font: `12px ${mono}`, color: "#7B8598" }}>v1.0</div>
       </div>
       <div style={{ background: C.paper, display: "grid", placeItems: "center", padding: 40 }}>{Form}</div>
     </div>
