@@ -222,7 +222,21 @@ export async function logout(): Promise<void> {
  * Recover a session on a page load, using the refresh cookie.
  * Returns null when there is no session to recover — which is not an error.
  */
+/**
+ * Does the browser hold a session cookie?
+ *
+ * The refresh cookie itself is httpOnly and invisible here, so the server sets
+ * a second, contentless one beside it purely so this question can be answered
+ * without a network call. See lib/tokens.ts on the API side.
+ */
+const hasSessionCookie = (): boolean =>
+  typeof document !== 'undefined' && /(?:^|;\s*)marbella_session=/.test(document.cookie);
+
 export async function bootstrapSession(): Promise<SessionUser | null> {
+  // Nobody has signed in on this browser, so there is nothing to recover. Asking
+  // anyway costs a round trip and prints a 401 in the console of every first-time
+  // visitor, which trains people to ignore the console.
+  if (!hasSessionCookie()) return null;
   if (!(await refresh())) return null;
   try {
     return await request<SessionUser>('/auth/me');

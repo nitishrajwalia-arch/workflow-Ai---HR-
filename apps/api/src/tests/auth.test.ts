@@ -30,7 +30,7 @@ const login = (payload: Record<string, unknown>) =>
 
 describe('signing in', () => {
   it('accepts the right password and returns a token plus an httpOnly cookie', async () => {
-    const res = await login({ email: ADMIN_EMAIL, password: ADMIN_PASSWORD });
+    const res = await login({ identifier: ADMIN_EMAIL, password: ADMIN_PASSWORD });
     expect(res.statusCode).toBe(200);
 
     const body = res.json<{ accessToken: string; user: { role: string } }>();
@@ -43,14 +43,14 @@ describe('signing in', () => {
   });
 
   it('never returns the password hash', async () => {
-    const res = await login({ email: ADMIN_EMAIL, password: ADMIN_PASSWORD });
+    const res = await login({ identifier: ADMIN_EMAIL, password: ADMIN_PASSWORD });
     expect(res.body).not.toMatch(/passwordHash|argon2/i);
   });
 
   it('says the same thing for a wrong password and an unknown address', async () => {
     // Distinguishing them would hand an attacker a list of who works here.
-    const wrong = await login({ email: ADMIN_EMAIL, password: 'not-the-password' });
-    const unknown = await login({ email: 'nobody@example.com', password: 'not-the-password' });
+    const wrong = await login({ identifier: ADMIN_EMAIL, password: 'not-the-password' });
+    const unknown = await login({ identifier: 'nobody@example.com', password: 'not-the-password' });
 
     expect(wrong.statusCode).toBe(401);
     expect(unknown.statusCode).toBe(401);
@@ -60,7 +60,7 @@ describe('signing in', () => {
   });
 
   it('rejects a malformed body with field-level detail', async () => {
-    const res = await login({ email: 'x' });
+    const res = await login({ identifier: 'x' });
     expect(res.statusCode).toBe(400);
     expect(res.json<{ error: { code: string } }>().error.code).toMatch(/VALIDATION|BAD_REQUEST/);
   });
@@ -127,15 +127,15 @@ describe('the session', () => {
     });
 
     // The env used by tests keeps the default of 8 attempts.
-    let last = await login({ email: user.email, password: 'wrong' });
+    let last = await login({ identifier: user.email, password: 'wrong' });
     for (let i = 1; i < 8; i++) {
-      last = await login({ email: user.email, password: 'wrong' });
+      last = await login({ identifier: user.email, password: 'wrong' });
     }
     expect(last.statusCode).toBe(401);
 
     // Even the RIGHT password is refused while the lock stands. That is the
     // point: an attacker who finds it on attempt nine still cannot get in.
-    const correct = await login({ email: user.email, password: 'the-correct-password' });
+    const correct = await login({ identifier: user.email, password: 'the-correct-password' });
     expect(correct.statusCode).toBe(429);
     expect(correct.json<{ error: { message: string } }>().error.message).toMatch(/locked/i);
 

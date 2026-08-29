@@ -333,7 +333,13 @@ model LedgerEntry {
   kind    String
   subject String
   detail  String
-  prev    String
+  /// The seal of the entry before this one — and UNIQUE, which is what stops the
+  /// chain forking. Without it two entries can name the same predecessor and the
+  /// ledger becomes a tree: two histories, both internally consistent, no way to
+  /// say which is the real one. It is declared here rather than only in SQL
+  /// because a hand-written index is invisible to `prisma migrate diff`, which
+  /// once generated a migration that dropped it as drift.
+  prev    String @unique
   seal    String @unique
 
   createdAt DateTime @default(now())

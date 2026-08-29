@@ -19,6 +19,17 @@ import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 
 export const REFRESH_COOKIE = 'marbella_rt';
 
+/**
+ * A second cookie that says only "a session exists here" — no token, no user,
+ * no secret. The refresh cookie is httpOnly by design, so JavaScript cannot ask
+ * whether one is present; without this the app has to POST /auth/refresh on
+ * every cold load just to find out, and a first-time visitor gets a red 401 in
+ * the console before they have even signed in. Readable, so the app can skip
+ * that call. It grants nothing on its own: forging it only makes the client
+ * attempt a refresh that the server then refuses.
+ */
+export const SESSION_HINT_COOKIE = 'marbella_session';
+
 export const newRefreshToken = (): string => randomBytes(48).toString('base64url');
 
 export const hashToken = (token: string): string =>
@@ -43,6 +54,17 @@ export function refreshCookieOptions(isProduction: boolean, days: number) {
     secure: isProduction,
     // Scoped to the refresh route: it is not sent with every ordinary request.
     path: '/api/v1/auth',
+    maxAge: days * 24 * 60 * 60,
+  };
+}
+
+/** Same lifetime as the refresh cookie, but readable and sent site-wide. */
+export function sessionHintCookieOptions(isProduction: boolean, days: number) {
+  return {
+    httpOnly: false,
+    sameSite: 'strict' as const,
+    secure: isProduction,
+    path: '/',
     maxAge: days * 24 * 60 * 60,
   };
 }

@@ -44,16 +44,21 @@ export async function makeApp(): Promise<{ app: App; db: PrismaClient }> {
 export const ADMIN_EMAIL = process.env.BOOTSTRAP_ADMIN_EMAIL ?? 'hr@marbellagroup.in';
 export const ADMIN_PASSWORD = process.env.BOOTSTRAP_ADMIN_PASSWORD ?? 'DevPassword123!';
 
-/** Sign in and return the bearer token plus the refresh cookie. */
+/**
+ * Sign in and return the bearer token plus the refresh cookie.
+ *
+ * `identifier` is an Employee ID or an email — the login route takes either,
+ * because on site people know their MB-PUR-0012 and not their mailbox.
+ */
 export async function signIn(
   app: App,
-  email = ADMIN_EMAIL,
+  identifier = ADMIN_EMAIL,
   password = ADMIN_PASSWORD,
 ): Promise<{ token: string; cookie: string }> {
   const res = await app.inject({
     method: 'POST',
     url: '/api/v1/auth/login',
-    payload: { email, password },
+    payload: { identifier, password },
   });
   if (res.statusCode !== 200) {
     throw new Error(`Sign-in failed (${res.statusCode}): ${res.body}`);

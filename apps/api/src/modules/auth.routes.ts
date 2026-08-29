@@ -24,9 +24,11 @@ import { forbidden, tooMany, unauthorized } from '../lib/errors.js';
 import { hashPassword, needsRehash, verifyPassword } from '../lib/password.js';
 import {
   REFRESH_COOKIE,
+  SESSION_HINT_COOKIE,
   hashToken,
   newRefreshToken,
   refreshCookieOptions,
+  sessionHintCookieOptions,
   refreshExpiry,
 } from '../lib/tokens.js';
 import { appendInTx } from '../services/ledger.js';
@@ -163,6 +165,11 @@ export const authRoutes: FastifyPluginAsyncZod = async (app) => {
         refreshToken,
         refreshCookieOptions(isProd, env.REFRESH_TOKEN_TTL_DAYS),
       );
+      void reply.setCookie(
+        SESSION_HINT_COOKIE,
+        '1',
+        sessionHintCookieOptions(isProd, env.REFRESH_TOKEN_TTL_DAYS),
+      );
 
       return {
         accessToken,
@@ -218,6 +225,7 @@ export const authRoutes: FastifyPluginAsyncZod = async (app) => {
           data: { revokedAt: new Date() },
         });
         void reply.clearCookie(REFRESH_COOKIE, { path: '/api/v1/auth' });
+        void reply.clearCookie(SESSION_HINT_COOKIE, { path: '/' });
         throw unauthorized(
           'That session was already used. Everyone signed in as you has been signed out.',
         );
@@ -241,6 +249,11 @@ export const authRoutes: FastifyPluginAsyncZod = async (app) => {
         REFRESH_COOKIE,
         refreshToken,
         refreshCookieOptions(isProd, env.REFRESH_TOKEN_TTL_DAYS),
+      );
+      void reply.setCookie(
+        SESSION_HINT_COOKIE,
+        '1',
+        sessionHintCookieOptions(isProd, env.REFRESH_TOKEN_TTL_DAYS),
       );
 
       return {
@@ -281,6 +294,7 @@ export const authRoutes: FastifyPluginAsyncZod = async (app) => {
         });
       }
       void reply.clearCookie(REFRESH_COOKIE, { path: '/api/v1/auth' });
+      void reply.clearCookie(SESSION_HINT_COOKIE, { path: '/' });
       return { ok: true as const };
     },
   );
@@ -360,6 +374,7 @@ export const authRoutes: FastifyPluginAsyncZod = async (app) => {
       });
 
       void reply.clearCookie(REFRESH_COOKIE, { path: '/api/v1/auth' });
+      void reply.clearCookie(SESSION_HINT_COOKIE, { path: '/' });
       return { ok: true as const };
     },
   );

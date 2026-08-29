@@ -598,7 +598,7 @@ const roleChip = { cursor: "pointer", display: "inline-flex", alignItems: "cente
 const lbl = { font: `600 11px ${sans}`, letterSpacing: "0.1em", textTransform: "uppercase", color: C.inkSoft };
 
 /* ---- shared procurement state across the four pillars ---- */
-/* EDIT 1 of 8 (see legacy/PATCHES-PROCUREMENT.md): the context comes from
+/* EDIT 1 of 10 (see legacy/PATCHES-PROCUREMENT.md): the context comes from
    ../proc/context.js so ProcurementProvider can put LIVE SERVER DATA into the
    same object these screens read. Two createContext() calls make two unrelated
    contexts and useProc() silently returns null. */
@@ -748,7 +748,7 @@ export function Login({ onLogin }) {
       <input value={id} onChange={e => setId(e.target.value)} placeholder="MB-PUR-0012" style={inp} />
       <label style={lbl}>Password</label>
       <input value={pw} onChange={e => setPw(e.target.value)} type="password" placeholder="••••••••" style={inp} />
-      {/* EDIT 2 of 8 — THE IMPORTANT ONE.
+      {/* EDIT 2 of 10 — THE IMPORTANT ONE.
 
           This used to read `onClick={() => onLogin("admin")}`. It ignored the
           Employee ID and the password you just typed and signed EVERYONE in as
@@ -761,7 +761,7 @@ export function Login({ onLogin }) {
       <div style={{ marginTop: 18 }}>
         <div style={{ font: `600 10px ${sans}`, letterSpacing: "0.14em", textTransform: "uppercase", color: C.stone, marginBottom: 10 }}>Fill in a desk's Employee ID</div>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-          {/* EDIT 3 of 8: these chips used to sign you straight in as that role
+          {/* EDIT 3 of 10: these chips used to sign you straight in as that role
               with no password at all — nine doors with no locks. They now fill
               the Employee ID in for you; the password is still required. */}
           {Object.values(USERS).map(u => (
@@ -1492,7 +1492,7 @@ function AccessConsole({ onActAs }) {
         <div style={{ display: "flex", gap: 9, flexWrap: "wrap", alignItems: "center", paddingTop: 10, borderTop: `2px solid ${C.gold}` }}>
           <span style={{ font: `12px ${sans}`, color: C.inkSoft, flex: 1, minWidth: 150 }}>{u.name} can currently open <b style={{ color: C.ink }}>{count(pick)}</b> of {totalAreas} areas.</span>
           <GoldButton small onClick={() => (async () => {
-                    /* EDIT 8 of 8: this used to announce a change and forget it the
+                    /* EDIT 8 of 10: this used to announce a change and forget it the
                        moment the screen closed. Nobody's access ever moved. It writes
                        rows now, sealed against the administrator who made the change. */
                     const grid = grants[pick] || {};
@@ -7393,7 +7393,7 @@ const HRANN_SEED = [
 ];
 
 const fmtToday = () => new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
-/* EDIT 6 of 8: eight buttons said "Sending to printer…" and did nothing at all
+/* EDIT 6 of 10: eight buttons said "Sending to printer…" and did nothing at all
    — no dialog, no document, nothing reaching a printer. This is what a browser
    actually has. If the print dialog is blocked (some kiosk browsers do), it
    says so rather than pretending. */
@@ -7405,7 +7405,7 @@ function printThis() {
   }
 }
 
-/* EDIT 7 of 8: "Calling…" toasts now actually dial. On a site phone this opens
+/* EDIT 7 of 10: "Calling…" toasts now actually dial. On a site phone this opens
    the dialler; on a desktop it hands off to whatever handles tel: links, and
    if nothing does, the number is shown so it can be dialled by hand. */
 function callNumber(number, who) {
@@ -10177,7 +10177,7 @@ const fingerprint = (payload, prev) => {
 };
 const ledgerPayload = (e) => [e.at, e.who, e.kind, e.subject, e.detail].join("\u0001");
 /* rebuild the chain from the bottom up and report the first entry whose seal no longer fits */
-/* EDIT 4 of 8: the server seals the ledger with real SHA-256, computed where a
+/* EDIT 4 of 10: the server seals the ledger with real SHA-256, computed where a
    browser cannot reach it. The `fingerprint()` above is this file's old 64-bit
    FNV pair, so re-deriving the seals here disagreed with every entry and a
    perfectly valid ledger reported itself as tampered. A false alarm on a
@@ -10375,7 +10375,7 @@ function BulkImportView() {
   const good = checked.filter(c => !c.errs.length);
   const bad = checked.filter(c => c.errs.length);
 
-  /* EDIT 5 of 8: `await`. The server assigns the employee IDs, resolves the
+  /* EDIT 5 of 10: `await`. The server assigns the employee IDs, resolves the
      employer from the posting and normalises the dates, so the count shown is
      what actually LANDED — rows it held back are counted as skipped. */
   const commit = async () => {
