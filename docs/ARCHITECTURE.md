@@ -233,7 +233,7 @@ you are running.
 
 ## Testing
 
-**161 tests, no mocked database.**
+**164 tests, no mocked database.**
 
 A mocked Prisma proves the mock behaves as written. Every interesting rule in
 this system lives in the database: the append-only triggers, the unique index on

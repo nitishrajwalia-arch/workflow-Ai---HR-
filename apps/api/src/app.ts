@@ -28,6 +28,7 @@ import { createDb, pingDb, type Db } from './db.js';
 import { corsOrigins, type Env } from './env.js';
 import { authPlugin } from './plugins/auth.js';
 import { errorsPlugin } from './plugins/errors.js';
+import { serveUploadsPlugin } from './plugins/serve-uploads.js';
 import { registerRoutes } from './routes.js';
 
 declare module 'fastify' {
@@ -193,6 +194,9 @@ export async function buildApp({ env, db }: BuildOptions): Promise<App> {
   }
 
   await app.register(healthPlugin);
+  // At the root, not under /api/v1: `/uploads/<uuid>.jpg` is the URL already
+  // stored against every person and already proxied by nginx.
+  await app.register(serveUploadsPlugin);
   await app.register(registerRoutes, { prefix: '/api/v1' });
 
   // Close the pool on shutdown so in-flight queries finish and Postgres does not

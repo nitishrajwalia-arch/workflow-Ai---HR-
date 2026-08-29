@@ -204,6 +204,19 @@ describe('every route is guarded', () => {
     'POST /api/v1/auth/logout',
     'GET /health/live',
     'GET /health/ready',
+    /*
+     * Photos, deliberately. A browser cannot put an Authorization header on an
+     * `<img src>`, and the refresh cookie is scoped to /api/v1/auth, so the only
+     * ways to guard this are a signed URL or a session cookie sent site-wide —
+     * and a site-wide credential cookie is a bigger hole than the one it closes.
+     *
+     * What protects a photo is that its filename is a random UUID this server
+     * generated: the URL is the capability. Nothing can be listed, and a name
+     * that is not a UUID plus a known extension is refused before it touches
+     * the disk. Say this out loud to whoever is paying: anyone holding a photo
+     * URL can fetch that photo without signing in. See docs/SECURITY.md.
+     */
+    'GET /uploads/:name',
   ]);
 
   it('has no unguarded route outside the explicit public list', () => {

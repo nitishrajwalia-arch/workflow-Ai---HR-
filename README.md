@@ -4,7 +4,7 @@ Purchasing, stores, accounts, the gate and the people system for Marbella
 Group, as one real full-stack application.
 
 React front end. Fastify + PostgreSQL back end. One command to start, one
-command to deploy, and 161 tests that run against a real database.
+command to deploy, and 164 tests that run against a real database.
 
 This is the single-file `MarbellaProcurementOS.jsx` build with a server
 underneath it. The UI is the same UI — **ten edits**, all listed in
@@ -61,7 +61,7 @@ forgeable by anyone who has read the compose file.
 | **Web**    | React 19 · Vite 8 · TypeScript                                                |
 | **Auth**   | Argon2id · JWT access tokens · rotating refresh tokens · 4 roles              |
 | **Docs**   | OpenAPI at `/docs`, generated from the same schemas the server validates with |
-| **Tests**  | 161, against a real PostgreSQL — no mocked database anywhere                  |
+| **Tests**  | 164, against a real PostgreSQL — no mocked database anywhere                  |
 | **Deploy** | Dockerfiles, compose file, nginx config, GitHub Actions CI                    |
 
 ```
@@ -227,7 +227,7 @@ at a time when it does — the per-screen endpoints all exist already.
 | -------------------- | -------------------------------------------- |
 | `npm run dev`        | API and web, both watching                   |
 | `npm run check`      | format, lint, typecheck, test — what CI runs |
-| `npm test`           | 161 tests against a real PostgreSQL          |
+| `npm test`           | 164 tests against a real PostgreSQL          |
 | `npm run build`      | production build of all three packages       |
 | `npm run db:migrate` | create/apply a migration                     |
 | `npm run db:seed`    | seed (idempotent — safe to re-run)           |
@@ -335,6 +335,23 @@ Stated plainly, because "it works" is worth less than knowing what was checked.
     startup crash than two routes quietly shadowing each other.
 13. **`npm run dev` started nothing.** npm runs workspaces sequentially, so the
     API held the terminal and the web app never started. Both run together now.
+14. **`npm ci` failed on a fresh clone.** It runs `prisma generate` through
+    `prepare`, and the Prisma config called `env('DATABASE_URL')`, which throws
+    the moment the file is loaded. `generate` does not use a database — so the
+    very first command your dev would run failed on a variable that command
+    does not need, before there was any `.env` to put it in. Found by
+    unpacking the dev pack into an empty directory and installing it cold.
+15. **Every uploaded photo came back a 404.** `POST /people/:id/photo` stored
+    the file and returned `/uploads/<uuid>.jpg`, and **nothing served that
+    path** — not in development, not in production. `@fastify/static` sat in
+    `package.json` for the job and was never registered. Both halves worked;
+    only the join was missing, which is exactly the shape a green test suite
+    says nothing about. There is a purpose-built route and a test now.
+16. **Four open advisories, in a package that was never used.** That same
+    unregistered `@fastify/static` carried four path-traversal and
+    authorisation-bypass advisories. Rather than a two-major upgrade of
+    something this app does not call, it is gone: `npm audit` goes from four
+    high findings to zero in the runtime.
 
 ---
 
