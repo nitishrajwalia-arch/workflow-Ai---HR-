@@ -235,7 +235,9 @@ export const procurementRoutes: FastifyPluginAsyncZod = async (app) => {
       const accepted: Array<{ row: number; code: string; name: string }> = [];
       const rejected: Array<{ row: number; name: string; field: string; reason: string }> = [];
 
-      const existing = new Set((await db.vendor.findMany({ select: { name: true } })).map((v) => v.name.toLowerCase()));
+      const existing = new Set(
+        (await db.vendor.findMany({ select: { name: true } })).map((v) => v.name.toLowerCase()),
+      );
       const counters = new Map<string, number>();
       for (const v of await db.vendor.findMany({ select: { code: true } })) {
         const m = v.code.match(/^MB-([A-Z]{3})-(\d{4})$/);
@@ -246,7 +248,12 @@ export const procurementRoutes: FastifyPluginAsyncZod = async (app) => {
         const rowNo = i + 1;
         const name = r.name?.trim() ?? '';
         if (!name || name.length < 2) {
-          rejected.push({ row: rowNo, name: name || '(no name)', field: 'name', reason: 'No party name.' });
+          rejected.push({
+            row: rowNo,
+            name: name || '(no name)',
+            field: 'name',
+            reason: 'No party name.',
+          });
           return;
         }
         if (existing.has(name.toLowerCase())) {
@@ -387,7 +394,12 @@ export const procurementRoutes: FastifyPluginAsyncZod = async (app) => {
           if (!line.name.trim() || !line.rate) continue;
           await tx.catalogItem.upsert({
             where: { name: line.name.trim() },
-            create: { name: line.name.trim(), unit: line.unit, rate: toPaise(line.rate), vendor: b.vendor },
+            create: {
+              name: line.name.trim(),
+              unit: line.unit,
+              rate: toPaise(line.rate),
+              vendor: b.vendor,
+            },
             update: { rate: toPaise(line.rate), vendor: b.vendor, unit: line.unit },
           });
         }
@@ -429,7 +441,8 @@ export const procurementRoutes: FastifyPluginAsyncZod = async (app) => {
       preHandler: app.authenticate,
       schema: { tags: ['procurement'], summary: 'Purchase requests', response: { 200: z.any() } },
     },
-    async () => db.purchaseRequest.findMany({ where: { state: 'open' }, orderBy: { createdAt: 'desc' } }),
+    async () =>
+      db.purchaseRequest.findMany({ where: { state: 'open' }, orderBy: { createdAt: 'desc' } }),
   );
 
   app.post(
@@ -503,9 +516,14 @@ export const procurementRoutes: FastifyPluginAsyncZod = async (app) => {
     '/requisitions',
     {
       preHandler: app.authenticate,
-      schema: { tags: ['procurement'], summary: 'Requisitions on the store', response: { 200: z.any() } },
+      schema: {
+        tags: ['procurement'],
+        summary: 'Requisitions on the store',
+        response: { 200: z.any() },
+      },
     },
-    async () => db.requisition.findMany({ where: { state: 'open' }, orderBy: { createdAt: 'desc' } }),
+    async () =>
+      db.requisition.findMany({ where: { state: 'open' }, orderBy: { createdAt: 'desc' } }),
   );
 
   app.post(
@@ -759,7 +777,9 @@ export const procurementRoutes: FastifyPluginAsyncZod = async (app) => {
       const item = await db.inventoryItem.findUnique({ where: { item: b.item } });
       if (!item) throw notFound(`${b.item} is not on the store list`);
 
-      const held = qty((await db.hold.findMany({ where: { itemName: b.item } })).reduce((s, h) => s + h.qty, 0));
+      const held = qty(
+        (await db.hold.findMany({ where: { itemName: b.item } })).reduce((s, h) => s + h.qty, 0),
+      );
       if (held + b.qty > item.qty) {
         throw unprocessable(
           `There are only ${item.qty} ${item.unit} of ${b.item}, and ${held} are already held. ` +
@@ -768,7 +788,14 @@ export const procurementRoutes: FastifyPluginAsyncZod = async (app) => {
       }
 
       const row = await db.hold.create({
-        data: { itemName: b.item, qty: b.qty, unit: b.unit || item.unit, days: b.days, by: me.name, why: b.why },
+        data: {
+          itemName: b.item,
+          qty: b.qty,
+          unit: b.unit || item.unit,
+          days: b.days,
+          by: me.name,
+          why: b.why,
+        },
       });
       return reply.status(201).send({ ...row, item: row.itemName, at: row.createdAt.getTime() });
     },
@@ -851,7 +878,12 @@ export const procurementRoutes: FastifyPluginAsyncZod = async (app) => {
     },
     async () => {
       const rows = await db.catalogItem.findMany({ orderBy: { name: 'asc' } });
-      return rows.map((c) => ({ name: c.name, unit: c.unit, rate: toRupees(c.rate), vendor: c.vendor }));
+      return rows.map((c) => ({
+        name: c.name,
+        unit: c.unit,
+        rate: toRupees(c.rate),
+        vendor: c.vendor,
+      }));
     },
   );
 
@@ -888,7 +920,11 @@ export const procurementRoutes: FastifyPluginAsyncZod = async (app) => {
     '/site-reports',
     {
       preHandler: app.authenticate,
-      schema: { tags: ['procurement'], summary: 'What people have reported', response: { 200: z.any() } },
+      schema: {
+        tags: ['procurement'],
+        summary: 'What people have reported',
+        response: { 200: z.any() },
+      },
     },
     async () => db.siteReport.findMany({ orderBy: { createdAt: 'desc' }, take: 200 }),
   );

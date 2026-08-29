@@ -96,7 +96,9 @@ export const gateRoutes: FastifyPluginAsyncZod = async (app) => {
         return g;
       });
 
-      return reply.status(201).send({ ...row, total: toRupees(row.total), at: row.createdAt.getTime() });
+      return reply
+        .status(201)
+        .send({ ...row, total: toRupees(row.total), at: row.createdAt.getTime() });
     },
   );
 
@@ -222,7 +224,9 @@ export const gateRoutes: FastifyPluginAsyncZod = async (app) => {
         tags: ['gate'],
         summary: 'Move a pass along',
         params: z.object({ id: z.string() }),
-        body: z.object({ status: z.enum(['expected', 'arrived', 'unloaded', 'closed', 'cancelled']) }),
+        body: z.object({
+          status: z.enum(['expected', 'arrived', 'unloaded', 'closed', 'cancelled']),
+        }),
         response: { 200: z.any(), 404: z.any() },
       },
     },
@@ -243,7 +247,11 @@ export const gateRoutes: FastifyPluginAsyncZod = async (app) => {
     '/submittals',
     {
       preHandler: app.authenticate,
-      schema: { tags: ['gate'], summary: 'Documents sent between departments', response: { 200: z.any() } },
+      schema: {
+        tags: ['gate'],
+        summary: 'Documents sent between departments',
+        response: { 200: z.any() },
+      },
     },
     async () => {
       const rows = await db.submittal.findMany({

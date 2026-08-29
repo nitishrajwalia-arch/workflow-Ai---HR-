@@ -79,8 +79,13 @@ export const authPlugin = fp(async function authPlugin(app: FastifyInstance, opt
     const user = await app.db.user.findUnique({
       where: { id: req.user.sub },
       select: {
-        id: true, disabledAt: true, role: true, personId: true,
-        email: true, name: true, userKey: true,
+        id: true,
+        disabledAt: true,
+        role: true,
+        personId: true,
+        email: true,
+        name: true,
+        userKey: true,
       },
     });
     if (!user) throw unauthorized('That account no longer exists.');

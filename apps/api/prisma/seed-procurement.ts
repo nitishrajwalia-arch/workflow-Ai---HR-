@@ -107,8 +107,25 @@ export async function seedProcurement(
   for (const f of FIRMS) {
     await prisma.firm.upsert({
       where: { id: f.id },
-      create: { id: f.id, short: f.short, name: f.name, firm: f.firm, gstin: f.gstin ?? '', rera: f.rera ?? '', stage: f.stage ?? 'building', addr: f.addr ?? '' },
-      update: { short: f.short, name: f.name, firm: f.firm, gstin: f.gstin ?? '', rera: f.rera ?? '', stage: f.stage ?? 'building', addr: f.addr ?? '' },
+      create: {
+        id: f.id,
+        short: f.short,
+        name: f.name,
+        firm: f.firm,
+        gstin: f.gstin ?? '',
+        rera: f.rera ?? '',
+        stage: f.stage ?? 'building',
+        addr: f.addr ?? '',
+      },
+      update: {
+        short: f.short,
+        name: f.name,
+        firm: f.firm,
+        gstin: f.gstin ?? '',
+        rera: f.rera ?? '',
+        stage: f.stage ?? 'building',
+        addr: f.addr ?? '',
+      },
     });
   }
   announce(`  firms        ${FIRMS.length}`);
@@ -127,7 +144,10 @@ export async function seedProcurement(
         terms: v.terms ?? '',
         phone,
         whatsapp: phone,
-        email: `billing@${String(v.name).toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 14)}.in`,
+        email: `billing@${String(v.name)
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '')
+          .slice(0, 14)}.in`,
         status: status as never,
         vcode: i === 0 ? 'MB-V-0001' : i === 4 ? 'MB-V-0002' : '',
       },
@@ -159,7 +179,14 @@ export async function seedProcurement(
   for (const pr of PR_SEED) {
     await prisma.purchaseRequest.upsert({
       where: { id: pr.id },
-      create: { id: pr.id, item: pr.item, qty: pr.qty, when: pr.when ?? '', proj: pr.proj ?? '', by: pr.by ?? '' },
+      create: {
+        id: pr.id,
+        item: pr.item,
+        qty: pr.qty,
+        when: pr.when ?? '',
+        proj: pr.proj ?? '',
+        by: pr.by ?? '',
+      },
       update: {},
     });
   }
@@ -170,53 +197,111 @@ export async function seedProcurement(
       update: {},
     });
   }
-  announce(`  orders       ${POS.length} POs · ${PR_SEED.length} PRs · ${REQUESTS.length} requisitions`);
+  announce(
+    `  orders       ${POS.length} POs · ${PR_SEED.length} PRs · ${REQUESTS.length} requisitions`,
+  );
 
   /* ----------------------------------------------------------- inventory */
 
   for (const row of INVENTORY) {
     await prisma.inventoryItem.upsert({
       where: { item: row.item },
-      create: { item: row.item, unit: row.unit, qty: Number(row.qty), reorder: Number(row.reorder), loc: row.loc ?? '', proj: row.proj ?? '' },
-      update: { unit: row.unit, reorder: Number(row.reorder), loc: row.loc ?? '', proj: row.proj ?? '' },
+      create: {
+        item: row.item,
+        unit: row.unit,
+        qty: Number(row.qty),
+        reorder: Number(row.reorder),
+        loc: row.loc ?? '',
+        proj: row.proj ?? '',
+      },
+      update: {
+        unit: row.unit,
+        reorder: Number(row.reorder),
+        loc: row.loc ?? '',
+        proj: row.proj ?? '',
+      },
     });
   }
   for (const h of HOLDS_SEED) {
     const exists = await prisma.hold.findFirst({ where: { itemName: h.item, by: h.by } });
     if (exists) continue;
     await prisma.hold.create({
-      data: { itemName: h.item, qty: Number(h.qty), unit: h.unit ?? '', days: Number(h.days ?? 0), by: h.by, why: h.why ?? '' },
+      data: {
+        itemName: h.item,
+        qty: Number(h.qty),
+        unit: h.unit ?? '',
+        days: Number(h.days ?? 0),
+        by: h.by,
+        why: h.why ?? '',
+      },
     });
   }
   if ((await prisma.stockMove.count()) === 0) {
     for (const m of MOVES_SEED) {
       await prisma.stockMove.create({
-        data: { dir: m.dir, item: m.item, qty: Number(m.qty), unit: m.unit ?? '', ref: m.ref ?? '', bill: m.bill ?? '', who: m.who ?? '', note: m.note ?? '', createdAt: new Date(m.at) },
+        data: {
+          dir: m.dir,
+          item: m.item,
+          qty: Number(m.qty),
+          unit: m.unit ?? '',
+          ref: m.ref ?? '',
+          bill: m.bill ?? '',
+          who: m.who ?? '',
+          note: m.note ?? '',
+          createdAt: new Date(m.at),
+        },
       });
     }
   }
   for (const c of CAPS_SEED) {
     await prisma.storageCap.upsert({
       where: { item_proj: { item: c.item, proj: c.proj } },
-      create: { item: c.item, proj: c.proj, max: Number(c.max), unit: c.unit ?? '', why: c.why ?? '' },
+      create: {
+        item: c.item,
+        proj: c.proj,
+        max: Number(c.max),
+        unit: c.unit ?? '',
+        why: c.why ?? '',
+      },
       update: { max: Number(c.max), why: c.why ?? '' },
     });
   }
-  announce(`  store        ${INVENTORY.length} items · ${HOLDS_SEED.length} holds · ${MOVES_SEED.length} moves · ${CAPS_SEED.length} caps`);
+  announce(
+    `  store        ${INVENTORY.length} items · ${HOLDS_SEED.length} holds · ${MOVES_SEED.length} moves · ${CAPS_SEED.length} caps`,
+  );
 
   /* ---------------------------------------------------------------- gate */
 
   for (const g of GATEPASS_SEED) {
     await prisma.gatePass.upsert({
       where: { id: g.id },
-      create: { id: g.id, poId: null, vendor: g.vendor, items: g.items, total: paise(g.total), by: g.by, status: g.status ?? 'expected', createdAt: new Date(g.at) },
+      create: {
+        id: g.id,
+        poId: null,
+        vendor: g.vendor,
+        items: g.items,
+        total: paise(g.total),
+        by: g.by,
+        status: g.status ?? 'expected',
+        createdAt: new Date(g.at),
+      },
       update: { status: g.status ?? 'expected' },
     });
   }
   if ((await prisma.gateEvent.count()) === 0) {
     for (const e of GATELOG_SEED) {
       await prisma.gateEvent.create({
-        data: { outcome: e.outcome, label: e.label, plate: e.plate ?? '', guard: e.guard ?? '', guardId: e.guardId ?? '', post: e.post ?? '', who: e.who ?? '', note: e.note ?? '', at: new Date(e.at) },
+        data: {
+          outcome: e.outcome,
+          label: e.label,
+          plate: e.plate ?? '',
+          guard: e.guard ?? '',
+          guardId: e.guardId ?? '',
+          post: e.post ?? '',
+          who: e.who ?? '',
+          note: e.note ?? '',
+          at: new Date(e.at),
+        },
       });
     }
   }
@@ -227,13 +312,27 @@ export async function seedProcurement(
   for (const s of SUB_SEED) {
     await prisma.submittal.upsert({
       where: { id: s.id },
-      create: { id: s.id, title: s.title, fromName: s.fromName, fromDept: s.fromDept, to: s.to, status: s.status ?? 'sent' },
+      create: {
+        id: s.id,
+        title: s.title,
+        fromName: s.fromName,
+        fromDept: s.fromDept,
+        to: s.to,
+        status: s.status ?? 'sent',
+      },
       update: { status: s.status ?? 'sent' },
     });
     for (const v of s.versions ?? []) {
       await prisma.submittalVersion.upsert({
         where: { submittalId_v: { submittalId: s.id, v: v.v } },
-        create: { submittalId: s.id, v: v.v, fileName: v.fileName, by: v.by, note: v.note ?? '', at: new Date(v.at) },
+        create: {
+          submittalId: s.id,
+          v: v.v,
+          fileName: v.fileName,
+          by: v.by,
+          note: v.note ?? '',
+          at: new Date(v.at),
+        },
         update: {},
       });
     }
@@ -245,14 +344,34 @@ export async function seedProcurement(
   for (const v of INVOICES_SEED) {
     await prisma.vendorInvoice.upsert({
       where: { id: v.id },
-      create: { id: v.id, from: v.from ?? '', vendor: v.vendor, subj: v.subj ?? '', amt: paise(v.amt), po: v.po ?? '', gstin: !!v.gstin, age: v.age ?? '', state: v.state ?? 'toclear' },
+      create: {
+        id: v.id,
+        from: v.from ?? '',
+        vendor: v.vendor,
+        subj: v.subj ?? '',
+        amt: paise(v.amt),
+        po: v.po ?? '',
+        gstin: !!v.gstin,
+        age: v.age ?? '',
+        state: v.state ?? 'toclear',
+      },
       update: { state: v.state ?? 'toclear' },
     });
   }
   for (const e of EXP_SEED) {
     await prisma.expense.upsert({
       where: { id: e.id },
-      create: { id: e.id, cat: e.cat, dept: e.dept, amt: paise(e.amt), party: e.party ?? '', date: e.date ?? '', src: e.src ?? '', how: e.how ?? '', ok: e.ok !== false },
+      create: {
+        id: e.id,
+        cat: e.cat,
+        dept: e.dept,
+        amt: paise(e.amt),
+        party: e.party ?? '',
+        date: e.date ?? '',
+        src: e.src ?? '',
+        how: e.how ?? '',
+        ok: e.ok !== false,
+      },
       update: {},
     });
   }
@@ -260,9 +379,18 @@ export async function seedProcurement(
     await prisma.sale.upsert({
       where: { id: s.id },
       create: {
-        id: s.id, unit: s.unit, tower: s.tower ?? '', proj: s.proj ?? '', firm: s.firm ?? '',
-        plan: s.plan ?? '', price: paise(s.price), booked: s.booked ?? '', buyer: s.buyer,
-        phone: s.phone ?? '', email: s.email ?? '', received: (s.received ?? []) as never,
+        id: s.id,
+        unit: s.unit,
+        tower: s.tower ?? '',
+        proj: s.proj ?? '',
+        firm: s.firm ?? '',
+        plan: s.plan ?? '',
+        price: paise(s.price),
+        booked: s.booked ?? '',
+        buyer: s.buyer,
+        phone: s.phone ?? '',
+        email: s.email ?? '',
+        received: (s.received ?? []) as never,
       },
       update: {},
     });
@@ -270,25 +398,53 @@ export async function seedProcurement(
   for (const b of BANKS_SEED) {
     await prisma.bankAccount.upsert({
       where: { id: b.id },
-      create: { id: b.id, bank: b.bank, acc: b.acc, type: b.type ?? '', firm: b.firm ?? '', till: b.till ?? '', gaps: (b.gaps ?? []) as never, bal: paise(b.bal) },
+      create: {
+        id: b.id,
+        bank: b.bank,
+        acc: b.acc,
+        type: b.type ?? '',
+        firm: b.firm ?? '',
+        till: b.till ?? '',
+        gaps: (b.gaps ?? []) as never,
+        bal: paise(b.bal),
+      },
       update: { bal: paise(b.bal), gaps: (b.gaps ?? []) as never, till: b.till ?? '' },
     });
   }
   for (const c of CARDS_SEED) {
     await prisma.creditCard.upsert({
       where: { id: c.id },
-      create: { id: c.id, bank: c.bank, last: c.last, holder: c.holder, limit: paise(c.limit), used: paise(c.used), cycle: c.cycle ?? '', due: c.due ?? '', firm: c.firm ?? '' },
+      create: {
+        id: c.id,
+        bank: c.bank,
+        last: c.last,
+        holder: c.holder,
+        limit: paise(c.limit),
+        used: paise(c.used),
+        cycle: c.cycle ?? '',
+        due: c.due ?? '',
+        firm: c.firm ?? '',
+      },
       update: { used: paise(c.used) },
     });
   }
   for (const co of COMPANIES_SEED) {
     await prisma.masterCompany.upsert({
       where: { id: co.id },
-      create: { id: co.id, name: co.name, kind: co.kind ?? '', gstin: co.gstin ?? '', pan: co.pan ?? '', city: co.city ?? '' },
+      create: {
+        id: co.id,
+        name: co.name,
+        kind: co.kind ?? '',
+        gstin: co.gstin ?? '',
+        pan: co.pan ?? '',
+        city: co.city ?? '',
+      },
       update: { name: co.name, gstin: co.gstin ?? '', pan: co.pan ?? '' },
     });
   }
-  announce(`  accounts     ${INVOICES_SEED.length} invoices · ${EXP_SEED.length} expenses · ${SALES_SEED.length} sales · ${BANKS_SEED.length} banks · ${CARDS_SEED.length} cards`);
+  announce(
+    `  accounts     ${INVOICES_SEED.length} invoices · ${EXP_SEED.length} expenses · ${SALES_SEED.length} sales · ${BANKS_SEED.length} banks · ${CARDS_SEED.length} cards`,
+  );
 
   /* ------------------------------------------------ catalog, reports, misc */
 
@@ -302,28 +458,57 @@ export async function seedProcurement(
   if ((await prisma.siteReport.count()) === 0) {
     for (const r of REPORTS_SEED) {
       await prisma.siteReport.create({
-        data: { cat: r.cat, by: r.by, proj: r.proj ?? '', text: r.text ?? '', severity: r.sev ?? 'low', media: (r.voice ? [{ kind: 'voice', dur: r.voice.dur }] : []) as never },
+        data: {
+          cat: r.cat,
+          by: r.by,
+          proj: r.proj ?? '',
+          text: r.text ?? '',
+          severity: r.sev ?? 'low',
+          media: (r.voice ? [{ kind: 'voice', dur: r.voice.dur }] : []) as never,
+        },
       });
     }
   }
   for (const e of CAL_SEED) {
-    const exists = await prisma.calendarEvent.findFirst({ where: { title: e.title, date: e.date } });
+    const exists = await prisma.calendarEvent.findFirst({
+      where: { title: e.title, date: e.date },
+    });
     if (exists) continue;
     await prisma.calendarEvent.create({
-      data: { title: e.title, date: e.date, time: e.time ?? '', kind: e.kind ?? 'task', priority: e.priority ?? 'normal', audience: (e.audience ?? { type: 'all' }) as never, by: e.by ?? '', note: e.note ?? '' },
+      data: {
+        title: e.title,
+        date: e.date,
+        time: e.time ?? '',
+        kind: e.kind ?? 'task',
+        priority: e.priority ?? 'normal',
+        audience: (e.audience ?? { type: 'all' }) as never,
+        by: e.by ?? '',
+        note: e.note ?? '',
+      },
     });
   }
   for (const p of PKG_SEED) {
     const exists = await prisma.incentivePackage.findFirst({ where: { name: p.name } });
     if (exists) continue;
     await prisma.incentivePackage.create({
-      data: { name: p.name, amount: paise(p.amount), threshold: Number(p.threshold ?? 0), scale: Number(p.scale ?? 10), dept: p.dept ?? '', period: p.period ?? '', how: p.how ?? '', status: p.status ?? 'proposed' },
+      data: {
+        name: p.name,
+        amount: paise(p.amount),
+        threshold: Number(p.threshold ?? 0),
+        scale: Number(p.scale ?? 10),
+        dept: p.dept ?? '',
+        period: p.period ?? '',
+        how: p.how ?? '',
+        status: p.status ?? 'proposed',
+      },
     });
   }
   for (const t of HRTASKS_SEED) {
     const exists = await prisma.hrTask.findFirst({ where: { text: t.text } });
     if (exists) continue;
-    await prisma.hrTask.create({ data: { text: t.text, who: t.who ?? '', due: t.due ?? '', done: !!t.done } });
+    await prisma.hrTask.create({
+      data: { text: t.text, who: t.who ?? '', due: t.due ?? '', done: !!t.done },
+    });
   }
   for (const a of HRANN_SEED) {
     const exists = await prisma.announcement.findFirst({ where: { text: a.text } });
@@ -331,9 +516,15 @@ export async function seedProcurement(
     await prisma.announcement.create({ data: { text: a.text, by: a.by ?? '' } });
   }
   for (const key of ['google', 'meta', 'claude']) {
-    await prisma.connection.upsert({ where: { key }, create: { key, connected: false }, update: {} });
+    await prisma.connection.upsert({
+      where: { key },
+      create: { key, connected: false },
+      update: {},
+    });
   }
-  announce(`  catalog      ${CATALOG_SEED.length} rates · ${CAL_SEED.length} events · ${PKG_SEED.length} incentive schemes`);
+  announce(
+    `  catalog      ${CATALOG_SEED.length} rates · ${CAL_SEED.length} events · ${PKG_SEED.length} incentive schemes`,
+  );
 
   /* -------------------------------------------------------- access grants */
 
@@ -341,8 +532,9 @@ export async function seedProcurement(
   // The grants are rows now, so the announcement is true.
   if ((await prisma.accessGrant.count()) === 0) {
     // AREA_GROUPS is [groupLabel, [[areaKey, areaLabel], ...]] tuples.
-    const areas: string[] = (AREA_GROUPS as Array<[string, Array<[string, string]>]>)
-      .flatMap(([, items]) => items.map(([key]) => key));
+    const areas: string[] = (AREA_GROUPS as Array<[string, Array<[string, string]>]>).flatMap(
+      ([, items]) => items.map(([key]) => key),
+    );
     const powers: string[] = (POWERS as Array<[string, string]>).map((p) => p[0]);
     const rows: Array<{ userKey: string; area: string; power: string; granted: boolean }> = [];
     for (const userKey of Object.keys(USERS)) {

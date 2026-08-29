@@ -88,6 +88,17 @@ export default tseslint.config(
   },
 
   {
+    // The two browser checks in scripts/ are plain Node ES modules, run by hand
+    // against a running app. They print — that is their entire output.
+    files: ['scripts/**/*.mjs'],
+    languageOptions: { globals: globals.node },
+    rules: {
+      'no-console': 'off',
+      '@typescript-eslint/no-unused-vars': 'off',
+    },
+  },
+
+  {
     // Scripts and tests legitimately print, and tests legitimately assert on
     // shapes that are `any`.
     files: [

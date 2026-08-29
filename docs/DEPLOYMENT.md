@@ -83,8 +83,8 @@ UPLOAD_DIR=/var/lib/marbella/uploads
 ## Route A — Docker
 
 ```bash
-cd /opt/marbella-hr
-git clone <repo> . && cd /opt/marbella-hr
+cd /opt/marbella
+git clone <repo> . && cd /opt/marbella
 
 # The compose file reads these from the environment.
 export POSTGRES_PASSWORD='...'
@@ -117,12 +117,12 @@ docker compose up -d --build
 ## Route B — systemd, no containers
 
 ```bash
-sudo useradd --system --home /opt/marbella-hr --shell /usr/sbin/nologin marbella
-sudo mkdir -p /opt/marbella-hr && sudo chown marbella:marbella /opt/marbella-hr
+sudo useradd --system --home /opt/marbella --shell /usr/sbin/nologin marbella
+sudo mkdir -p /opt/marbella && sudo chown marbella:marbella /opt/marbella
 sudo chown -R marbella:marbella /var/lib/marbella
 
-sudo -u marbella git clone <repo> /opt/marbella-hr
-cd /opt/marbella-hr
+sudo -u marbella git clone <repo> /opt/marbella
+cd /opt/marbella
 sudo -u marbella npm ci
 sudo -u marbella npm run build
 
@@ -135,7 +135,7 @@ sudo -u marbella --preserve-env npm run db:seed     # FIRST TIME ONLY
 
 ```ini
 [Unit]
-Description=Marbella HR API
+Description=Marbella Procurement OS API
 After=network-online.target postgresql.service
 Wants=network-online.target
 
@@ -143,7 +143,7 @@ Wants=network-online.target
 Type=simple
 User=marbella
 Group=marbella
-WorkingDirectory=/opt/marbella-hr/apps/api
+WorkingDirectory=/opt/marbella/apps/api
 EnvironmentFile=/etc/marbella/hr.env
 ExecStart=/usr/bin/node dist/server.js
 Restart=always
@@ -176,13 +176,13 @@ sudo systemctl status marbella-api
 curl -s localhost:4000/health/ready     # {"status":"ready","database":"ok"}
 ```
 
-Serve the built front end from `/opt/marbella-hr/apps/web/dist`.
+Serve the built front end from `/opt/marbella/apps/web/dist`.
 
 ---
 
 ## 3. nginx and TLS
 
-`/etc/nginx/sites-available/marbella-hr`:
+`/etc/nginx/sites-available/marbella`:
 
 ```nginx
 server {
@@ -203,7 +203,7 @@ server {
   server_tokens off;
   add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
 
-  root /opt/marbella-hr/apps/web/dist;
+  root /opt/marbella/apps/web/dist;
   index index.html;
 
   gzip on;
@@ -248,7 +248,7 @@ server {
 ```
 
 ```bash
-sudo ln -s /etc/nginx/sites-available/marbella-hr /etc/nginx/sites-enabled/
+sudo ln -s /etc/nginx/sites-available/marbella /etc/nginx/sites-enabled/
 sudo nginx -t && sudo systemctl reload nginx
 sudo certbot --nginx -d hr.marbellagroup.in
 ```
@@ -314,7 +314,7 @@ sudo -u postgres psql -d marbella_restore_test -c 'SELECT count(*) FROM person;'
 ## 6. Upgrading
 
 ```bash
-cd /opt/marbella-hr
+cd /opt/marbella
 sudo -u marbella git pull
 sudo -u marbella npm ci
 sudo -u marbella npm run build

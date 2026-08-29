@@ -51,7 +51,10 @@ export const platformRoutes: FastifyPluginAsyncZod = async (app) => {
         summary: 'Put something in the calendar',
         body: z.object({
           title: z.string().trim().min(2).max(300),
-          date: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/, 'A date looks like 2026-08-05.'),
+          date: z
+            .string()
+            .trim()
+            .regex(/^\d{4}-\d{2}-\d{2}$/, 'A date looks like 2026-08-05.'),
           time: z.string().trim().max(10).default(''),
           kind: z.string().trim().max(20).default('task'),
           priority: z.string().trim().max(20).default('normal'),
@@ -205,7 +208,10 @@ export const platformRoutes: FastifyPluginAsyncZod = async (app) => {
     },
     async () => {
       const rows = await db.attendanceDay.findMany({ orderBy: { date: 'asc' } });
-      const out: Record<string, Array<{ date: string; in: string | null; out: string | null }>> = {};
+      const out: Record<
+        string,
+        Array<{ date: string; in: string | null; out: string | null }>
+      > = {};
       for (const r of rows) {
         (out[r.personId] ??= []).push({ date: r.date, in: r.inAt, out: r.outAt });
       }
@@ -365,7 +371,11 @@ export const platformRoutes: FastifyPluginAsyncZod = async (app) => {
     '/connections',
     {
       preHandler: app.authenticate,
-      schema: { tags: ['platform'], summary: 'Third-party connections', response: { 200: z.any() } },
+      schema: {
+        tags: ['platform'],
+        summary: 'Third-party connections',
+        response: { 200: z.any() },
+      },
     },
     async () => {
       const rows = await db.connection.findMany();
@@ -396,7 +406,12 @@ export const platformRoutes: FastifyPluginAsyncZod = async (app) => {
       return db.$transaction(async (tx) => {
         const row = await tx.connection.upsert({
           where: { key },
-          create: { key, connected, connectedBy: me.sub, connectedAt: connected ? new Date() : null },
+          create: {
+            key,
+            connected,
+            connectedBy: me.sub,
+            connectedAt: connected ? new Date() : null,
+          },
           update: { connected, connectedBy: me.sub, connectedAt: connected ? new Date() : null },
         });
         await appendInTx(tx, {
@@ -444,7 +459,12 @@ export const platformRoutes: FastifyPluginAsyncZod = async (app) => {
       const me = requireUser(req);
       return db.draft.upsert({
         where: { userId_type: { userId: me.sub, type: req.params.type } },
-        create: { userId: me.sub, type: req.params.type, label: req.body.label, data: req.body.data as never },
+        create: {
+          userId: me.sub,
+          type: req.params.type,
+          label: req.body.label,
+          data: req.body.data as never,
+        },
         update: { label: req.body.label, data: req.body.data as never },
       });
     },
@@ -543,7 +563,13 @@ export const platformRoutes: FastifyPluginAsyncZod = async (app) => {
         for (const c of changes) {
           await tx.accessGrant.upsert({
             where: { userKey_area_power: { userKey, area: c.area, power: c.power } },
-            create: { userKey, area: c.area, power: c.power, granted: c.granted, updatedBy: me.sub },
+            create: {
+              userKey,
+              area: c.area,
+              power: c.power,
+              granted: c.granted,
+              updatedBy: me.sub,
+            },
             update: { granted: c.granted, updatedBy: me.sub },
           });
         }
@@ -571,7 +597,11 @@ export const platformRoutes: FastifyPluginAsyncZod = async (app) => {
     '/firms',
     {
       preHandler: app.authenticate,
-      schema: { tags: ['platform'], summary: 'Projects and the entity behind each', response: { 200: z.any() } },
+      schema: {
+        tags: ['platform'],
+        summary: 'Projects and the entity behind each',
+        response: { 200: z.any() },
+      },
     },
     async () => db.firm.findMany({ orderBy: { name: 'asc' } }),
   );

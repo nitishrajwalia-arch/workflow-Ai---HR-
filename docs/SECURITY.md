@@ -47,18 +47,27 @@ its security is the security of that mailbox.
 
 ## Sessions
 
-|               |                                                                                   |
-| ------------- | --------------------------------------------------------------------------------- |
-| Access token  | JWT, 15 minutes, **in memory in the browser only**                                |
-| Refresh token | Opaque random string, httpOnly `SameSite=Strict` cookie, scoped to `/api/v1/auth` |
-| Stored as     | SHA-256 of the token. The token itself is never written down                      |
-| Rotation      | Every use issues a new one and revokes the old                                    |
+|               |                                                                                      |
+| ------------- | ------------------------------------------------------------------------------------ |
+| Access token  | JWT, 15 minutes, **in memory in the browser only**                                   |
+| Refresh token | Opaque random string, httpOnly `SameSite=Strict` cookie, scoped to `/api/v1/auth`    |
+| Stored as     | SHA-256 of the token. The token itself is never written down                         |
+| Rotation      | Every use issues a new one and revokes the old                                       |
+| Session hint  | A second cookie, `marbella_session`, holding the literal string `1` and nothing else |
 
 **Why the access token is not in `localStorage`.** Anything there is readable by
 any script that manages to run on the page. In memory, it dies with the tab: an
 XSS bug steals a session that ends when the tab closes rather than one that
 lasts a week. The cost is a silent re-auth on page load, which is what
 `bootstrapSession` does.
+
+**Why the hint cookie exists, and why it is safe.** The refresh cookie is
+httpOnly, so JavaScript cannot ask whether a session exists — the app had to
+POST `/auth/refresh` on every cold load just to find out, and a first-time
+visitor got a red 401 in the console before they had even signed in. That
+teaches people to ignore the console. `marbella_session` carries no token, no
+user and no secret; it says only "there is a session here". Forging it grants
+nothing: it makes the client attempt a refresh, which the server then refuses.
 
 **Why rotation matters.** Presenting an already-spent refresh token revokes
 _every_ session for that user. It is either the real client replaying or a
@@ -75,6 +84,12 @@ minutes for a token to expire.
 
 Four roles: `ADMIN` › `HR` › `MANAGER` › `VIEWER`. Checked on the server, on
 every request, against the database — never against the token alone.
+
+**Which desk you get is the server's answer, not a request.** Sign-in returns
+`userKey`, resolved from the account, and the shell renders that desk. In the
+single-file build `Sign in` read `onClick={() => onLogin("admin")}` — it ignored
+the credentials entirely and handed **everyone** the Chairman's desk, and the
+nine role chips beneath it signed you in with no password at all.
 
 This replaces the browser-side authorisation code in the single-file build. That
 code was honestly described as stopping a colleague printing from someone else's
@@ -127,6 +142,40 @@ Use a non-superuser database role for the application. This is the main reason.
 
 ---
 
+## Secrets that used to be in the browser bundle
+
+The Chairman's override code was a constant in the front-end file. Anything in
+the bundle is readable by anyone who opens devtools, so it protected nothing.
+
+It is `OVERRIDE_PIN` on the server now, checked at `POST /override/verify`,
+rate-limited to five attempts a minute, and **every attempt — accepted or
+refused — is sealed into the ledger**, so a run of wrong codes is visible rather
+than merely unsuccessful. With no `OVERRIDE_PIN` configured the server refuses
+every override instead of waving them through.
+
+Still outstanding, and stated here rather than buried: `DEMO_OTP = "4821"` is
+still a constant in the legacy file. It gates nothing the override code does not
+already gate, so it is not a hole so much as an unfinished feature — but it is
+**not** a second factor and must not be described as one.
+
+---
+
+## Rules that are refusals, not screens
+
+A rule enforced in React is not enforced. These are conditions on the request,
+and `apps/api/src/tests/procurement.test.ts` sends the requests a tampered front
+end would send to prove it:
+
+- Stock someone is holding back cannot be issued.
+- A delivery that breaches a storage cap is refused without an override, and the
+  override is recorded with the name of whoever authorised it.
+- A unit already sold cannot be booked again.
+- RERA escrow money does not move until the engineer, the architect and the
+  chartered accountant have all certified.
+- A payment reminder is drafted by one person and approved by another.
+
+---
+
 ## Input
 
 - Every request body, query and param is validated by Zod before a handler sees
@@ -169,16 +218,18 @@ server** — a stack trace in a 500 tells an attacker what you are running.
 
 Read this section to whoever is paying.
 
-|                                                         |                                                                                                                                                                                                                 |
-| ------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Salary is not encrypted at rest at the column level** | Anyone with database access reads it. Use an encrypted volume, keep database access to as few people as possible, and rotate that access when someone leaves.                                                   |
-| **No two-factor authentication**                        | Email and password only. A stolen password is a stolen account until someone notices. The OTP component from the original build exists but is still not wired to a gateway, so it is still not a second factor. |
-| **No SSO**                                              | No Google Workspace, no Entra.                                                                                                                                                                                  |
-| **Backups are not encrypted by default**                | `pg_dump` output is plain. Encrypt it before it leaves the server, and store it somewhere the server itself cannot reach — otherwise ransomware takes the backups too.                                          |
-| **No audit trail for reads**                            | The ledger records what changed. It does not record who _looked_ at a salary.                                                                                                                                   |
-| **No account expiry**                                   | Accounts stay live until someone disables them. Disable them as part of the exit process; the deboarding flow does not do it for you.                                                                           |
-| **Rate limiting is in-memory**                          | Run more than one API instance and each keeps its own counters, so the effective limit multiplies. Move to a shared store before scaling out.                                                                   |
-| **Photo uploads are not virus-scanned**                 | The magic bytes are checked, so it is an image. That does not make it a safe image.                                                                                                                             |
+|                                                         |                                                                                                                                                                                                                                       |
+| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Salary is not encrypted at rest at the column level** | Anyone with database access reads it. Use an encrypted volume, keep database access to as few people as possible, and rotate that access when someone leaves.                                                                         |
+| **No two-factor authentication**                        | An Employee ID (or email) and a password only. A stolen password is a stolen account until someone notices. The OTP component from the original build exists but is still not wired to a gateway, so it is still not a second factor. |
+| **No SSO**                                              | No Google Workspace, no Entra.                                                                                                                                                                                                        |
+| **Backups are not encrypted by default**                | `pg_dump` output is plain. Encrypt it before it leaves the server, and store it somewhere the server itself cannot reach — otherwise ransomware takes the backups too.                                                                |
+| **No audit trail for reads**                            | The ledger records what changed. It does not record who _looked_ at a salary.                                                                                                                                                         |
+| **No account expiry**                                   | Accounts stay live until someone disables them. Disable them as part of the exit process; the deboarding flow does not do it for you.                                                                                                 |
+| **Rate limiting is in-memory**                          | Run more than one API instance and each keeps its own counters, so the effective limit multiplies. Move to a shared store before scaling out.                                                                                         |
+| **Photo uploads are not virus-scanned**                 | The magic bytes are checked, so it is an image. That does not make it a safe image.                                                                                                                                                   |
+| **The override code is one shared code**                | Not one per person, so the ledger records that _an_ override happened and who was signed in, not that a particular person knew the code. Rotate it when someone who knew it leaves.                                                   |
+| **Nothing reaches a bank, a mailbox or WhatsApp**       | Withdrawal requests and payment reminders are recorded and sealed and go no further. Every such response says so — `submittedToBank: false`, `delivered: false`. Do not let a screen imply otherwise.                                 |
 
 ---
 

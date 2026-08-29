@@ -135,7 +135,11 @@ export const moneyRoutes: FastifyPluginAsyncZod = async (app) => {
     '/sales',
     {
       preHandler: app.requireRole('MANAGER'),
-      schema: { tags: ['money'], summary: 'Units sold and what is still due', response: { 200: z.any() } },
+      schema: {
+        tags: ['money'],
+        summary: 'Units sold and what is still due',
+        response: { 200: z.any() },
+      },
     },
     async () => {
       const rows = await db.sale.findMany({ orderBy: { createdAt: 'desc' } });
@@ -396,7 +400,11 @@ export const moneyRoutes: FastifyPluginAsyncZod = async (app) => {
     },
     async () => {
       const rows = await db.masterCompany.findMany({ orderBy: { name: 'asc' } });
-      return rows.map((c) => ({ ...c, gstinCheck: gstinCheck(c.gstin), panCheck: panCheck(c.pan) }));
+      return rows.map((c) => ({
+        ...c,
+        gstinCheck: gstinCheck(c.gstin),
+        panCheck: panCheck(c.pan),
+      }));
     },
   );
 

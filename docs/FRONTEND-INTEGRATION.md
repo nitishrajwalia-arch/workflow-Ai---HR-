@@ -7,47 +7,64 @@ when the current approach stops being the right one.
 
 ## The short version
 
-`MarbellaHR.jsx` reads everything from one `ProcCtx` object. `ProcProvider`
-fetches that whole object from `GET /api/v1/bootstrap` and supplies it in
-exactly the shape the screens already expect. Every action becomes an API call.
+`MarbellaProcurementOS.jsx` reads everything from one `ProcCtx` object.
+`ProcurementProvider` fetches that whole object from `GET /api/v1/bootstrap` and
+supplies it in exactly the shape the screens already expect. Every action
+becomes an API call.
 
-**Seven edits to the 7,312-line file.** All listed in
-[`../apps/web/src/legacy/PATCHES.md`](../apps/web/src/legacy/PATCHES.md).
+**Ten edits to the 12,931-line file.** All listed in
+[`../apps/web/src/legacy/PATCHES-PROCUREMENT.md`](../apps/web/src/legacy/PATCHES-PROCUREMENT.md).
+The HR build is still in the tree with its own
+[`PATCHES.md`](../apps/web/src/legacy/PATCHES.md); Procurement OS absorbed it,
+so the HR desk is one of the nine rather than the whole app.
 
 ```
 App.tsx
- └── ErrorBoundary          one screen crashing must not white-page the system
-      └── AuthProvider      who is signed in; shows LoginPage when nobody is
-           └── ProcProvider fetches /bootstrap, exposes it as ProcCtx
-                └── HRShell your UI, unchanged
+ └── ErrorBoundary                one screen crashing must not white-page the system
+      └── AuthProvider            who is signed in; shows Login when nobody is
+           └── ProcurementProvider fetches /bootstrap, exposes it as ProcCtx
+                └── Shell          your UI, unchanged — the desk comes from the server
 ```
+
+**Which desk you land on is the server's decision.** `Shell` is given
+`userKey={user.userKey}`, resolved from the signed-in account. It is not a prop
+the browser picks, which is what it used to be.
 
 ---
 
 ## The contract
 
-`ProcProvider` supplies every key the original `App` supplied:
+`ProcurementProvider` supplies every key the original `App` supplied — the HR
+collections:
 
 ```
 people  cardLog  ledger  salaries  devices  contacts  leavePolicy  deptRules
 companies  projects  exits  usage  docLog  jds  scope  setScope  offices  hrLog
 ```
 
-and every action:
+the procurement and money ones:
 
 ```
-track  logDoc  saveJD  seal  setSalary  addDevice  dropDevice  setContact
-setLeave  setDeptRule  saveCompany  saveProject  setEmployer  updatePerson
-issueCard  bulkAddPeople  openExit  advanceExit
+vendors  pos  prs  requisitions  inv  moves  holds  caps  catalog  siteReports
+invoices  expenses  sales  reminders  banks  creditCards  gatePasses  gateEvents
+firms  masterCompanies  calendar  incentives  attendance  connections  drafts
+grants  exports
 ```
 
-Plus three that are new:
+and about seventy actions — `addPO`, `raiseRequisition`, `moveStock`,
+`placeHold`, `releaseHold`, `saveCap`, `receiveShipment`, `bookSale`,
+`draftReminder`, `approveReminder`, `raiseWithdrawal`, `saveGrants`,
+`checkOverride`, and the HR set that was there before (`issueCard`,
+`bulkAddPeople`, `openExit`, `advanceExit`, `setSalary`, …).
 
-| Key             | What                                                                                                                                                                                |
-| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `me`            | `{ id, name, email, role, personId, title }`. The UI no longer needs to hard-code Simran Kaur.                                                                                      |
-| `chainVerified` | `true` / `false` / `null`. The browser independently recomputes every ledger seal on load. A server that lied about its own ledger health would be caught. `null` = still checking. |
-| `reload()`      | Re-fetch everything.                                                                                                                                                                |
+Plus four that are new:
+
+| Key             | What                                                                                                                                                                                   |
+| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `me`            | `{ id, name, email, role, personId, title }`. The UI no longer needs to hard-code Simran Kaur.                                                                                         |
+| `chainVerified` | `true` / `false` / `null`. The browser independently recomputes every ledger seal on load. A server that lied about its own ledger health would be caught. `null` = still checking.    |
+| `chainFault`    | `{ index, message }` for the entry that failed verification, or `null`. Without it a screen can only say "broken", and it used to say "broken at entry 1" whichever entry had changed. |
+| `reload()`      | Re-fetch everything.                                                                                                                                                                   |
 
 ### Two behavioural changes
 
@@ -85,14 +102,14 @@ not invent a version, and why `bulkAddPeople` re-reads instead of reconstructing
 
 ## Why one big request
 
-The UI expects every collection present, synchronously, on first render. Forty
-screens, no loading states. The alternatives were:
+The UI expects every collection present, synchronously, on first render. Around
+85 screens across nine desks, no loading states. The alternatives were:
 
-1. Rewrite forty screens into per-screen queries with loading and error states.
+1. Rewrite 85 screens into per-screen queries with loading and error states.
 2. Hand the browser the whole world once, in the shape it expects.
 
-Option 2, measured on the seeded roster: **114 KB, 14 KB gzipped**, for 200
-people. It is comfortably the cheapest correct thing at this size.
+Option 2, measured on the seeded data: **153 KB, 21 KB gzipped**. It is
+comfortably the cheapest correct thing at this size.
 
 ### When it stops being right
 
@@ -181,6 +198,15 @@ is not on HTTPS in production (the cookie is `Secure` there).
 route audit test in `auth.test.ts` will fail the build until you do — that is
 what it is for.
 
+**The same row appears twice, with a duplicate React key.** A screen is merging
+the live list from the server with the module constant the database was _seeded
+from_. Read the live one only; that is edits 9 and 10.
+
+**A refusal appears as a toast and the screen keeps the change anyway.** The
+optimistic update did not roll back. Every mutation must go through `optimistic`
+or `server` in `ProcurementProvider` — those restore the previous world and
+surface `err.full`.
+
 ---
 
 ## Running the old build with no server
@@ -188,7 +214,7 @@ what it is for.
 The default export still works:
 
 ```tsx
-import App from './legacy/MarbellaHR.jsx'; // seeded data, no API, no login
+import App from './legacy/MarbellaProcurementOS.jsx'; // seeded data, no API, no login
 ```
 
 Useful for showing the UI on a laptop with nothing running.

@@ -164,7 +164,7 @@ the server, not a full map the browser is trusted to hide.
 
 ## Optimistic updates, and the half people skip
 
-`ProcProvider` applies a change locally, then sends it. On failure it **puts the
+`ProcurementProvider` applies a change locally, then sends it. On failure it **puts the
 old state back** and shows the server's own message.
 
 An optimistic update without rollback is worse than no optimism: the screen
@@ -233,7 +233,7 @@ you are running.
 
 ## Testing
 
-**137 tests, no mocked database.**
+**161 tests, no mocked database.**
 
 A mocked Prisma proves the mock behaves as written. Every interesting rule in
 this system lives in the database: the append-only triggers, the unique index on

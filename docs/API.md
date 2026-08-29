@@ -62,14 +62,24 @@ orchestrator kill otherwise healthy processes. Point the liveness probe at
 ### `POST /auth/login` — public
 
 ```json
-{ "email": "hr@marbellagroup.in", "password": "…" }
+{ "identifier": "MB-PUR-0012", "password": "…" }
 ```
 
-Returns the access token, its lifetime in seconds, and the user. Also sets the
-`marbella_rt` refresh cookie (httpOnly, `SameSite=Strict`, `Secure` in
-production).
+`identifier` is an **Employee ID or an email**. On site people know their
+MB-PUR-0012 and not their mailbox, so both are accepted.
 
-A wrong password and an unknown address return **the same 401 with the same
+Returns the access token, its lifetime in seconds, and the user — including
+`userKey`, **which desk this account holds**. That is the server's decision; the
+browser does not pick it.
+
+Also sets two cookies:
+
+| Cookie             | What                                                                                                                                                                                                                                                                          |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `marbella_rt`      | The refresh token. httpOnly, `SameSite=Strict`, `Secure` in production, scoped to `/api/v1/auth`                                                                                                                                                                              |
+| `marbella_session` | Contentless — it says only "a session exists here". Readable, so the app can skip the refresh call on a cold load instead of printing a 401 in every first-time visitor's console. It carries no secret and grants nothing: forging it only buys a refresh the server refuses |
+
+A wrong password and an unknown identifier return **the same 401 with the same
 message**, and take the same time. Distinguishing them would hand an attacker a
 list of who works here.
 
@@ -346,6 +356,56 @@ does. A half-imported sheet is worse than a refused one — nobody can tell whic
 half.
 
 `GET /imports/fields` returns the header aliases the importer recognises.
+
+---
+
+## Purchasing and stores
+
+`GET` on each of these is available to anyone signed in; writes need `MANAGER`
+or above unless noted. Every refusal below is a **422 with a sentence a storeman
+can act on**, not a status code.
+
+| Endpoint                                                                   | What                                                                                                                                                                                                                                                                                             |
+| -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `GET\|POST /vendors`, `POST /vendors/:code/verify`, `POST /vendors/import` | The supplier list. Raising a PO against a vendor nobody has verified returns a **warning in the response body** — it does not block, because sometimes you have to buy today, but nobody gets to say they were not told                                                                          |
+| `GET\|POST /purchase-orders`                                               | POs. Amounts are rupees on the wire and paise in the column                                                                                                                                                                                                                                      |
+| `GET\|POST /purchase-requests`, `POST /purchase-requests/:id/close`        | What the store is asking purchase to buy                                                                                                                                                                                                                                                         |
+| `GET\|POST /requisitions`, `POST /requisitions/:id/close`                  | What site is asking the store for                                                                                                                                                                                                                                                                |
+| `GET\|POST /inventory`                                                     | The stock list                                                                                                                                                                                                                                                                                   |
+| `POST /inventory/move`                                                     | **Receive or issue stock.** Refuses to issue what someone is holding back, naming who to ask. Refuses a delivery that would breach a storage cap unless `override` is supplied — and then seals who authorised it. Quantities are rounded where they are computed, so a gate pass reads `12.4 T` |
+| `GET /inventory/moves`                                                     | The movement history                                                                                                                                                                                                                                                                             |
+| `GET\|POST /holds`, `DELETE /holds/:id`                                    | Holding stock back. A hold larger than what is physically there is refused                                                                                                                                                                                                                       |
+| `GET\|PUT /caps`                                                           | What a project may hold of one thing. Chairman only                                                                                                                                                                                                                                              |
+| `GET\|PUT /catalog`                                                        | The item master                                                                                                                                                                                                                                                                                  |
+| `GET\|POST /site-reports`                                                  | What site says it did                                                                                                                                                                                                                                                                            |
+
+## Money
+
+| Endpoint                                                    | What                                                                                                                                                                                                                                                                    |
+| ----------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /invoices`, `POST /invoices/:id/clear`                 | Incoming bills                                                                                                                                                                                                                                                          |
+| `GET\|POST /expenses`                                       | Petty and site spend                                                                                                                                                                                                                                                    |
+| `GET\|POST /sales`                                          | Bookings. **A second booking on a unit already sold is refused with a 409** naming the existing buyer. Two bookings on one unit is the mistake that ends up in court                                                                                                    |
+| `GET\|POST /reminders`, `POST /reminders/:id/approve`       | Payment chasers. Drafting is not approving, and the same person cannot do both. The response says `delivered: false` — there is no mail or WhatsApp gateway                                                                                                             |
+| `GET /banks`, `GET /credit-cards`                           | Accounts. (`/credit-cards`, not `/cards` — that is the HR card bureau)                                                                                                                                                                                                  |
+| `POST /banks/:id/withdrawal`                                | **RERA escrow is refused until the engineer, the architect and the chartered accountant have all certified.** Escrow money is not the developer's to move. The response says `submittedToBank: false`: nothing here talks to a bank                                     |
+| `GET\|PUT /master-companies`, `PATCH /master-companies/:id` | Counterparties                                                                                                                                                                                                                                                          |
+| `GET\|POST /exports`                                        | What left the building, and who took it                                                                                                                                                                                                                                 |
+| `POST /override/verify`                                     | The Chairman's code, checked against `OVERRIDE_PIN` **on the server**. Rate-limited to five tries a minute. **Every attempt — accepted or refused — is sealed into the ledger.** With no `OVERRIDE_PIN` configured the server refuses rather than waving things through |
+
+## The rest of the platform
+
+| Endpoint                                               | What                                                                                                                               |
+| ------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `GET\|POST /events`, `DELETE /events/:id`              | The calendar                                                                                                                       |
+| `GET\|POST /incentives`, `POST /incentives/:id/decide` | HR proposes, `ADMIN` approves. Two people, on purpose                                                                              |
+| `GET /attendance`, `POST /attendance/import`           | Import from a biometric export. Chunked — a year for 200 people is 70,000 rows — and the report names the IDs it skipped           |
+| `GET\|POST /hr-tasks`, `POST /hr-tasks/:id/toggle`     | The HR desk's list                                                                                                                 |
+| `GET\|POST /announcements`                             | Notices                                                                                                                            |
+| `GET /connections`, `PUT /connections/:key`            | Which integrations are configured. None of them are wired to anything yet, and this says so                                        |
+| `GET\|PUT\|DELETE /drafts/:type`                       | Half-finished work, kept server-side so it survives a closed tab                                                                   |
+| `GET\|PUT /access`                                     | Who may do what. Writing here **writes rows** — the screen used to announce a change and forget it, and nobody's access ever moved |
+| `GET /firms`                                           | Projects and the companies behind them                                                                                             |
 
 ---
 

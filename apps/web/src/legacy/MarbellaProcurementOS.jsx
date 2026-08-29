@@ -8309,7 +8309,7 @@ function LiveStrength() {
 function HRCommandView({ go = () => {} }) {
   const mob = useIsMobile();
   const { people, hrLog, hrTasks, addHrTask, toggleHrTask, hrAnn, addAnn,
-    contacts = {}, companies = [], projects = [], cardLog = [], ledger = [], chainVerified } = useProc();
+    contacts = {}, companies = [], projects = [], cardLog = [], ledger = [], chainVerified, chainFault } = useProc();
   const [enrol, setEnrol] = useState(false); const [showLetters, setShowLetters] = useState(false);
   const [nt, setNt] = useState("");
   const [ann, setAnn] = useState({ title: "", text: "", audience: "Everyone" });
@@ -8420,7 +8420,7 @@ function HRCommandView({ go = () => {} }) {
           </div>
           {(() => {
             const act = people.filter(p => p.status === "active");
-            const chk = verifyLedger(ledger, chainVerified);
+            const chk = verifyLedger(ledger, chainVerified, chainFault);
             const rows = [
               [act.filter(p => !(contacts[p.id] || {}).phone).length, "without a personal number", "population"],
               [act.filter(p => !p.photo).length, "without a photo on file", "population"],
@@ -10186,18 +10186,22 @@ const ledgerPayload = (e) => [e.at, e.who, e.kind, e.subject, e.detail].join("\u
    Structure is checked here and is real — every entry must name the previous
    one's seal, which catches a deletion, a reordering or an insertion whatever
    hash produced the seals. The cryptographic half comes from `chainVerified`,
-   which ProcurementProvider computes with SHA-256, independently of the server. */
-function verifyLedger(entries, cryptoOk) {
+   which ProcurementProvider computes with SHA-256, independently of the server,
+   and `fault` carries WHICH entry failed. Editing an entry's contents leaves
+   the links intact, so without `fault` the only honest thing this could report
+   was entry 1 — sending whoever investigates to an innocent row. */
+function verifyLedger(entries, cryptoOk, fault) {
   const asc = [...entries].reverse();
   let prev = "GENESIS";
   for (let i = 0; i < asc.length; i++) {
     if (asc[i].prev !== prev) {
-      return { ok: false, at: asc[i], index: asc.length - 1 - i, expected: prev, reason: "link" };
+      return { ok: false, at: asc[i], index: i, expected: prev, reason: "link" };
     }
     prev = asc[i].seal;
   }
   if (cryptoOk === false) {
-    return { ok: false, at: asc[0], index: 0, expected: "\u2014", reason: "seal" };
+    const i = fault ? fault.index : 0;
+    return { ok: false, at: asc[i], index: i, expected: "\u2014", reason: "seal", why: fault && fault.message };
   }
   return { ok: true, count: asc.length, head: prev };
 }
@@ -10932,13 +10936,13 @@ function ExitRunner({ ex, p, onClose }) {
 
 function ExitsView() {
   const mob = useIsMobile();
-  const { people, exits, openExit, ledger, chainVerified } = useProc();
+  const { people, exits, openExit, ledger, chainVerified, chainFault } = useProc();
   const [pick, setPick] = useState(false);
   const [run, setRun] = useState(null);
   const [q, setQ] = useState("");
   const active = people.filter(p => p.status === "active");
   const hits = q.trim() ? active.filter(p => (p.name + p.id + p.designation).toLowerCase().includes(q.toLowerCase())).slice(0, 6) : [];
-  const chk = verifyLedger(ledger, chainVerified);
+  const chk = verifyLedger(ledger, chainVerified, chainFault);
   const running = exits.filter(e => e.stage !== "closed");
   const finished = exits.filter(e => e.stage === "closed");
 
