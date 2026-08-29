@@ -56,6 +56,8 @@ export const authRoutes: FastifyPluginAsyncZod = async (app) => {
     name: string;
     role: string;
     personId: string | null;
+    employeeId: string | null;
+    userKey: string;
     mustChangePassword: boolean;
   }) => {
     const accessToken = app.jwt.sign({
@@ -64,6 +66,7 @@ export const authRoutes: FastifyPluginAsyncZod = async (app) => {
       name: user.name,
       role: user.role as Role,
       personId: user.personId,
+      userKey: user.userKey,
     });
     const refreshToken = newRefreshToken();
     await db.refreshToken.create({
@@ -100,13 +103,19 @@ export const authRoutes: FastifyPluginAsyncZod = async (app) => {
       },
     },
     async (req, reply) => {
-      const { email, password } = req.body;
-      const user = await db.user.findUnique({ where: { email } });
+      const { identifier, password } = req.body;
+
+      // An Employee ID (MB-PUR-0012) or an email. Site staff often have no
+      // company email, so the ID is the primary way in.
+      const looksLikeId = /^MB-[A-Za-z]{2,3}-\d{4}$/.test(identifier.trim());
+      const user = looksLikeId
+        ? await db.user.findUnique({ where: { employeeId: identifier.trim().toUpperCase() } })
+        : await db.user.findUnique({ where: { email: identifier.trim().toLowerCase() } });
 
       if (!user) {
         // Same work, same wording, same timing as a wrong password.
         await verifyPassword(await getDecoyHash(), password);
-        throw unauthorized('That email and password do not match an account.');
+        throw unauthorized('That Employee ID and password do not match an account.');
       }
 
       if (user.lockedUntil && user.lockedUntil > new Date()) {
@@ -129,7 +138,7 @@ export const authRoutes: FastifyPluginAsyncZod = async (app) => {
           },
         });
         req.log.warn({ userId: user.id, failed }, 'failed login');
-        throw unauthorized('That email and password do not match an account.');
+        throw unauthorized('That Employee ID and password do not match an account.');
       }
 
       if (user.disabledAt) throw forbidden('That account has been disabled.');
@@ -164,6 +173,8 @@ export const authRoutes: FastifyPluginAsyncZod = async (app) => {
           name: user.name,
           role: user.role,
           personId: user.personId,
+          employeeId: user.employeeId,
+          userKey: user.userKey,
           mustChangePassword: user.mustChangePassword,
         },
       };
@@ -241,6 +252,8 @@ export const authRoutes: FastifyPluginAsyncZod = async (app) => {
           name: record.user.name,
           role: record.user.role,
           personId: record.user.personId,
+          employeeId: record.user.employeeId,
+          userKey: record.user.userKey,
           mustChangePassword: record.user.mustChangePassword,
         },
       };
@@ -293,6 +306,8 @@ export const authRoutes: FastifyPluginAsyncZod = async (app) => {
         name: user.name,
         role: user.role,
         personId: user.personId,
+        employeeId: user.employeeId,
+        userKey: user.userKey,
         mustChangePassword: user.mustChangePassword,
       };
     },
@@ -376,6 +391,8 @@ export const authRoutes: FastifyPluginAsyncZod = async (app) => {
         name: u.name,
         role: u.role,
         personId: u.personId,
+        employeeId: u.employeeId,
+        userKey: u.userKey,
         mustChangePassword: u.mustChangePassword,
         disabledAt: u.disabledAt?.toISOString() ?? null,
         lastLoginAt: u.lastLoginAt?.toISOString() ?? null,
@@ -406,6 +423,8 @@ export const authRoutes: FastifyPluginAsyncZod = async (app) => {
             passwordHash: await hashPassword(body.password),
             role: body.role as Role,
             personId: body.personId ?? null,
+            employeeId: body.loginId ?? body.personId ?? null,
+            userKey: body.userKey ?? 'viewer',
             // Whoever created the account knows the password. They should not
             // still know it tomorrow.
             mustChangePassword: true,
@@ -426,6 +445,8 @@ export const authRoutes: FastifyPluginAsyncZod = async (app) => {
         name: user.name,
         role: user.role,
         personId: user.personId,
+        employeeId: user.employeeId,
+        userKey: user.userKey,
         mustChangePassword: user.mustChangePassword,
       });
     },
@@ -497,6 +518,8 @@ export const authRoutes: FastifyPluginAsyncZod = async (app) => {
         name: user.name,
         role: user.role,
         personId: user.personId,
+        employeeId: user.employeeId,
+        userKey: user.userKey,
         mustChangePassword: user.mustChangePassword,
       };
     },

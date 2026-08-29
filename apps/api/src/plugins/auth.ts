@@ -30,6 +30,12 @@ export interface AccessTokenPayload {
   name: string;
   role: Role;
   personId: string | null;
+  /**
+   * Which desk they see. Read from the DATABASE on every request, not from the
+   * token: a desk change must take effect at once, and a token minted fourteen
+   * minutes ago must not still be able to assert the old one.
+   */
+  userKey: string;
 }
 
 declare module 'fastify' {
@@ -72,7 +78,10 @@ export const authPlugin = fp(async function authPlugin(app: FastifyInstance, opt
     // enabled on every request rather than trusting a token minted 14 minutes ago.
     const user = await app.db.user.findUnique({
       where: { id: req.user.sub },
-      select: { id: true, disabledAt: true, role: true, personId: true, email: true, name: true },
+      select: {
+        id: true, disabledAt: true, role: true, personId: true,
+        email: true, name: true, userKey: true,
+      },
     });
     if (!user) throw unauthorized('That account no longer exists.');
     if (user.disabledAt) throw forbidden('That account has been disabled.');
@@ -85,6 +94,7 @@ export const authPlugin = fp(async function authPlugin(app: FastifyInstance, opt
       name: user.name,
       role: user.role as Role,
       personId: user.personId,
+      userKey: user.userKey,
     };
     req.currentUser = current;
     return current;

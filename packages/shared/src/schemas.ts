@@ -71,8 +71,15 @@ export const note = z.object({
 
 /* -------------------------------------------------------------------- auth */
 
+/**
+ * Sign in.
+ *
+ * `identifier` is the Employee ID printed on the card (MB-PUR-0012) OR an email
+ * address. People know their employee number; many site staff have no company
+ * email at all, so demanding one would lock them out of their own system.
+ */
 export const loginBody = z.object({
-  email: z.string().trim().toLowerCase().min(3).max(255),
+  identifier: z.string().trim().min(3).max(255),
   password: z.string().min(1).max(200),
 });
 
@@ -92,6 +99,9 @@ export const createUserBody = z.object({
   password: z.string().min(12).max(200),
   role,
   personId: employeeId.optional(),
+  /** The Employee ID they will sign in with. */
+  loginId: employeeId.optional(),
+  userKey: z.string().trim().min(2).max(20).optional(),
 });
 
 export const sessionUser = z.object({
@@ -100,6 +110,15 @@ export const sessionUser = z.object({
   name: z.string(),
   role,
   personId: z.string().nullable(),
+  employeeId: z.string().nullable(),
+  /**
+   * Which desk this account sees: admin | purchase | store | maintenance |
+   * accounts | hr | purchaseAsst | storeAsst | security.
+   *
+   * The left-hand nav is built from this. It comes from the database on every
+   * request, so a browser cannot promote itself by asking for a different one.
+   */
+  userKey: z.string(),
   mustChangePassword: z.boolean(),
 });
 

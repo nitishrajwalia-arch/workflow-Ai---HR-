@@ -40,6 +40,13 @@ model User {
   id                 String    @id @default(cuid())
   email              String    @unique
   name               String
+  /// The Employee ID people actually sign in with, e.g. MB-PUR-0012. Unique and
+  /// optional: a service account has no employee record.
+  employeeId         String?   @unique
+  /// Which desk this account sees: admin | purchase | store | maintenance |
+  /// accounts | hr | purchaseAsst | storeAsst | security. It drives the left-hand
+  /// nav, so it is the SERVER's answer to "who are you", never the browser's.
+  userKey            String    @default("viewer")
   /// Argon2id. Never a plain hash, never reversible, never logged.
   passwordHash       String
   role               Role      @default(VIEWER)
@@ -462,4 +469,558 @@ model HrLog {
 
   @@index([createdAt])
   @@map("hr_log")
+}
+
+// =========================================================================
+//  PROCUREMENT, GATE, ACCOUNTS AND SALES
+//
+//  Added when MarbellaProcurementOS.jsx became the application. The HR models
+//  above are unchanged: that file contains the whole HR system as a subset, so
+//  it reads the same tables.
+//
+//  Money is stored in PAISE (integers), never as a float. `amt Int` holding
+//  780000000 is seven crore eighty lakh exactly; a Float would hold it
+//  approximately, and "approximately" is not a thing to say about a purchase
+//  order. Quantities stay Float because 18.4 tonnes of steel is a real number.
+// =========================================================================
+
+/// A legal entity + project pair as procurement sees it. The `firms` switcher
+/// at the top of every screen selects one of these.
+model Firm {
+  id        String   @id
+  short     String
+  name      String
+  firm      String
+  gstin     String   @default("")
+  rera      String   @default("")
+  stage     String   @default("building")
+  addr      String   @default("")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("firm")
+}
+
+enum VendorStatus {
+  unverified
+  pending
+  verified
+}
+
+model Vendor {
+  /// MB-STL-0007 — the trade code, human-facing.
+  code      String       @id
+  name      String
+  cat       String       @default("")
+  terms     String       @default("")
+  phone     String       @default("")
+  whatsapp  String       @default("")
+  email     String       @default("")
+  contact   String       @default("")
+  gst       String       @default("")
+  pan       String       @default("")
+  status    VendorStatus @default(unverified)
+  /// Issued only once verification passes. Blank until then.
+  vcode     String       @default("")
+  city      String       @default("")
+  credit    String       @default("")
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  purchaseOrders PurchaseOrder[]
+
+  @@index([status])
+  @@index([cat])
+  @@map("vendor")
+}
+
+model PurchaseOrder {
+  /// PO-4471.
+  id         String   @id
+  vendorCode String?
+  vendor     Vendor?  @relation(fields: [vendorCode], references: [code], onDelete: SetNull)
+  /// Denormalised: the PO must still read correctly if a vendor is renamed.
+  vendorName String
+  item       String
+  /// Paise. BigInt because Int is 32-bit and a crore in paise overflows it.
+  amt        BigInt
+  status     String   @default("Approved")
+  firmId     String?
+  /// Delivery record: flag, who drove, what arrived vs what was ordered.
+  del        Json?
+  raisedById String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  gatePasses GatePass[]
+
+  @@index([status])
+  @@index([vendorCode])
+  @@map("purchase_order")
+}
+
+/// A request from a site for something it needs. Becomes a PO, or is dismissed.
+model PurchaseRequest {
+  id        String   @id
+  item      String
+  qty       String
+  when      String   @default("")
+  proj      String   @default("")
+  by        String   @default("")
+  /// open | fulfilled | dismissed. Rows are never deleted: a dismissed request
+  /// is a decision someone made and should stay answerable for.
+  state     String   @default("open")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([state])
+  @@map("purchase_request")
+}
+
+/// A department asking the store for stock it already holds.
+model Requisition {
+  id        String   @id
+  dept      String
+  item      String
+  qty       String   @default("")
+  state     String   @default("open")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([state])
+  @@map("requisition")
+}
+
+model InventoryItem {
+  /// The item name is the key: the store talks about "OPC 53 cement", not #417.
+  item      String   @id
+  unit      String
+  qty       Float    @default(0)
+  reorder   Float    @default(0)
+  loc       String   @default("")
+  proj      String   @default("")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  holds Hold[]
+
+  @@map("inventory_item")
+}
+
+/// Stock reserved against a future need. Held stock is still on the shelf but
+/// is NOT available, and the store must be told who to ask before releasing it.
+model Hold {
+  id        String        @id @default(cuid())
+  itemName  String
+  item      InventoryItem @relation(fields: [itemName], references: [item], onDelete: Cascade)
+  qty       Float
+  unit      String        @default("")
+  days      Int           @default(0)
+  by        String
+  why       String        @default("")
+  createdAt DateTime      @default(now())
+
+  @@index([itemName])
+  @@map("hold")
+}
+
+/// Every movement in or out. Append-only in practice: corrections are new rows.
+model StockMove {
+  id        String   @id @default(cuid())
+  /// in | out
+  dir       String
+  item      String
+  qty       Float
+  unit      String   @default("")
+  ref       String   @default("")
+  bill      String   @default("")
+  who       String   @default("")
+  note      String   @default("")
+  createdAt DateTime @default(now())
+
+  @@index([item])
+  @@index([createdAt])
+  @@map("stock_move")
+}
+
+/// How much of an item a site may hold. Exceeding it needs an override.
+model StorageCap {
+  id        String   @id @default(cuid())
+  item      String
+  proj      String
+  max       Float
+  unit      String   @default("")
+  why       String   @default("")
+  updatedAt DateTime @updatedAt
+
+  @@unique([item, proj])
+  @@map("storage_cap")
+}
+
+model GatePass {
+  id        String         @id
+  poId      String?
+  po        PurchaseOrder? @relation(fields: [poId], references: [id], onDelete: SetNull)
+  vendor    String
+  items     String
+  /// Paise. 64-bit: see the note on PurchaseOrder.amt.
+  total     BigInt         @default(0)
+  by        String
+  status    String         @default("expected")
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  @@index([status])
+  @@map("gate_pass")
+}
+
+/// What the gate decided, and who decided it. Never edited after the fact.
+model GateEvent {
+  id       String   @id @default(cuid())
+  /// permit | deny
+  outcome  String
+  label    String
+  plate    String   @default("")
+  guard    String   @default("")
+  guardId  String   @default("")
+  post     String   @default("")
+  who      String   @default("")
+  note     String   @default("")
+  /// Photographs taken at the gate.
+  evidence Json     @default("[]")
+  at       DateTime @default(now())
+
+  @@index([outcome])
+  @@index([at])
+  @@map("gate_event")
+}
+
+/// A document sent from one department to another, with its revision history.
+model Submittal {
+  id        String   @id
+  title     String
+  fromName  String
+  fromDept  String
+  to        String
+  status    String   @default("sent")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  versions SubmittalVersion[]
+
+  @@index([status])
+  @@map("submittal")
+}
+
+model SubmittalVersion {
+  id          String    @id @default(cuid())
+  submittalId String
+  submittal   Submittal @relation(fields: [submittalId], references: [id], onDelete: Cascade)
+  v           Int
+  fileName    String
+  by          String
+  note        String    @default("")
+  at          DateTime  @default(now())
+
+  @@unique([submittalId, v])
+  @@map("submittal_version")
+}
+
+// ----------------------------------------------------------------- accounts
+
+model VendorInvoice {
+  id        String   @id
+  from      String   @default("")
+  vendor    String
+  subj      String   @default("")
+  /// Paise, 64-bit.
+  amt       BigInt   @default(0)
+  po        String   @default("")
+  gstin     Boolean  @default(false)
+  age       String   @default("")
+  /// toclear | cleared | query
+  state     String   @default("toclear")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([state])
+  @@map("vendor_invoice")
+}
+
+model Expense {
+  id        String   @id
+  cat       String
+  dept      String
+  /// Paise, 64-bit.
+  amt       BigInt
+  party     String   @default("")
+  date      String   @default("")
+  src       String   @default("")
+  how       String   @default("")
+  ok        Boolean  @default(true)
+  note      String   @default("")
+  createdAt DateTime @default(now())
+
+  @@index([cat])
+  @@index([dept])
+  @@map("expense")
+}
+
+model Sale {
+  id        String   @id
+  unit      String
+  tower     String   @default("")
+  proj      String   @default("")
+  firm      String   @default("")
+  plan      String   @default("")
+  /// Paise, 64-bit.
+  price     BigInt
+  booked    String   @default("")
+  buyer     String
+  phone     String   @default("")
+  email     String   @default("")
+  /// Stage-wise receipts and what is still due.
+  received  Json     @default("[]")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  reminders PaymentReminder[]
+
+  @@index([proj])
+  @@map("sale")
+}
+
+/// A payment chase. Drafted by anyone, but it does not go out until approved —
+/// a reminder is a letter to a customer about money and carries the firm's name.
+model PaymentReminder {
+  id         String   @id @default(cuid())
+  saleId     String?
+  sale       Sale?    @relation(fields: [saleId], references: [id], onDelete: SetNull)
+  buyer      String   @default("")
+  channel    String   @default("")
+  subject    String   @default("")
+  body       String   @default("")
+  approved   Boolean  @default(false)
+  approvedBy String?
+  createdAt  DateTime @default(now())
+
+  @@index([approved])
+  @@map("payment_reminder")
+}
+
+model BankAccount {
+  id        String   @id
+  bank      String
+  acc       String
+  type      String   @default("")
+  firm      String   @default("")
+  till      String   @default("")
+  /// Statement months not yet uploaded.
+  gaps      Json     @default("[]")
+  /// Paise, 64-bit.
+  bal       BigInt   @default(0)
+  updatedAt DateTime @updatedAt
+
+  @@map("bank_account")
+}
+
+model CreditCard {
+  id        String   @id
+  bank      String
+  last      String
+  holder    String
+  /// Paise, 64-bit.
+  limit     BigInt   @default(0)
+  used      BigInt   @default(0)
+  cycle     String   @default("")
+  due       String   @default("")
+  firm      String   @default("")
+  updatedAt DateTime @updatedAt
+
+  @@map("credit_card")
+}
+
+/// A counterparty in Masters — own firms, buyers, suppliers.
+model MasterCompany {
+  id        String   @id
+  name      String
+  kind      String   @default("")
+  gstin     String   @default("")
+  pan       String   @default("")
+  city      String   @default("")
+  updatedAt DateTime @updatedAt
+
+  @@map("master_company")
+}
+
+// ------------------------------------------------------- rates and requests
+
+/// What things cost. Learned from every PO line that gets raised, so the next
+/// PO can warn when a rate has moved.
+model CatalogItem {
+  name      String   @id
+  unit      String   @default("")
+  /// Paise per unit, 64-bit.
+  rate      BigInt   @default(0)
+  vendor    String   @default("")
+  updatedAt DateTime @updatedAt
+
+  @@map("catalog_item")
+}
+
+/// Something a person raised from the floor: missing material, safety, support.
+model SiteReport {
+  id        String   @id @default(cuid())
+  cat       String
+  by        String
+  proj      String   @default("")
+  text      String   @default("")
+  severity  String   @default("low")
+  /// Voice note and photo evidence.
+  media     Json     @default("[]")
+  state     String   @default("open")
+  createdAt DateTime @default(now())
+
+  @@index([cat])
+  @@index([state])
+  @@map("site_report")
+}
+
+// ------------------------------------------------------ people extras, calendar
+
+model CalendarEvent {
+  id        String   @id @default(cuid())
+  title     String
+  /// ISO date, e.g. 2026-08-05.
+  date      String
+  time      String   @default("")
+  kind      String   @default("task")
+  priority  String   @default("normal")
+  /// { type: "all" } | { type: "dept", dept } | { type: "people", ids }
+  audience  Json     @default("{\"type\":\"all\"}")
+  by        String   @default("")
+  note      String   @default("")
+  createdAt DateTime @default(now())
+
+  @@index([date])
+  @@map("calendar_event")
+}
+
+/// An incentive scheme. Proposed, then approved or declined, then issued.
+model IncentivePackage {
+  id        String   @id @default(cuid())
+  name      String
+  /// Paise, 64-bit.
+  amount    BigInt
+  threshold Float    @default(0)
+  scale     Float    @default(10)
+  dept      String   @default("")
+  period    String   @default("")
+  how       String   @default("")
+  status    String   @default("proposed")
+  issuedTo  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@map("incentive_package")
+}
+
+/// One person, one day, from the biometric export.
+model AttendanceDay {
+  id        String   @id @default(cuid())
+  personId  String
+  /// Display form as the importers give it, e.g. "28 Jul".
+  date      String
+  /// Null means absent.
+  inAt      String?
+  outAt     String?
+  source    String   @default("")
+  createdAt DateTime @default(now())
+
+  @@unique([personId, date])
+  @@index([personId])
+  @@map("attendance_day")
+}
+
+/// HR's own running log and task list. Prunable, unlike the ledger.
+model HrTask {
+  id        String   @id @default(cuid())
+  text      String
+  who       String   @default("")
+  due       String   @default("")
+  done      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@map("hr_task")
+}
+
+model Announcement {
+  id        String   @id @default(cuid())
+  text      String
+  by        String   @default("")
+  createdAt DateTime @default(now())
+
+  @@map("announcement")
+}
+
+// ---------------------------------------------------------------- platform
+
+/// Third-party connections. The TOKEN IS NEVER STORED HERE in plain text —
+/// this records only that a connection exists and who made it.
+model Connection {
+  key         String    @id
+  connected   Boolean   @default(false)
+  connectedBy String?
+  connectedAt DateTime?
+  updatedAt   DateTime  @updatedAt
+
+  @@map("connection")
+}
+
+/// Who took what out of the system, and when. Exports leave the building.
+model ExportRecord {
+  id        String   @id @default(cuid())
+  key       String
+  title     String
+  rows      Int      @default(0)
+  period    String   @default("")
+  byId      String?
+  createdAt DateTime @default(now())
+
+  @@index([key])
+  @@map("export_record")
+}
+
+/// A half-finished form, so closing a screen mid-way does not lose the typing.
+model Draft {
+  id        String   @id @default(cuid())
+  userId    String
+  type      String
+  label     String   @default("")
+  data      Json     @default("{}")
+  updatedAt DateTime @updatedAt
+
+  /// One live draft per form per person.
+  @@unique([userId, type])
+  @@map("draft")
+}
+
+/// Access grants: which areas a role may see, change, approve and export.
+/// Replaces the browser-only grant map that announced "Access updated" and
+/// then forgot it the moment the screen closed.
+model AccessGrant {
+  id        String   @id @default(cuid())
+  /// The USERS key: admin, purchase, store, hr, ...
+  userKey   String
+  area      String
+  /// view | edit | approve | export
+  power     String
+  granted   Boolean  @default(false)
+  updatedBy String?
+  updatedAt DateTime @updatedAt
+
+  @@unique([userKey, area, power])
+  @@index([userKey])
+  @@map("access_grant")
 }

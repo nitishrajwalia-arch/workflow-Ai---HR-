@@ -20,6 +20,7 @@ import { PrismaClient } from '@prisma/client';
 import { GENESIS, canonicalPayload, fingerprint } from '@marbella/shared';
 import { hashPassword } from '../src/lib/password.js';
 import { buildRoster, type RosterPerson } from './roster.js';
+import { seedProcurement } from './seed-procurement.js';
 import {
   CARD_LOG_SEED,
   COMPANY_SEED,
@@ -451,6 +452,15 @@ async function main() {
   } else {
     console.log(`  accounts    ${userCount} already exist, none created`);
   }
+
+  /* ------------------------------------------------- procurement and the rest */
+
+  // MarbellaProcurementOS.jsx contains the HR system above as a subset, and
+  // adds procurement, the gate, accounts, sales and the calendar on top.
+  await seedProcurement(prisma, {
+    defaultPassword: process.env.BOOTSTRAP_ADMIN_PASSWORD ?? 'ChangeThisAtFirstSignIn!',
+    announce: (line) => console.log(line),
+  });
 
   console.log('Done.\n');
 }
