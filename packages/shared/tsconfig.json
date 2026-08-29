@@ -1,0 +1,13 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // This package runs in BOTH Node and the browser, so it may only use the
+    // intersection of the two: web-standard APIs (WebCrypto, TextEncoder, fetch).
+    // "DOM" is here for those lib types, not to permit touching `document`.
+    "lib": ["ES2023", "DOM"],
+    "outDir": "./dist",
+    "rootDir": "./src"
+  },
+  "include": ["src/**/*"],
+  "exclude": ["src/**/*.test.ts", "dist"]
+}

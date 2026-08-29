@@ -1,0 +1,24 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "useDefineForClassFields": true,
+    "composite": true,
+    "emitDeclarationOnly": true,
+    "outDir": "./node_modules/.tmp/types-app",
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.app.tsbuildinfo",
+    /* The legacy single-file build is plain JS and is imported as-is. It is not
+       type-checked, on purpose: it is 7,300 lines of working, reviewed code and
+       annotating it is a separate project from getting it onto a live server. */
+    "allowJs": true,
+    "checkJs": false
+  },
+  /* src/legacy IS included: App.tsx imports it, and a composite project must
+     list every file it reaches. `checkJs: false` above is what keeps it
+     untyped — excluding it here would only produce TS6307. */
+  "include": ["src"]
+}

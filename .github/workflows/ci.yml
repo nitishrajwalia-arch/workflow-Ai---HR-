@@ -1,0 +1,100 @@
+name: CI
+
+# Runs on every push and every pull request. If this is green, the branch
+# builds, typechecks, lints and passes 137 tests against a real PostgreSQL.
+# If it is red, do not deploy it.
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  # A new push supersedes the run already going for the same branch. No point
+  # burning minutes on a commit nobody is waiting for any more.
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # The tests refuse to run against a URL without "test" in it, so this name
+  # is load-bearing rather than decorative.
+  TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/marbella_test?schema=public
+
+jobs:
+  check:
+    name: Build, lint and test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        # The same major version as production. Testing against a different
+        # one is testing a different database.
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: marbella_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      # `npm ci` installs exactly what the lockfile says. `npm install` would
+      # quietly resolve something newer, which is how a green CI run stops
+      # meaning anything about the code that was actually committed.
+      - name: Install
+        run: npm ci
+
+      - name: Generate the Prisma client
+        run: npm run db:generate
+
+      - name: Build the shared package
+        # Both the API and the web app import from its dist output.
+        run: npm run build -w @marbella/shared
+
+      - name: Check formatting
+        run: npm run format:check
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+        env:
+          DATABASE_URL: ${{ env.TEST_DATABASE_URL }}
+          TEST_DATABASE_URL: ${{ env.TEST_DATABASE_URL }}
+
+      - name: Build
+        run: npm run build
+
+  docker:
+    name: Docker images build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      # Building the images in CI catches the class of problem that only shows
+      # up in a clean container — a missing file in the COPY list, a dependency
+      # that was only ever installed on someone's laptop.
+      - name: Build the API image
+        run: docker build -f apps/api/Dockerfile -t marbella-api:ci .
+
+      - name: Build the web image
+        run: docker build -f apps/web/Dockerfile -t marbella-web:ci .

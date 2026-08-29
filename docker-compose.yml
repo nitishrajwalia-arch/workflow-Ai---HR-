@@ -1,0 +1,86 @@
+# Marbella HR — the whole system, locally.
+#
+#   docker compose up -d          start
+#   docker compose logs -f api    watch the API
+#   docker compose down           stop
+#   docker compose down -v        stop AND delete the data
+#
+# The API waits for Postgres to be genuinely ready (pg_isready), not merely
+# started, so `up` does not race on a first run.
+
+name: marbella-hr
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: marbella
+      POSTGRES_PASSWORD: '${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD before bringing this up}'
+      POSTGRES_DB: marbella
+    ports:
+      # Exposed so you can point psql or a GUI at it. Remove in production:
+      # the API is the only thing that needs to reach the database.
+      - '5432:5432'
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U marbella -d marbella']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      DATABASE_URL: postgresql://marbella:${POSTGRES_PASSWORD}@db:5432/marbella?schema=public
+      # `:?` — compose REFUSES to start without this rather than falling back
+      # to a default. A known default JWT secret is a footgun: someone brings
+      # this up in production and every token is forgeable by anyone who has
+      # read this file. Generate one with:  export JWT_SECRET="$(openssl rand -base64 48)"
+      JWT_SECRET: '${JWT_SECRET:?set JWT_SECRET, generated with openssl rand -base64 48}'
+      CORS_ORIGINS: http://localhost:8080
+      UPLOAD_DIR: /data/uploads
+      TRUST_PROXY: 'true'
+      LOG_LEVEL: info
+      BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:-hr@marbellagroup.in}
+      BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:-}
+    ports:
+      - '4000:4000'
+    volumes:
+      # Photos must outlive the container. A container filesystem does not.
+      - uploads:/data/uploads
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://localhost:4000/health/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - '8080:80'
+
+volumes:
+  db-data:
+  uploads:

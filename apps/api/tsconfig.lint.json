@@ -1,0 +1,10 @@
+{
+  /* Type-aware linting needs a project that contains EVERY file being linted.
+     The build tsconfig deliberately excludes tests and the prisma scripts, so
+     this one widens it. It never emits — it exists only for eslint. */
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "noEmit": true },
+  "include": ["src/**/*", "prisma/**/*", "*.config.ts"],
+  /* The build config excludes tests; reset that here or they are unlintable. */
+  "exclude": ["dist", "node_modules"]
+}

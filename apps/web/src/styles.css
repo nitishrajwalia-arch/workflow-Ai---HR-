@@ -1,0 +1,222 @@
+/*
+ * Only the shell is styled here.
+ *
+ * The 7,300-line UI styles itself with inline styles and no CSS framework, on
+ * purpose. Adding Tailwind or similar for the six screens in this shell would
+ * mean two styling systems in one app for no gain, so this is plain CSS using
+ * the same palette: royal blue #224A85, gold #C7A162, white panels on #EDF1F7.
+ */
+
+:root {
+  --mb-ink: #101c32;
+  --mb-ink-soft: #47566e;
+  --mb-blue: #224a85;
+  --mb-gold: #c7a162;
+  --mb-paper: #edf1f7;
+  --mb-panel: #ffffff;
+  --mb-line: #d6deea;
+  --mb-red: #a8322b;
+  --mb-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --mb-serif: Georgia, 'Times New Roman', serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--mb-paper);
+  color: var(--mb-ink);
+  font-family: var(--mb-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+.mb-app {
+  min-height: 100%;
+}
+
+/* --------------------------------------------------------------- top bar */
+
+.mb-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 8px 16px;
+  background: var(--mb-blue);
+  color: #fff;
+  font-size: 12px;
+}
+
+.mb-topbar-who {
+  opacity: 0.9;
+}
+
+.mb-signout {
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  color: #fff;
+  border-radius: 7px;
+  padding: 5px 11px;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.mb-signout:hover {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+/* ------------------------------------------------------- centred notices */
+
+.mb-centre {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.mb-centre-card,
+.mb-login {
+  background: var(--mb-panel);
+  border: 1px solid var(--mb-line);
+  border-radius: 14px;
+  padding: 30px 28px;
+  width: 100%;
+  max-width: 400px;
+  box-shadow: 0 10px 34px rgba(16, 28, 50, 0.07);
+}
+
+.mb-centre-card h1,
+.mb-login h1 {
+  font-family: var(--mb-serif);
+  font-weight: 400;
+  font-size: 23px;
+  margin: 0 0 8px;
+}
+
+.mb-centre-card p {
+  color: var(--mb-ink-soft);
+  font-size: 13px;
+  line-height: 1.6;
+  margin: 0 0 18px;
+}
+
+.mb-error-detail {
+  background: var(--mb-paper);
+  border: 1px solid var(--mb-line);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 11.5px;
+  color: var(--mb-ink-soft);
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 0 0 16px;
+}
+
+/* ----------------------------------------------------------------- login */
+
+.mb-login-mark {
+  font-family: var(--mb-serif);
+  letter-spacing: 0.32em;
+  font-size: 12px;
+  color: var(--mb-gold);
+  margin-bottom: 14px;
+}
+
+.mb-login-sub {
+  color: var(--mb-ink-soft);
+  font-size: 13px;
+  margin: 0 0 22px;
+  line-height: 1.55;
+}
+
+.mb-login label {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--mb-ink-soft);
+  margin-bottom: 6px;
+}
+
+.mb-login input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--mb-line);
+  border-radius: 9px;
+  font: inherit;
+  font-size: 14px;
+  margin-bottom: 16px;
+  background: #fff;
+  color: var(--mb-ink);
+}
+
+.mb-login input:focus {
+  outline: none;
+  border-color: var(--mb-blue);
+  box-shadow: 0 0 0 3px rgba(34, 74, 133, 0.12);
+}
+
+.mb-login input:disabled {
+  background: var(--mb-paper);
+}
+
+.mb-login-error {
+  background: #fbedec;
+  border: 1px solid #e7c4c1;
+  color: var(--mb-red);
+  border-radius: 9px;
+  padding: 10px 12px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  margin-bottom: 16px;
+}
+
+.mb-login-foot {
+  font-size: 11.5px;
+  color: var(--mb-ink-soft);
+  line-height: 1.55;
+  margin: 18px 0 0;
+}
+
+/* ---------------------------------------------------------------- button */
+
+.mb-button {
+  width: 100%;
+  background: var(--mb-blue);
+  color: #fff;
+  border: none;
+  border-radius: 9px;
+  padding: 11px 16px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.mb-button:hover:not(:disabled) {
+  background: #1b3d70;
+}
+.mb-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Respect a reduced-motion preference: this runs on site-office phones too. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

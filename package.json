@@ -1,0 +1,47 @@
+{
+  "name": "marbella-hr",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Marbella HR \u2014 production full-stack people system. React front end, Fastify + PostgreSQL back end.",
+  "type": "module",
+  "engines": {
+    "node": ">=22.0.0",
+    "npm": ">=10.0.0"
+  },
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "concurrently --kill-others-on-fail --names \"shared,api,web\" --prefix-colors \"gray,blue,magenta\" \"npm:dev:shared\" \"npm:dev:api\" \"npm:dev:web\"",
+    "dev:api": "npm run dev -w @marbella/api",
+    "dev:web": "npm run dev -w @marbella/web",
+    "build": "npm run build -w @marbella/shared && npm run build -w @marbella/api && npm run build -w @marbella/web",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md,yml}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,md,yml}\"",
+    "test": "npm run test --workspaces --if-present",
+    "db:generate": "npm run db:generate -w @marbella/api",
+    "db:migrate": "npm run db:migrate -w @marbella/api",
+    "db:deploy": "npm run db:deploy -w @marbella/api",
+    "db:seed": "npm run db:seed -w @marbella/api",
+    "db:reset": "npm run db:reset -w @marbella/api",
+    "db:studio": "npm run db:studio -w @marbella/api",
+    "setup": "npm install && npm run db:generate && npm run build -w @marbella/shared",
+    "check": "npm run format:check && npm run lint && npm run typecheck && npm run test",
+    "dev:shared": "npm run dev -w @marbella/shared"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.0",
+    "concurrently": "^10.0.5",
+    "eslint": "^9.39.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-react-hooks": "^7.0.0",
+    "globals": "^16.5.0",
+    "prettier": "^3.6.2",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.46.0"
+  }
+}

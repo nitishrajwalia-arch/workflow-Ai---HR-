@@ -1,0 +1,465 @@
+// Marbella HR — database schema.
+//
+// THREE THINGS THAT ARE NOT THE SAME THING, AND ONE THAT SHIPPED AS A BUG ONCE
+// ---------------------------------------------------------------------------
+//  * Company  — the legal entity that PAYS someone. Drives the letterhead, the PF
+//               challan, the experience certificate. Get it wrong and the paper is
+//               worthless.
+//  * Project  — a development (Marbella Grand, Curo One). Belongs to a Company.
+//               Several projects share one company.
+//  * Office   — a place a person is POSTED AT. Usually a project's site office, but
+//               the Head Office is an Office with no Project, and Manifest is a
+//               Project with no Office. Modelling these as one table is what makes
+//               "who employs them" and "where they sit" quietly drift apart.
+//
+// A Person therefore carries BOTH officeId (posted at) and employerId (paid by),
+// and neither is derived from the other.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// Prisma 7 keeps the connection URL out of the schema: migrations read it from
+// prisma.config.ts, and the running client is given an explicit driver adapter
+// (see src/db.ts). That means the pool is ours to size and the schema file holds
+// no secrets.
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------------- identity
+
+enum Role {
+  ADMIN
+  HR
+  MANAGER
+  VIEWER
+}
+
+model User {
+  id                 String    @id @default(cuid())
+  email              String    @unique
+  name               String
+  /// Argon2id. Never a plain hash, never reversible, never logged.
+  passwordHash       String
+  role               Role      @default(VIEWER)
+  /// The employee record this login belongs to, when there is one.
+  personId           String?
+  person             Person?   @relation(fields: [personId], references: [id], onDelete: SetNull)
+  mustChangePassword Boolean   @default(false)
+  /// Set instead of deleting: a departed user's audit trail must keep resolving.
+  disabledAt         DateTime?
+  lastLoginAt        DateTime?
+  failedLogins       Int       @default(0)
+  /// Set when failedLogins crosses the threshold; login is refused until it passes.
+  lockedUntil        DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  refreshTokens RefreshToken[]
+  docs          DocLog[]
+  exitSteps     ExitStep[]
+
+  @@index([personId])
+  @@map("app_user")
+}
+
+/// One row per issued refresh token. Rotating: using one revokes it and issues the
+/// next, so a stolen token is usable at most once and its reuse is detectable.
+model RefreshToken {
+  id           String    @id @default(cuid())
+  userId       String
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// SHA-256 of the token. The token itself is never stored.
+  tokenHash    String    @unique
+  expiresAt    DateTime
+  revokedAt    DateTime?
+  /// Set when this token was rotated; lets us spot a replayed old token.
+  replacedById String?
+  userAgent    String?
+  ip           String?
+  createdAt    DateTime  @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("refresh_token")
+}
+
+// ------------------------------------------------------- entities and places
+
+model Company {
+  id        String   @id
+  name      String
+  kind      String   @default("")
+  /// Shape-checked. NEVER rejected on the check character — see validation.ts.
+  gstin     String   @default("")
+  pan       String   @default("")
+  addr      String   @default("")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  projects  Project[]
+  employees Person[]  @relation("employer")
+  docs      DocLog[]
+
+  @@map("company")
+}
+
+enum ReraStatus {
+  received
+  applied
+  notyet
+  na
+}
+
+enum ProjectStage {
+  pre
+  building
+  handover
+  closed
+}
+
+model Project {
+  id         String       @id
+  name       String
+  short      String
+  companyId  String
+  company    Company      @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  reraStatus ReraStatus   @default(notyet)
+  rera       String       @default("")
+  stage      ProjectStage @default(pre)
+  addr       String       @default("")
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+
+  offices Office[]
+
+  @@index([companyId])
+  @@map("project")
+}
+
+/// Somewhere a person physically sits. `projectId` is null for the Head Office.
+model Office {
+  id        String   @id
+  name      String
+  short     String
+  tint      String   @default("#224A85")
+  projectId String?
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  people Person[]
+
+  @@index([projectId])
+  @@map("office")
+}
+
+// ------------------------------------------------------------------ people
+
+enum PersonStatus {
+  active
+  exited
+}
+
+model Person {
+  /// MB-PUR-0012. Human-facing, printed on the card, so it is the primary key.
+  id          String       @id
+  name        String
+  designation String
+  dept        String
+  type        String       @default("Staff")
+  /// Display form, "05 Jun 2020". Kept as text because it is what letters merge.
+  joined      String
+  /// Sortable copy of `joined`. Written by the API, never by a client.
+  joinedOn    DateTime?
+  dob         String?
+  dobOn       DateTime?
+  status      PersonStatus @default(active)
+  exitedOn    String?
+  perf        Int          @default(75)
+  growth      String       @default("")
+  photo       String?
+
+  shiftIn    String @default("09:30")
+  shiftOut   String @default("18:30")
+  shiftHours Float  @default(9)
+
+  /// WHERE THEY SIT.
+  officeId String
+  office   Office @relation(fields: [officeId], references: [id], onDelete: Restrict)
+
+  /// WHO PAYS THEM. Not derivable from officeId. See the header of this file.
+  employerId String
+  employer   Company @relation("employer", fields: [employerId], references: [id], onDelete: Restrict)
+
+  reportsToId String?
+  reportsTo   Person?  @relation("reports", fields: [reportsToId], references: [id], onDelete: SetNull)
+  reports     Person[] @relation("reports")
+
+  /// True when the row arrived through Bulk intake rather than being keyed in.
+  imported  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  notes    PersonNote[]
+  contact  Contact?
+  salary   Salary?
+  devices  Device[]
+  cards    Card[]
+  exits    Exit[]
+  users    User[]
+  docs     DocLog[]
+
+  @@index([dept])
+  @@index([officeId])
+  @@index([employerId])
+  @@index([reportsToId])
+  @@index([status])
+  @@map("person")
+}
+
+model PersonNote {
+  id        String   @id @default(cuid())
+  personId  String
+  person    Person   @relation(fields: [personId], references: [id], onDelete: Cascade)
+  when      String
+  text      String
+  createdAt DateTime @default(now())
+
+  @@index([personId])
+  @@map("person_note")
+}
+
+/// PERSONAL phone and email only. The company address is closed the day they
+/// leave, which makes it useless for exactly the letters we need to send.
+model Contact {
+  personId  String   @id
+  person    Person   @relation(fields: [personId], references: [id], onDelete: Cascade)
+  phone     String   @default("")
+  email     String   @default("")
+  vPhone    Boolean  @default(false)
+  vEmail    Boolean  @default(false)
+  updatedAt DateTime @updatedAt
+
+  @@map("contact")
+}
+
+/// Money. Read access is gated to HR and above; see the salary route guard.
+model Salary {
+  personId  String   @id
+  person    Person   @relation(fields: [personId], references: [id], onDelete: Cascade)
+  basic     Int      @default(0)
+  hra       Int      @default(0)
+  special   Int      @default(0)
+  pf        Int      @default(0)
+  pt        Int      @default(0)
+  note      String   @default("")
+  updatedAt DateTime @updatedAt
+
+  @@map("salary")
+}
+
+model Device {
+  id       String @id @default(cuid())
+  personId String
+  person   Person @relation(fields: [personId], references: [id], onDelete: Cascade)
+  type     String
+  model    String @default("")
+  /// Luhn-checked on the way in when it is not the em-dash placeholder.
+  imei     String @default("")
+  sim      String @default("")
+  issued   String
+
+  createdAt DateTime @default(now())
+
+  @@index([personId])
+  @@map("device")
+}
+
+// ------------------------------------------------------------------- cards
+
+model Card {
+  id       String @id @default(cuid())
+  personId String
+  person   Person @relation(fields: [personId], references: [id], onDelete: Cascade)
+  /// Denormalised on purpose: the log must still read correctly if the person is
+  /// later renamed. It records what was printed, not who they are now.
+  name     String
+  ver      Int
+  reason   String
+  at       String
+  by       String
+  recv     String @default("—")
+  note     String @default("")
+  /// Which version this issue cancelled, e.g. "v2".
+  killed   String?
+  /// True when the card was unaccounted for and its zone access was revoked.
+  zonesKilled Boolean @default(false)
+
+  // The long form, present only when the old card did not come back.
+  circumstances String?
+  lastHeld      String?
+  toldWho       String?
+  firNumber     String?
+
+  issuedById String?
+  createdAt  DateTime @default(now())
+
+  /// Two people on two screens must not both be handed "version 3".
+  @@unique([personId, ver])
+  @@index([personId])
+  @@map("card")
+}
+
+// ------------------------------------------------------------------ ledger
+
+/// APPEND ONLY. A database trigger raises an exception on UPDATE or DELETE —
+/// see migration `ledger_append_only`. Application code cannot bypass it and
+/// neither can a bug. Seals are SHA-256, computed server-side only.
+model LedgerEntry {
+  id      String @id @default(cuid())
+  /// Chain order. Gapless and monotonic; the verifier walks it ascending.
+  seq     Int    @unique @default(autoincrement())
+  at      String
+  who     String
+  kind    String
+  subject String
+  detail  String
+  prev    String
+  seal    String @unique
+
+  createdAt DateTime @default(now())
+
+  @@index([kind])
+  @@index([subject])
+  @@map("ledger_entry")
+}
+
+// ------------------------------------------------------------------- exits
+
+model Exit {
+  id       String @id @default(cuid())
+  personId String
+  person   Person @relation(fields: [personId], references: [id], onDelete: Cascade)
+  stage    String @default("decision")
+  reason   String
+  opened   String
+  closedAt String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  steps ExitStep[]
+
+  @@index([personId])
+  @@index([stage])
+  @@map("exit")
+}
+
+/// One row per stage cleared. The Exit row says where it is now; these say how
+/// it got there, who did each step and what they recorded.
+model ExitStep {
+  id      String @id @default(cuid())
+  exitId  String
+  exit    Exit   @relation(fields: [exitId], references: [id], onDelete: Cascade)
+  stage   String
+  payload Json   @default("{}")
+  summary String
+  byId    String?
+  by      User?  @relation(fields: [byId], references: [id], onDelete: SetNull)
+  at      DateTime @default(now())
+
+  /// A stage is cleared once. Re-clearing it would silently rewrite the record.
+  @@unique([exitId, stage])
+  @@index([exitId])
+  @@map("exit_step")
+}
+
+// ---------------------------------------------------------------- policies
+
+/// Each department keeps its own clock, set by its own manager. The store opens
+/// at 08:00 because site starts at 08:00; Accounts opens at 10:00. One global
+/// office-hours setting is wrong for this business.
+model DeptRule {
+  dept      String   @id
+  in        String
+  out       String
+  hours     Float
+  days      String
+  grace     Int      @default(0)
+  setBy     String
+  note      String   @default("")
+  updatedAt DateTime @updatedAt
+
+  @@map("dept_rule")
+}
+
+model LeavePolicy {
+  dept      String   @id
+  casual    Int      @default(0)
+  sick      Int      @default(0)
+  earned    Int      @default(0)
+  halfDay   String   @default("")
+  lateAfter Int      @default(0)
+  updatedAt DateTime @updatedAt
+
+  @@map("leave_policy")
+}
+
+// -------------------------------------------------------- documents and JDs
+
+model DocLog {
+  id        String   @id @default(cuid())
+  at        String
+  tpl       String
+  personId  String
+  person    Person   @relation(fields: [personId], references: [id], onDelete: Cascade)
+  companyId String
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  /// print | email | file
+  via       String
+  subject   String   @default("")
+  body      String   @default("")
+  byId      String?
+  by        User?    @relation(fields: [byId], references: [id], onDelete: SetNull)
+  createdAt DateTime @default(now())
+
+  @@index([personId])
+  @@index([tpl])
+  @@map("doc_log")
+}
+
+model JobDescription {
+  role      String   @id
+  jd        String
+  updatedBy String   @default("")
+  updatedAt DateTime @updatedAt
+
+  @@map("job_description")
+}
+
+// ------------------------------------------------------------------- usage
+
+/// Counts every action so you can see which parts get used. Persisted, so it no
+/// longer resets on reload the way the browser-only build did.
+model UsageCounter {
+  key       String   @id
+  count     Int      @default(0)
+  updatedAt DateTime @updatedAt
+
+  @@map("usage_counter")
+}
+
+/// Plain activity feed for the HR desk. Distinct from the ledger: this one is
+/// allowed to be pruned, the ledger is not.
+model HrLog {
+  id        String   @id @default(cuid())
+  at        String
+  who       String
+  what      String
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@map("hr_log")
+}
