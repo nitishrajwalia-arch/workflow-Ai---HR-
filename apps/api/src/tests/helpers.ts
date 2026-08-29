@@ -28,6 +28,10 @@ export function testEnv() {
     // fail for the wrong reason. The limiter itself is tested explicitly.
     RATE_LIMIT_MAX: '100000',
     RATE_LIMIT_AUTH_MAX: '100000',
+    // The Chairman's override code. Set here so the override path is exercised
+    // against a configured server; procurement.test.ts builds a second app
+    // WITHOUT it to check what happens when nobody configured one.
+    OVERRIDE_PIN: 'test-override-2417',
   } as NodeJS.ProcessEnv);
 }
 
