@@ -12,6 +12,7 @@ coverage/
 apps/api/prisma/generated/
 apps/api/uploads/
 apps/web/dist/
+apps/web/dist-demo/
 
 .DS_Store
 Thumbs.db

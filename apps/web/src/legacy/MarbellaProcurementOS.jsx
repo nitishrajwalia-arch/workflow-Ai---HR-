@@ -598,7 +598,7 @@ const roleChip = { cursor: "pointer", display: "inline-flex", alignItems: "cente
 const lbl = { font: `600 11px ${sans}`, letterSpacing: "0.1em", textTransform: "uppercase", color: C.inkSoft };
 
 /* ---- shared procurement state across the four pillars ---- */
-/* EDIT 1 of 10 (see legacy/PATCHES-PROCUREMENT.md): the context comes from
+/* EDIT 1 of 11 (see legacy/PATCHES-PROCUREMENT.md): the context comes from
    ../proc/context.js so ProcurementProvider can put LIVE SERVER DATA into the
    same object these screens read. Two createContext() calls make two unrelated
    contexts and useProc() silently returns null. */
@@ -748,7 +748,7 @@ export function Login({ onLogin }) {
       <input value={id} onChange={e => setId(e.target.value)} placeholder="MB-PUR-0012" style={inp} />
       <label style={lbl}>Password</label>
       <input value={pw} onChange={e => setPw(e.target.value)} type="password" placeholder="••••••••" style={inp} />
-      {/* EDIT 2 of 10 — THE IMPORTANT ONE.
+      {/* EDIT 2 of 11 — THE IMPORTANT ONE.
 
           This used to read `onClick={() => onLogin("admin")}`. It ignored the
           Employee ID and the password you just typed and signed EVERYONE in as
@@ -761,7 +761,7 @@ export function Login({ onLogin }) {
       <div style={{ marginTop: 18 }}>
         <div style={{ font: `600 10px ${sans}`, letterSpacing: "0.14em", textTransform: "uppercase", color: C.stone, marginBottom: 10 }}>Fill in a desk's Employee ID</div>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-          {/* EDIT 3 of 10: these chips used to sign you straight in as that role
+          {/* EDIT 3 of 11: these chips used to sign you straight in as that role
               with no password at all — nine doors with no locks. They now fill
               the Employee ID in for you; the password is still required. */}
           {Object.values(USERS).map(u => (
@@ -1495,7 +1495,7 @@ function AccessConsole({ onActAs }) {
         <div style={{ display: "flex", gap: 9, flexWrap: "wrap", alignItems: "center", paddingTop: 10, borderTop: `2px solid ${C.gold}` }}>
           <span style={{ font: `12px ${sans}`, color: C.inkSoft, flex: 1, minWidth: 150 }}>{u.name} can currently open <b style={{ color: C.ink }}>{count(pick)}</b> of {totalAreas} areas.</span>
           <GoldButton small onClick={() => (async () => {
-                    /* EDIT 8 of 10: this used to announce a change and forget it the
+                    /* EDIT 8 of 11: this used to announce a change and forget it the
                        moment the screen closed. Nobody's access ever moved. It writes
                        rows now, sealed against the administrator who made the change. */
                     const grid = grants[pick] || {};
@@ -2427,7 +2427,7 @@ function PurchaseView({ userKey = "purchase" }) {
   const [claim, setClaim] = useState(null);
   const [flagged, setFlagged] = useState(false);
   const stTone = (s) => s === "Approved" ? "green" : s === "Received" || s === "Paid" ? "gold" : s === "Partial" ? "stone" : "amber";
-  /* EDIT 9 of 10: was `[...pos, ...POS]`. `pos` is the live list from the
+  /* EDIT 9 of 11: was `[...pos, ...POS]`. `pos` is the live list from the
      server now, and the server was seeded from the POS constant below — so
      every purchase order rendered twice, with a duplicate React key. */
   const list = pos;
@@ -6670,7 +6670,7 @@ function ReceiveShipment({ onClose }) {
   const [rows, setRows] = useState([]);
   const [where, setWhere] = useState("Grand · Yard");
   const cell = { ...inp, margin: 0, padding: "10px 12px", fontSize: 14, boxSizing: "border-box" };
-  /* EDIT 10 of 10: the second half used the POS constant, so scanning found a
+  /* EDIT 10 of 11: the second half used the POS constant, so scanning found a
      stale copy of a purchase order rather than the live one. Both halves come
      from the server now. */
   const pool = [...gatepasses.map(g => ({ po: g.po, vendor: g.vendor, items: g.items, total: g.total, src: "gate pass" })),
@@ -7396,7 +7396,7 @@ const HRANN_SEED = [
 ];
 
 const fmtToday = () => new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
-/* EDIT 6 of 10: eight buttons said "Sending to printer…" and did nothing at all
+/* EDIT 6 of 11: eight buttons said "Sending to printer…" and did nothing at all
    — no dialog, no document, nothing reaching a printer. This is what a browser
    actually has. If the print dialog is blocked (some kiosk browsers do), it
    says so rather than pretending. */
@@ -7408,7 +7408,7 @@ function printThis() {
   }
 }
 
-/* EDIT 7 of 10: "Calling…" toasts now actually dial. On a site phone this opens
+/* EDIT 7 of 11: "Calling…" toasts now actually dial. On a site phone this opens
    the dialler; on a desktop it hands off to whatever handles tel: links, and
    if nothing does, the number is shown so it can be dialled by hand. */
 function callNumber(number, who) {
@@ -10180,7 +10180,7 @@ const fingerprint = (payload, prev) => {
 };
 const ledgerPayload = (e) => [e.at, e.who, e.kind, e.subject, e.detail].join("\u0001");
 /* rebuild the chain from the bottom up and report the first entry whose seal no longer fits */
-/* EDIT 4 of 10: the server seals the ledger with real SHA-256, computed where a
+/* EDIT 4 of 11: the server seals the ledger with real SHA-256, computed where a
    browser cannot reach it. The `fingerprint()` above is this file's old 64-bit
    FNV pair, so re-deriving the seals here disagreed with every entry and a
    perfectly valid ledger reported itself as tampered. A false alarm on a
@@ -10382,7 +10382,7 @@ function BulkImportView() {
   const good = checked.filter(c => !c.errs.length);
   const bad = checked.filter(c => c.errs.length);
 
-  /* EDIT 5 of 10: `await`. The server assigns the employee IDs, resolves the
+  /* EDIT 5 of 11: `await`. The server assigns the employee IDs, resolves the
      employer from the posting and normalises the dates, so the count shown is
      what actually LANDED — rows it held back are counted as skipped. */
   const commit = async () => {
@@ -13046,7 +13046,23 @@ export default function App() {
     <ThemeCtx.Provider value={{ themeKey, setThemeKey }}>
     <ProcCtx.Provider value={proc}>
       <div key={themeKey} style={{ background: C.paper, minHeight: "100vh", transition: "background .25s ease" }}>
-      {userKey ? <Shell userKey={userKey} onLogout={() => setUserKey(null)} /> : <Login onLogin={setUserKey} />}
+      {/* EDIT 11 of 11: `onLogin` used to be handed a desk key, because the button
+          passed one in ("admin"). It now passes what the person actually typed,
+          so this — the no-server build — has to resolve the Employee ID itself.
+          Without this the shell is handed "MB-ADM-0001" as a desk and renders
+          nothing at all.
+
+          There is no server here, so there is nothing to check a password
+          against, and this build does not pretend otherwise: see the banner in
+          ../standalone.tsx. The real build asks the server, and the server
+          decides which desk comes back. */}
+      {userKey ? <Shell userKey={userKey} onLogout={() => setUserKey(null)} /> : <Login onLogin={(id, pw) => {
+        const typed = String(id || "").trim().toLowerCase();
+        const desk = Object.keys(DESK_IDS).find(k => DESK_IDS[k].toLowerCase() === typed);
+        if (!desk) throw new Error("That is not one of the nine Employee IDs in this demo. Tap a desk below to fill one in.");
+        if (!String(pw || "").trim()) throw new Error("Enter any password. There is no server in this demo, so nothing checks it — the real build asks one.");
+        setUserKey(desk);
+      }} />}
       {userKey && <Assistant />}
       <style>{`@keyframes mbpulse{0%,100%{opacity:1}50%{opacity:.35}}@keyframes mbglow{0%,100%{box-shadow:0 0 0 0 rgba(199,161,98,.45),0 8px 22px rgba(199,161,98,.30)}50%{box-shadow:0 0 0 9px rgba(199,161,98,0),0 10px 30px rgba(199,161,98,.55)}}@keyframes mbpop{0%{transform:scale(.9);opacity:0}100%{transform:scale(1);opacity:1}}@keyframes mbrise{0%{transform:translateY(0) rotate(0);opacity:0}20%{opacity:1}100%{transform:translateY(-46px) rotate(20deg);opacity:0}}`}</style>
       <VendorAccountMount />

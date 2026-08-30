@@ -54,6 +54,18 @@ land on is decided by the database, not by the browser.
 | Maintenance        | `MB-MNT-0006` |
 | Gate / Security    | `MB-SEC-0007` |
 
+## Just want to look at it?
+
+```bash
+npm run demo
+```
+
+That writes `apps/web/dist-demo/demo.html` — one self-contained file, about
+1.5 MB. Open it in a browser with nothing else running. It is the real interface
+on seeded data with **no server behind it**, so nothing is saved past a refresh
+and none of the rules are enforced; the banner across the top says so. Useful
+for showing someone the screens before there is anywhere to deploy it.
+
 ## Checking it for yourself
 
 ```bash

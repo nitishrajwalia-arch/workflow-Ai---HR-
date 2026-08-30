@@ -232,6 +232,14 @@ at a time when it does — the per-screen endpoints all exist already.
 | `npm run db:migrate` | create/apply a migration                     |
 | `npm run db:seed`    | seed (idempotent — safe to re-run)           |
 | `npm run db:studio`  | browse the database in a GUI                 |
+| `npm run demo`       | one-file HTML demo of the UI, no server      |
+
+`npm run demo` builds the interface as **one self-contained HTML file** —
+`apps/web/dist-demo/demo.html`, about 1.5 MB, no server, no install. Open it
+from the filesystem or email it to someone who asks to see the thing. It carries
+a banner saying what it is: the screens on seeded data, where nothing is saved
+and none of the rules are enforced, because the rules live on the server this
+build does not have.
 
 Two checks run a real browser against a running app, because test output is not
 the same as looking at it. Both need `npm run dev` up first.

@@ -13,6 +13,8 @@ export default tseslint.config(
   {
     ignores: [
       '**/dist/**',
+      // The demo bundle: a megabyte of minified output, not source.
+      '**/dist-demo/**',
       '**/node_modules/**',
       '**/coverage/**',
       // 7,300 lines of working, reviewed code that predates this setup.

@@ -2,7 +2,7 @@
   "name": "marbella-hr",
   "version": "1.0.0",
   "private": true,
-  "description": "Marbella HR — production full-stack people system. React front end, Fastify + PostgreSQL back end.",
+  "description": "Marbella HR \u2014 production full-stack people system. React front end, Fastify + PostgreSQL back end.",
   "type": "module",
   "engines": {
     "node": ">=22.0.0",
@@ -17,6 +17,7 @@
     "dev:api": "npm run dev -w @marbella/api",
     "dev:web": "npm run dev -w @marbella/web",
     "build": "npm run build -w @marbella/shared && npm run build -w @marbella/api && npm run build -w @marbella/web",
+    "demo": "npm run build -w @marbella/shared && cd apps/web && npx vite build --config vite.config.demo.ts && cd ../.. && node scripts/build-demo.mjs",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
