@@ -58,6 +58,7 @@ const BASE_PAY: Record<string, number> = {
   Maintenance: 26000,
   'QA / QC': 32000,
   HR: 28000,
+  Marketing: 28000,
   Admin: 24000,
 };
 
@@ -69,6 +70,7 @@ const HEADS: Record<string, string> = {
   Maintenance: 'MB-MNT-0006',
   HR: 'MB-HR-0001',
   'Site Engineering': 'MB-SIT-0021',
+  Marketing: 'MB-MKT-0001',
   Admin: 'MB-ADM-0001',
 };
 
@@ -126,7 +128,7 @@ export function buildRoster(): RosterPerson[] {
 
         // Office staff mostly sit at head office; site staff never do.
         const office =
-          dept === 'HR' || dept === 'Purchase' || dept === 'Accounts'
+          dept === 'HR' || dept === 'Purchase' || dept === 'Accounts' || dept === 'Marketing'
             ? rnd() > 0.35
               ? 'hq'
               : pick(OFFICE_IDS)

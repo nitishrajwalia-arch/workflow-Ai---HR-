@@ -235,11 +235,26 @@ const DESK_IDS = {
   purchaseAsst: "MB-PUR-0018", storeAsst: "MB-STR-0009", security: "MB-SEC-0007",
 };
 
-const HEAD = { total: 65, admins: 4, depts: 8, open: 3 };
-const DEPTS = [
-  ["Admin", 4], ["Purchase", 9], ["Store", 12], ["Accounts", 7],
-  ["Security", 10], ["Site Engineering", 14], ["Maintenance", 5], ["QA / QC", 4],
-];
+/* Headcount and department count are computed from the live roster where they
+   are shown; only the two nobody can derive are kept here. */
+const HEAD = { admins: 4, open: 3 };
+/* Department -> employee-ID infix, the same map the server keeps in
+   packages/shared/src/constants.ts. It is declared here, above the list that
+   derives from it: a `const` read before its initialiser is a ReferenceError at
+   load, and this file had it 7,000 lines further down. */
+const DEPT_CODES = { Admin: "ADM", Purchase: "PUR", Store: "STR", Accounts: "ACC", Security: "SEC", "Site Engineering": "SIT", Maintenance: "MNT", "QA / QC": "QAC", HR: "HR", Marketing: "MKT", Labour: "LAB" };
+
+/* EDIT 12 of 13: this was `[["Admin", 4], ["Purchase", 9], …]` — eight
+   departments with headcounts frozen at the moment the file was written. Three
+   things were wrong with it. It was missing HR and Labour entirely, so you
+   could not address an announcement to either and neither appeared on the
+   headcount chart. The numbers never moved, however many people were enrolled.
+   And it was one of THREE department lists in this file, which is why adding
+   Marketing meant finding all three.
+
+   The names now come from DEPT_CODES, which is the list the server also uses,
+   and the counts are computed from the live roster where they are shown. */
+const DEPTS = Object.keys(DEPT_CODES);
 const EMPLOYEES = [ // representative roster (12 shown of 65)
   { id: "MB-ADM-0001", name: "Nitish Walia", dept: "Admin", quality: null },
   { id: "MB-ADM-0002", name: "V. Mehta", dept: "Admin", quality: null },
@@ -598,7 +613,7 @@ const roleChip = { cursor: "pointer", display: "inline-flex", alignItems: "cente
 const lbl = { font: `600 11px ${sans}`, letterSpacing: "0.1em", textTransform: "uppercase", color: C.inkSoft };
 
 /* ---- shared procurement state across the four pillars ---- */
-/* EDIT 1 of 11 (see legacy/PATCHES-PROCUREMENT.md): the context comes from
+/* EDIT 1 of 13 (see legacy/PATCHES-PROCUREMENT.md): the context comes from
    ../proc/context.js so ProcurementProvider can put LIVE SERVER DATA into the
    same object these screens read. Two createContext() calls make two unrelated
    contexts and useProc() silently returns null. */
@@ -748,7 +763,7 @@ export function Login({ onLogin }) {
       <input value={id} onChange={e => setId(e.target.value)} placeholder="MB-PUR-0012" style={inp} />
       <label style={lbl}>Password</label>
       <input value={pw} onChange={e => setPw(e.target.value)} type="password" placeholder="••••••••" style={inp} />
-      {/* EDIT 2 of 11 — THE IMPORTANT ONE.
+      {/* EDIT 2 of 13 — THE IMPORTANT ONE.
 
           This used to read `onClick={() => onLogin("admin")}`. It ignored the
           Employee ID and the password you just typed and signed EVERYONE in as
@@ -761,7 +776,7 @@ export function Login({ onLogin }) {
       <div style={{ marginTop: 18 }}>
         <div style={{ font: `600 10px ${sans}`, letterSpacing: "0.14em", textTransform: "uppercase", color: C.stone, marginBottom: 10 }}>Fill in a desk's Employee ID</div>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-          {/* EDIT 3 of 11: these chips used to sign you straight in as that role
+          {/* EDIT 3 of 13: these chips used to sign you straight in as that role
               with no password at all — nine doors with no locks. They now fill
               the Employee ID in for you; the password is still required. */}
           {Object.values(USERS).map(u => (
@@ -1495,7 +1510,7 @@ function AccessConsole({ onActAs }) {
         <div style={{ display: "flex", gap: 9, flexWrap: "wrap", alignItems: "center", paddingTop: 10, borderTop: `2px solid ${C.gold}` }}>
           <span style={{ font: `12px ${sans}`, color: C.inkSoft, flex: 1, minWidth: 150 }}>{u.name} can currently open <b style={{ color: C.ink }}>{count(pick)}</b> of {totalAreas} areas.</span>
           <GoldButton small onClick={() => (async () => {
-                    /* EDIT 8 of 11: this used to announce a change and forget it the
+                    /* EDIT 8 of 13: this used to announce a change and forget it the
                        moment the screen closed. Nobody's access ever moved. It writes
                        rows now, sealed against the administrator who made the change. */
                     const grid = grants[pick] || {};
@@ -2427,7 +2442,7 @@ function PurchaseView({ userKey = "purchase" }) {
   const [claim, setClaim] = useState(null);
   const [flagged, setFlagged] = useState(false);
   const stTone = (s) => s === "Approved" ? "green" : s === "Received" || s === "Paid" ? "gold" : s === "Partial" ? "stone" : "amber";
-  /* EDIT 9 of 11: was `[...pos, ...POS]`. `pos` is the live list from the
+  /* EDIT 9 of 13: was `[...pos, ...POS]`. `pos` is the live list from the
      server now, and the server was seeded from the POS constant below — so
      every purchase order rendered twice, with a duplicate React key. */
   const list = pos;
@@ -4416,9 +4431,19 @@ function PeopleView() {
   const [name, setName] = useState("");
   const [generated, setGenerated] = useState(null);
   const [investigate, setInvestigate] = useState(null);
-  const codes = { Purchase: "PUR", Store: "STR", Accounts: "ACC", Security: "SEC", Maintenance: "MNT", "Site Engineering": "SIT", "QA / QC": "QAC", Admin: "ADM" };
-  const genId = () => { if (!name.trim()) return; const n = 20 + Math.floor(Math.random() * 60); setGenerated(`MB-${codes[dept] || "GEN"}-${String(n).padStart(4, "0")}`); };
-  const maxDept = Math.max(...DEPTS.map(d => d[1]));
+  /* EDIT 13 of 13: the third department list. This one was a local `codes` map
+     of eight departments used to preview a new employee ID — so picking HR or
+     Labour previewed `MB-GEN-…`, which is not an ID this company issues. It
+     uses DEPT_CODES now, like everything else.
+
+     The bars below counted from a frozen array. They count live people. */
+  const { people = [] } = useProc();
+  const headcount = DEPTS
+    .map(d => [d, people.filter(p => p.dept === d && p.status !== "exited").length])
+    .filter(([, n]) => n > 0);
+  const total = headcount.reduce((a, [, n]) => a + n, 0);
+  const genId = () => { if (!name.trim()) return; const n = 20 + Math.floor(Math.random() * 60); setGenerated(`MB-${DEPT_CODES[dept] || "GEN"}-${String(n).padStart(4, "0")}`); };
+  const maxDept = Math.max(1, ...headcount.map(d => d[1]));
   return (
     <div>
       <Eyebrow>People</Eyebrow>
@@ -4426,7 +4451,7 @@ function PeopleView() {
 
       {/* headcount strip */}
       <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr 1fr" : "repeat(4,1fr)", gap: 14, marginBottom: 18 }}>
-        {[["Headcount", HEAD.total, C.gold], ["Admin accounts", HEAD.admins, C.ink], ["Departments", HEAD.depts, C.ink], ["Open roles", HEAD.open, C.ink]].map(([l, v, col], i) => (
+        {[["Headcount", total, C.gold], ["Admin accounts", HEAD.admins, C.ink], ["Departments", headcount.length, C.ink], ["Open roles", HEAD.open, C.ink]].map(([l, v, col], i) => (
           <Card key={i} pad={16}>
             <div style={{ font: `600 10px ${sans}`, letterSpacing: "0.1em", textTransform: "uppercase", color: C.stone }}>{l}</div>
             <div style={{ font: `400 30px ${serif}`, color: col, marginTop: 6 }}>{v}</div>
@@ -4457,7 +4482,7 @@ function PeopleView() {
           <input value={name} onChange={e => { setName(e.target.value); setGenerated(null); }} placeholder="e.g. Manav Gill" style={{ ...inp, margin: "6px 0 14px" }} />
           <label style={lbl}>Department</label>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 7, margin: "8px 0 16px" }}>
-            {Object.keys(codes).map(d => (<button key={d} onClick={() => { setDept(d); setGenerated(null); }} style={{ cursor: "pointer", border: `1px solid ${dept === d ? C.gold : C.line}`, background: dept === d ? C.gold : "#fff", color: dept === d ? "#fff" : C.inkSoft, font: `600 12px ${sans}`, padding: "7px 11px", borderRadius: 20 }}>{d}</button>))}
+            {DEPTS.map(d => (<button key={d} onClick={() => { setDept(d); setGenerated(null); }} style={{ cursor: "pointer", border: `1px solid ${dept === d ? C.gold : C.line}`, background: dept === d ? C.gold : "#fff", color: dept === d ? "#fff" : C.inkSoft, font: `600 12px ${sans}`, padding: "7px 11px", borderRadius: 20 }}>{d}</button>))}
           </div>
           {generated ? (
             <div style={{ background: `linear-gradient(150deg, #2A4C7C, ${C.inkDeep})`, borderRadius: 12, padding: 16, color: "#E8ECF4" }}>
@@ -4472,9 +4497,9 @@ function PeopleView() {
       {/* department breakdown */}
       <Card pad={22} style={{ marginTop: 18 }}>
         <Eyebrow>By department</Eyebrow>
-        <div style={{ font: `400 16px ${serif}`, margin: "6px 0 14px" }}>65 people across 8 teams</div>
+        <div style={{ font: `400 16px ${serif}`, margin: "6px 0 14px" }}>{total} {total === 1 ? "person" : "people"} across {headcount.length} {headcount.length === 1 ? "team" : "teams"}</div>
         <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr" : "1fr 1fr", gap: mob ? 10 : "8px 40px" }}>
-          {DEPTS.map(([d, n]) => (
+          {headcount.map(([d, n]) => (
             <div key={d} style={{ display: "flex", alignItems: "center", gap: 12 }}>
               <div style={{ width: 120, font: `600 13px ${sans}`, color: C.inkSoft, flexShrink: 0 }}>{d}</div>
               <div style={{ flex: 1, height: 8, background: C.lineSoft, borderRadius: 4, overflow: "hidden" }}><div style={{ width: `${(n / maxDept) * 100}%`, height: "100%", background: d === "Admin" ? C.gold : C.amber }} /></div>
@@ -6670,7 +6695,7 @@ function ReceiveShipment({ onClose }) {
   const [rows, setRows] = useState([]);
   const [where, setWhere] = useState("Grand · Yard");
   const cell = { ...inp, margin: 0, padding: "10px 12px", fontSize: 14, boxSizing: "border-box" };
-  /* EDIT 10 of 11: the second half used the POS constant, so scanning found a
+  /* EDIT 10 of 13: the second half used the POS constant, so scanning found a
      stale copy of a purchase order rather than the live one. Both halves come
      from the server now. */
   const pool = [...gatepasses.map(g => ({ po: g.po, vendor: g.vendor, items: g.items, total: g.total, src: "gate pass" })),
@@ -7353,7 +7378,6 @@ const ORG_SEED = {
   "MB-LAB-0131": { boss: "MB-SIT-0052",  office: "curo"  },
   "MB-SIT-0044": { boss: "MB-SIT-0021",  office: "twin"  },
 };
-const DEPT_CODES = { Admin: "ADM", Purchase: "PUR", Store: "STR", Accounts: "ACC", Security: "SEC", "Site Engineering": "SIT", Maintenance: "MNT", "QA / QC": "QAC", HR: "HR", Labour: "LAB" };
 const P_TYPES = ["Staff", "Site", "Labour", "Security"];
 const typeTone = (t) => t === "Labour" ? "amber" : t === "Security" ? "stone" : t === "Site" ? "gold" : "green";
 
@@ -7396,7 +7420,7 @@ const HRANN_SEED = [
 ];
 
 const fmtToday = () => new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
-/* EDIT 6 of 11: eight buttons said "Sending to printer…" and did nothing at all
+/* EDIT 6 of 13: eight buttons said "Sending to printer…" and did nothing at all
    — no dialog, no document, nothing reaching a printer. This is what a browser
    actually has. If the print dialog is blocked (some kiosk browsers do), it
    says so rather than pretending. */
@@ -7408,7 +7432,7 @@ function printThis() {
   }
 }
 
-/* EDIT 7 of 11: "Calling…" toasts now actually dial. On a site phone this opens
+/* EDIT 7 of 13: "Calling…" toasts now actually dial. On a site phone this opens
    the dialler; on a desktop it hands off to whatever handles tel: links, and
    if nothing does, the number is shown so it can be dialled by hand. */
 function callNumber(number, who) {
@@ -10180,7 +10204,7 @@ const fingerprint = (payload, prev) => {
 };
 const ledgerPayload = (e) => [e.at, e.who, e.kind, e.subject, e.detail].join("\u0001");
 /* rebuild the chain from the bottom up and report the first entry whose seal no longer fits */
-/* EDIT 4 of 11: the server seals the ledger with real SHA-256, computed where a
+/* EDIT 4 of 13: the server seals the ledger with real SHA-256, computed where a
    browser cannot reach it. The `fingerprint()` above is this file's old 64-bit
    FNV pair, so re-deriving the seals here disagreed with every entry and a
    perfectly valid ledger reported itself as tampered. A false alarm on a
@@ -10382,7 +10406,7 @@ function BulkImportView() {
   const good = checked.filter(c => !c.errs.length);
   const bad = checked.filter(c => c.errs.length);
 
-  /* EDIT 5 of 11: `await`. The server assigns the employee IDs, resolves the
+  /* EDIT 5 of 13: `await`. The server assigns the employee IDs, resolves the
      employer from the posting and normalises the dates, so the count shown is
      what actually LANDED — rows it held back are counted as skipped. */
   const commit = async () => {
@@ -13046,7 +13070,7 @@ export default function App() {
     <ThemeCtx.Provider value={{ themeKey, setThemeKey }}>
     <ProcCtx.Provider value={proc}>
       <div key={themeKey} style={{ background: C.paper, minHeight: "100vh", transition: "background .25s ease" }}>
-      {/* EDIT 11 of 11: `onLogin` used to be handed a desk key, because the button
+      {/* EDIT 11 of 13: `onLogin` used to be handed a desk key, because the button
           passed one in ("admin"). It now passes what the person actually typed,
           so this — the no-server build — has to resolve the Employee ID itself.
           Without this the shell is handed "MB-ADM-0001" as a desk and renders

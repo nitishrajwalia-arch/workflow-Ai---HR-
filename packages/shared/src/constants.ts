@@ -17,6 +17,7 @@ export const DEPT_CODES = {
   Maintenance: 'MNT',
   'QA / QC': 'QAC',
   HR: 'HR',
+  Marketing: 'MKT',
   Labour: 'LAB',
 } as const;
 
@@ -180,6 +181,9 @@ export const ZONES_BY_DEPT: Record<Department, string[]> = {
   Security: ['Main gate', 'Site office', 'Store & yard', 'Basement plant'],
   'Site Engineering': ['Main gate', 'Site office', 'Store & yard'],
   'QA / QC': ['Main gate', 'Site office', 'Store & yard'],
+  // Marketing meets buyers at the sample flat and walks them round the site.
+  // They have no business in the store, the plant room or accounts.
+  Marketing: ['Main gate', 'Site office'],
   Labour: ['Main gate'],
 };
 

@@ -33,8 +33,19 @@ describe('buildRoster is deterministic', () => {
     );
   });
 
-  it('produces 181 people, giving 200 with the named leadership', () => {
-    expect(buildRoster()).toHaveLength(181);
+  it('produces 189 people, giving 209 with the named leadership', () => {
+    // 181 before Marketing was added; its eight generated staff sit under the
+    // named head, MB-MKT-0001. A number in a test is a tripwire, not decoration
+    // — this is the assertion that told us the headcount had moved.
+    expect(buildRoster()).toHaveLength(189);
+  });
+
+  it('gives every generated person a real department code, never MB-GEN-', () => {
+    // `GEN` is the fallback when DEPT_CODES does not know the department. It is
+    // not an ID this company issues, and it appeared for a whole department the
+    // first time Marketing was seeded against a stale build of the shared
+    // package. Nothing failed; the people simply had the wrong IDs.
+    expect(buildRoster().filter((p) => p.id.startsWith('MB-GEN-'))).toEqual([]);
   });
 
   it('never gives anyone themselves as a manager', () => {

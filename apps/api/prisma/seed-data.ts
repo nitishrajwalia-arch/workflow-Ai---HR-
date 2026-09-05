@@ -213,6 +213,12 @@ export const ROLES: Record<string, Array<[string, number]>> = {
     ['HR Assistant', 2],
     ['Payroll Executive', 1],
   ],
+  Marketing: [
+    ['Marketing Executive', 3],
+    ['Digital Marketing Executive', 2],
+    ['CRM Executive', 2],
+    ['Graphic Designer', 1],
+  ],
   Admin: [
     ['Club House Manager', 2],
     ['Fitness Trainer', 3],
@@ -227,6 +233,7 @@ export const ROLES: Record<string, Array<[string, number]>> = {
 export const ORG_SEED: any = {
   'MB-ADM-0001': { boss: null, office: 'hq' },
   'MB-HR-0001': { boss: 'MB-ADM-0001', office: 'hq' },
+  'MB-MKT-0001': { boss: 'MB-ADM-0001', office: 'hq' },
   'MB-PUR-0012': { boss: 'MB-ADM-0001', office: 'hq' },
   'MB-STR-0004': { boss: 'MB-ADM-0001', office: 'grand' },
   'MB-ACC-0002': { boss: 'MB-ADM-0001', office: 'hq' },
@@ -269,6 +276,20 @@ export const EMPLOYER_SEED: any = {
 };
 
 export const PEOPLE_SEED: any = [
+  {
+    id: 'MB-MKT-0001',
+    name: 'Meera Anand',
+    designation: 'Marketing Head',
+    dept: 'Marketing',
+    type: 'Staff',
+    phone: '+91 98140 00031',
+    email: 'meera@marbellagroup.in',
+    joined: '05 Apr 2023',
+    status: 'active',
+    perf: 88,
+    growth: 'Runs the sample flat and the channel partners.',
+    notes: [],
+  },
   {
     id: 'MB-ADM-0001',
     name: 'Nitish Walia',
@@ -693,6 +714,15 @@ export const CARD_LOG_SEED: any = [
 ];
 
 export const DEPT_RULES_SEED: any = {
+  Marketing: {
+    in: '10:00',
+    out: '19:00',
+    hours: 8,
+    days: 'Wed–Mon',
+    grace: 15,
+    setBy: 'Meera Anand',
+    note: 'Site visits are Saturday and Sunday. Tuesday is the weekly off.',
+  },
   Purchase: {
     in: '09:30',
     out: '18:30',
