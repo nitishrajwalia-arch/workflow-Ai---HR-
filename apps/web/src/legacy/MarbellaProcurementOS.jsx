@@ -229,7 +229,7 @@ const USERS = {
 /* Which Employee ID each desk signs in with. The chips under the sign-in form
    fill this in for you; the PASSWORD is still required, and the server decides
    which desk the account actually holds. */
-/* EDIT 21 of 21: `USERS[userKey]` is looked up in a dozen places and
+/* EDIT 1 of 20: `USERS[userKey]` is looked up in a dozen places and
    dereferenced immediately. USERS holds nine desks; the company has twelve
    departments and only one of them has an account so far. Any account whose
    desk is not in that map — which is now most of them — took the whole
@@ -252,7 +252,7 @@ const HEAD = { admins: 4, open: 3 };
    load, and this file had it 7,000 lines further down. */
 const DEPT_CODES = { Admin: "ADM", Purchase: "PUR", Store: "STR", Accounts: "ACC", Security: "SEC", "Site Engineering": "SIT", Maintenance: "MNT", "QA / QC": "QAC", HR: "HR", Marketing: "MKT", Labour: "LAB" };
 
-/* EDIT 12 of 13: this was `[["Admin", 4], ["Purchase", 9], …]` — eight
+/* EDIT 2 of 20: this was `[["Admin", 4], ["Purchase", 9], …]` — eight
    departments with headcounts frozen at the moment the file was written. Three
    things were wrong with it. It was missing HR and Labour entirely, so you
    could not address an announcement to either and neither appeared on the
@@ -621,7 +621,7 @@ const roleChip = { cursor: "pointer", display: "inline-flex", alignItems: "cente
 const lbl = { font: `600 11px ${sans}`, letterSpacing: "0.1em", textTransform: "uppercase", color: C.inkSoft };
 
 /* ---- shared procurement state across the four pillars ---- */
-/* EDIT 1 of 13 (see legacy/PATCHES-PROCUREMENT.md): the context comes from
+/* EDIT 3 of 20 (see legacy/PATCHES-PROCUREMENT.md): the context comes from
    ../proc/context.js so ProcurementProvider can put LIVE SERVER DATA into the
    same object these screens read. Two createContext() calls make two unrelated
    contexts and useProc() silently returns null. */
@@ -771,7 +771,7 @@ export function Login({ onLogin }) {
       <input value={id} onChange={e => setId(e.target.value)} placeholder="MB-PUR-0012" style={inp} />
       <label style={lbl}>Password</label>
       <input value={pw} onChange={e => setPw(e.target.value)} type="password" placeholder="••••••••" style={inp} />
-      {/* EDIT 2 of 13 — THE IMPORTANT ONE.
+      {/* EDIT 4 of 20 — THE IMPORTANT ONE.
 
           This used to read `onClick={() => onLogin("admin")}`. It ignored the
           Employee ID and the password you just typed and signed EVERYONE in as
@@ -782,7 +782,7 @@ export function Login({ onLogin }) {
       <GoldButton onClick={submit}>{busy ? "Signing in…" : "Sign in"}</GoldButton>
       <div style={{ height: 1, background: C.line, margin: "18px 0 0" }} />
       <div style={{ marginTop: 18 }}>
-        {/* EDIT 15 of 15: nine chips filled in nine Employee IDs — MB-ADM-0001,
+        {/* EDIT 5 of 20: nine chips filled in nine Employee IDs — MB-ADM-0001,
             MB-PUR-0012 and so on. Every one of them was invented for the
             prototype, and not one of them exists now that the company's real
             roster is loaded. A chip that fills in an ID the server will reject
@@ -1387,7 +1387,7 @@ function CastPanel({ tab, onClose }) {
           <div style={{ font: `12px ${sans}`, color: C.stone, marginBottom: 12 }}>Financial figures are about to appear on <b style={{ color: C.ink }}>{pick.name}</b> in {pick.room}. The approval and the time are logged.</div>
           <label style={{ ...lbl, fontSize: 9 }}>Ask</label>
           <select value={approver} onChange={e => setApprover(e.target.value)} style={{ ...sel, margin: "5px 0 12px" }}>
-            {/* EDIT 17 of 18: four hardcoded approvers, none of whom work here.
+            {/* EDIT 6 of 20: four hardcoded approvers, none of whom work here.
                 The people who can approve are the department heads the server
                 knows about — the ones nobody reports to. */}
             {approvers.map(x => <option key={x}>{x}</option>)}
@@ -1525,7 +1525,7 @@ function AccessConsole({ onActAs }) {
         <div style={{ display: "flex", gap: 9, flexWrap: "wrap", alignItems: "center", paddingTop: 10, borderTop: `2px solid ${C.gold}` }}>
           <span style={{ font: `12px ${sans}`, color: C.inkSoft, flex: 1, minWidth: 150 }}>{u.name} can currently open <b style={{ color: C.ink }}>{count(pick)}</b> of {totalAreas} areas.</span>
           <GoldButton small onClick={() => (async () => {
-                    /* EDIT 8 of 13: this used to announce a change and forget it the
+                    /* EDIT 7 of 20: this used to announce a change and forget it the
                        moment the screen closed. Nobody's access ever moved. It writes
                        rows now, sealed against the administrator who made the change. */
                     const grid = grants[pick] || {};
@@ -1605,7 +1605,7 @@ export function Shell({ userKey: realKey, onLogout }) {
   const [actAs, setActAs] = useState(null);
   const [returnTab, setReturnTab] = useState(null);
   const userKey = actAs || realKey;
-  /* EDIT 14 of 15: `USERS[userKey]` is a map of nine invented desks that was
+  /* EDIT 8 of 20: `USERS[userKey]` is a map of nine invented desks that was
      written before this app had a database. It still drives the navigation,
      but it must not drive WHO YOU ARE: the name and designation in the corner
      were whoever the map said, not whoever signed in. They come from the
@@ -2465,7 +2465,7 @@ function PurchaseView({ userKey = "purchase" }) {
   const [claim, setClaim] = useState(null);
   const [flagged, setFlagged] = useState(false);
   const stTone = (s) => s === "Approved" ? "green" : s === "Received" || s === "Paid" ? "gold" : s === "Partial" ? "stone" : "amber";
-  /* EDIT 9 of 13: was `[...pos, ...POS]`. `pos` is the live list from the
+  /* EDIT 9 of 20: was `[...pos, ...POS]`. `pos` is the live list from the
      server now, and the server was seeded from the POS constant below — so
      every purchase order rendered twice, with a duplicate React key. */
   const list = pos;
@@ -4454,7 +4454,7 @@ function PeopleView() {
   const [name, setName] = useState("");
   const [generated, setGenerated] = useState(null);
   const [investigate, setInvestigate] = useState(null);
-  /* EDIT 13 of 13: the third department list. This one was a local `codes` map
+  /* EDIT 10 of 20: the third department list. This one was a local `codes` map
      of eight departments used to preview a new employee ID — so picking HR or
      Labour previewed `MB-GEN-…`, which is not an ID this company issues. It
      uses DEPT_CODES now, like everything else.
@@ -4464,7 +4464,7 @@ function PeopleView() {
   const headcount = DEPTS
     .map(d => [d, people.filter(p => p.dept === d && p.status !== "exited").length])
     .filter(([, n]) => n > 0);
-  /* EDIT 16 of 18: was `EMPLOYEES`, twelve invented people frozen in this file
+  /* EDIT 11 of 20: was `EMPLOYEES`, twelve invented people frozen in this file
      — the roster on this screen never matched the company. It is the live
      roster now. `quality` was a made-up cleanliness score; a real one is
      whether the record is actually complete, which the server can answer. */
@@ -6104,7 +6104,7 @@ function DirectoryView({ userKey }) {
   const [act, setAct] = useState(null);
   const mob = useIsMobile();
   const tier = desk(userKey).tier || 3;
-  /* EDIT 19 of 19: the directory listed five colleagues and three vendors that
+  /* EDIT 12 of 20: the directory listed five colleagues and three vendors that
      were written into this file. Nobody could ring any of them. It is the live
      roster now, grouped by department, with the vendor group dropped until
      there are real vendors to show — an empty group is honest, an invented one
@@ -6144,7 +6144,7 @@ function DirectoryView({ userKey }) {
           <Card pad={20}>
             <Eyebrow>Announcement</Eyebrow>
             <div style={{ font: `12px ${sans}`, color: C.stone, margin: "6px 0 12px" }}>Send to a department or everyone.</div>
-            {/* EDIT 18 of 18: the filter listed six departments that were the
+            {/* EDIT 13 of 20: the filter listed six departments that were the
                 prototype's, not the company's. It reads the real list now. */}
             <select value={dept} onChange={e => setDept(e.target.value)} style={{ ...sel, margin: "0 0 10px" }}>{["All departments", ...DEPTS].map(d => <option key={d}>{d}</option>)}</select>
             <input value={msg} onChange={e => setMsg(e.target.value)} placeholder="Message…" style={{ ...inp, margin: "0 0 12px" }} />
@@ -6742,7 +6742,7 @@ function ReceiveShipment({ onClose }) {
   const [rows, setRows] = useState([]);
   const [where, setWhere] = useState("Grand · Yard");
   const cell = { ...inp, margin: 0, padding: "10px 12px", fontSize: 14, boxSizing: "border-box" };
-  /* EDIT 10 of 13: the second half used the POS constant, so scanning found a
+  /* EDIT 14 of 20: the second half used the POS constant, so scanning found a
      stale copy of a purchase order rather than the live one. Both halves come
      from the server now. */
   const pool = [...gatepasses.map(g => ({ po: g.po, vendor: g.vendor, items: g.items, total: g.total, src: "gate pass" })),
@@ -7467,7 +7467,7 @@ const HRANN_SEED = [
 ];
 
 const fmtToday = () => new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
-/* EDIT 6 of 13: eight buttons said "Sending to printer…" and did nothing at all
+/* EDIT 15 of 20: eight buttons said "Sending to printer…" and did nothing at all
    — no dialog, no document, nothing reaching a printer. This is what a browser
    actually has. If the print dialog is blocked (some kiosk browsers do), it
    says so rather than pretending. */
@@ -7479,7 +7479,7 @@ function printThis() {
   }
 }
 
-/* EDIT 7 of 13: "Calling…" toasts now actually dial. On a site phone this opens
+/* EDIT 16 of 20: "Calling…" toasts now actually dial. On a site phone this opens
    the dialler; on a desktop it hands off to whatever handles tel: links, and
    if nothing does, the number is shown so it can be dialled by hand. */
 function callNumber(number, who) {
@@ -8331,7 +8331,7 @@ function LiveStrength() {
   const byDept = {};
   onNow.forEach(p => { byDept[p.dept] = (byDept[p.dept] || 0) + 1; });
   const pct = active.length ? Math.round((onNow.length / active.length) * 100) : 0;
-  /* EDIT 20 of 20: this list opened with an invented shift change, made by an
+  /* EDIT 17 of 20: this list opened with an invented shift change, made by an
      invented person, for an invented guard. It starts empty — a shift change
      only exists once somebody makes one. */
   const [changes, setChanges] = useState([
@@ -10254,7 +10254,7 @@ const fingerprint = (payload, prev) => {
 };
 const ledgerPayload = (e) => [e.at, e.who, e.kind, e.subject, e.detail].join("\u0001");
 /* rebuild the chain from the bottom up and report the first entry whose seal no longer fits */
-/* EDIT 4 of 13: the server seals the ledger with real SHA-256, computed where a
+/* EDIT 18 of 20: the server seals the ledger with real SHA-256, computed where a
    browser cannot reach it. The `fingerprint()` above is this file's old 64-bit
    FNV pair, so re-deriving the seals here disagreed with every entry and a
    perfectly valid ledger reported itself as tampered. A false alarm on a
@@ -10456,7 +10456,7 @@ function BulkImportView() {
   const good = checked.filter(c => !c.errs.length);
   const bad = checked.filter(c => c.errs.length);
 
-  /* EDIT 5 of 13: `await`. The server assigns the employee IDs, resolves the
+  /* EDIT 19 of 20: `await`. The server assigns the employee IDs, resolves the
      employer from the posting and normalises the dates, so the count shown is
      what actually LANDED — rows it held back are counted as skipped. */
   const commit = async () => {
@@ -13120,7 +13120,7 @@ export default function App() {
     <ThemeCtx.Provider value={{ themeKey, setThemeKey }}>
     <ProcCtx.Provider value={proc}>
       <div key={themeKey} style={{ background: C.paper, minHeight: "100vh", transition: "background .25s ease" }}>
-      {/* EDIT 11 of 13: `onLogin` used to be handed a desk key, because the button
+      {/* EDIT 20 of 20: `onLogin` used to be handed a desk key, because the button
           passed one in ("admin"). It now passes what the person actually typed,
           so this — the no-server build — has to resolve the Employee ID itself.
           Without this the shell is handed "MB-ADM-0001" as a desk and renders
