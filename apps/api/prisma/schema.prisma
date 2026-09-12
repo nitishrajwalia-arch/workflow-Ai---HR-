@@ -211,6 +211,7 @@ model Person {
 
   notes    PersonNote[]
   contact  Contact?
+  kyc      Kyc?
   salary   Salary?
   devices  Device[]
   cards    Card[]
@@ -240,6 +241,66 @@ model PersonNote {
 
 /// PERSONAL phone and email only. The company address is closed the day they
 /// leave, which makes it useless for exactly the letters we need to send.
+/// Aadhaar, PAN and home address.
+///
+/// A separate table, not columns on Person, for the same reason Salary is one:
+/// it can be withheld from a payload in its entirety rather than filtered field
+/// by field. Aadhaar in particular is regulated under the Aadhaar Act and the
+/// DPDP Act 2023 — it is stored because an employer needs it for PF, ESI and
+/// TDS, and it is read by HR and above only.
+model Kyc {
+  personId  String   @id
+  person    Person   @relation(fields: [personId], references: [id], onDelete: Cascade)
+  aadhaar   String   @default("")
+  pan       String   @default("")
+  address   String   @default("")
+  updatedAt DateTime @updatedAt
+
+  @@map("kyc")
+}
+
+/// A sold or allotted flat, and the people whose names are on it.
+///
+/// Residents are not employees and share nothing with them but a phone number
+/// field, so they live in their own table. A unit can carry up to four
+/// applicants; the first is the one correspondence goes to.
+model Unit {
+  /// "A-101". The unit number is how everyone refers to it, so it is the key.
+  id      String  @id
+  tower   String
+  /// Which project this tower belongs to. Null until someone confirms it —
+  /// the source data names the tower but never the project.
+  firmId  String?
+  firm    Firm?   @relation(fields: [firmId], references: [id], onDelete: SetNull)
+  address String  @default("")
+  phone1  String  @default("")
+  phone2  String  @default("")
+  email1  String  @default("")
+  email2  String  @default("")
+
+  applicants Applicant[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tower])
+  @@map("unit")
+}
+
+model Applicant {
+  id     String @id @default(cuid())
+  unitId String
+  unit   Unit   @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  /// 1 is the first applicant, who correspondence is addressed to.
+  seq    Int
+  name   String
+  pan    String @default("")
+
+  @@unique([unitId, seq])
+  @@index([unitId])
+  @@map("applicant")
+}
+
 model Contact {
   personId  String   @id
   person    Person   @relation(fields: [personId], references: [id], onDelete: Cascade)
@@ -505,6 +566,8 @@ model Firm {
   updatedAt DateTime @updatedAt
 
   @@map("firm")
+
+  units Unit[]
 }
 
 enum VendorStatus {

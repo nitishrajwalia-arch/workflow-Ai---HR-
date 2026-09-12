@@ -22,6 +22,17 @@ let token: string;
 beforeAll(async () => {
   ({ app, db } = await makeApp());
   ({ token } = await signIn(app));
+  // The ledger starts empty now that no sample data is loaded, so these tests
+  // write the entry they then try to tamper with. Attacking a real appended
+  // entry is a better test than attacking one a seed happened to leave behind.
+  if ((await db.ledgerEntry.count()) === 0) {
+    await append(db, {
+      kind: 'policy',
+      subject: 'test',
+      detail: 'Opening entry written by the test suite.',
+      who: 'Test Suite',
+    });
+  }
 });
 
 afterAll(async () => {

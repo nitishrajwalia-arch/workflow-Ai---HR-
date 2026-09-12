@@ -34,8 +34,8 @@ const run = (rows: unknown[], commit = false) =>
 
 const good = (n: number) => ({
   name: `Import Test ${n}`,
-  desig: 'Store Assistant',
-  dept: 'Store',
+  desig: 'Civil Engineer',
+  dept: 'Project',
   office: 'Grand',
   joined: '05/06/2024',
   phone: '9814012345',
@@ -78,7 +78,7 @@ describe('validating before committing', () => {
     const res = await run([{ ...good(20), office: 'Mumbai' }]);
     const reason = res.json<{ rejected: Array<{ reason: string }> }>().rejected[0]?.reason ?? '';
     expect(reason).toMatch(/not a place we have/);
-    expect(reason).toMatch(/Head Office/);
+    expect(reason).toMatch(/Grand/);
   });
 
   it('rejects an employee ID that already belongs to someone', async () => {
@@ -106,7 +106,7 @@ describe('committing', () => {
     expect(await db.person.count()).toBe(before + 2);
 
     for (const a of body.accepted) {
-      expect(a.id).toMatch(/^MB-STR-\d{4}$/);
+      expect(a.id).toMatch(/^MB-PRJ-\d{4}$/);
       const row = await db.person.findUniqueOrThrow({ where: { id: a.id } });
       expect(row.imported).toBe(true);
       // Date normalised on the way in, and its sortable twin written with it.

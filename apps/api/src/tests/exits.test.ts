@@ -15,7 +15,7 @@ let db: PrismaClient;
 let token: string;
 let exitId: string;
 
-const SUBJECT = 'MB-STR-0009';
+const SUBJECT = 'MB-ADM-0004';
 
 beforeAll(async () => {
   ({ app, db } = await makeApp());
@@ -109,10 +109,10 @@ describe('the stage gate', () => {
   });
 
   it('cannot be advanced twice from the same stage by two people at once', async () => {
-    await db.exitStep.deleteMany({ where: { exit: { personId: 'MB-SEC-0012' } } });
-    await db.exit.deleteMany({ where: { personId: 'MB-SEC-0012' } });
+    await db.exitStep.deleteMany({ where: { exit: { personId: 'MB-ADM-0002' } } });
+    await db.exit.deleteMany({ where: { personId: 'MB-ADM-0002' } });
     await db.person.update({
-      where: { id: 'MB-SEC-0012' },
+      where: { id: 'MB-ADM-0002' },
       data: { status: 'active', exitedOn: null },
     });
 
@@ -120,7 +120,7 @@ describe('the stage gate', () => {
       method: 'POST',
       url: '/api/v1/exits',
       headers: auth(token),
-      payload: { pid: 'MB-SEC-0012', reason: 'Contract ended' },
+      payload: { pid: 'MB-ADM-0002', reason: 'Contract ended' },
     });
     const id = opened.json<{ id: string }>().id;
 

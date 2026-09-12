@@ -15,16 +15,18 @@ let app: App;
 let db: PrismaClient;
 let token: string;
 
-const SUBJECT = 'MB-STR-0014'; // Naveen Kumar, active, no card history in the seed.
+const SUBJECT = 'MB-ADM-0001';
+const LEAVER = 'MB-PRJ-0002'; // A real, active person. The suite cares that they exist and
+// have no card history, not who they are.
 
 beforeAll(async () => {
   ({ app, db } = await makeApp());
   ({ token } = await signIn(app));
   // Start from a known card history for the people this file touches, so the
   // version numbers asserted below mean what they say however often it runs.
-  await db.card.deleteMany({ where: { personId: { in: [SUBJECT, 'MB-SEC-0012'] } } });
+  await db.card.deleteMany({ where: { personId: { in: [SUBJECT, 'MB-ADM-0002'] } } });
   await db.person.updateMany({
-    where: { id: { in: [SUBJECT, 'MB-SEC-0012'] } },
+    where: { id: { in: [SUBJECT, 'MB-ADM-0002'] } },
     data: { status: 'active', exitedOn: null },
   });
 });
@@ -57,7 +59,7 @@ describe('the fast path', () => {
     const res = await issue({
       pid: SUBJECT,
       reason: 'damaged',
-      recv: 'Simran Kaur',
+      recv: 'Pooja Dahiya',
       killed: false,
     });
     expect(res.statusCode).toBe(422);
@@ -77,7 +79,7 @@ describe('the fast path', () => {
     const res = await issue({
       pid: SUBJECT,
       reason: 'damaged',
-      recv: 'Simran Kaur',
+      recv: 'Pooja Dahiya',
       killed: true,
       note: 'Edge delaminated. Destroyed in front of the holder.',
     });
@@ -146,7 +148,12 @@ describe('the path for a card nobody can produce', () => {
   });
 
   it('flags a pattern on a third card rather than refusing it', async () => {
-    const res = await issue({ pid: SUBJECT, reason: 'damaged', recv: 'Simran Kaur', killed: true });
+    const res = await issue({
+      pid: SUBJECT,
+      reason: 'damaged',
+      recv: 'Pooja Dahiya',
+      killed: true,
+    });
     expect(res.statusCode).toBe(201);
     expect(res.json<{ pattern: string | null }>().pattern).toMatch(/worth a conversation/i);
   });
@@ -154,7 +161,14 @@ describe('the path for a card nobody can produce', () => {
 
 describe('things a card must never do', () => {
   it('will not issue a card to someone who has left', async () => {
-    const res = await issue({ pid: 'MB-PUR-0009', reason: 'first' });
+    // Nobody in the company's real roster has left, so this makes a leaver
+    // rather than depending on one existing. It is put back afterwards.
+    await db.person.update({
+      where: { id: LEAVER },
+      data: { status: 'exited', exitedOn: '01 Sep 2026' },
+    });
+    const res = await issue({ pid: LEAVER, reason: 'first' });
+    await db.person.update({ where: { id: LEAVER }, data: { status: 'active', exitedOn: null } });
     expect(res.statusCode).toBe(422);
     expect(res.json<{ error: { message: string } }>().error.message).toMatch(/has left the group/i);
   });
@@ -166,7 +180,7 @@ describe('things a card must never do', () => {
   });
 
   it('assigns one version per issue even when two requests race', async () => {
-    const target = 'MB-SEC-0012';
+    const target = 'MB-ADM-0002';
     const [a, b, c] = await Promise.allSettled([
       issue({ pid: target, reason: 'first' }),
       issue({ pid: target, reason: 'first' }),
@@ -187,7 +201,7 @@ describe('things a card must never do', () => {
 
   it('seals every issue into the ledger', async () => {
     const before = await db.ledgerEntry.count({ where: { kind: 'card', subject: SUBJECT } });
-    await issue({ pid: SUBJECT, reason: 'faded', recv: 'Simran Kaur', killed: true });
+    await issue({ pid: SUBJECT, reason: 'faded', recv: 'Pooja Dahiya', killed: true });
     const after = await db.ledgerEntry.count({ where: { kind: 'card', subject: SUBJECT } });
     expect(after).toBe(before + 1);
   });

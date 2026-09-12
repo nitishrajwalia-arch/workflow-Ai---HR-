@@ -774,17 +774,14 @@ export function Login({ onLogin }) {
       <GoldButton onClick={submit}>{busy ? "Signing in…" : "Sign in"}</GoldButton>
       <div style={{ height: 1, background: C.line, margin: "18px 0 0" }} />
       <div style={{ marginTop: 18 }}>
-        <div style={{ font: `600 10px ${sans}`, letterSpacing: "0.14em", textTransform: "uppercase", color: C.stone, marginBottom: 10 }}>Fill in a desk's Employee ID</div>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-          {/* EDIT 3 of 13: these chips used to sign you straight in as that role
-              with no password at all — nine doors with no locks. They now fill
-              the Employee ID in for you; the password is still required. */}
-          {Object.values(USERS).map(u => (
-            <button key={u.key} onClick={() => { setId(DESK_IDS[u.key] || ""); setErr(null); }} style={roleChip}>
-              {u.key === "admin" && <Crown size={13} color={C.gold} />}
-              {u.role.split(" · ")[0].replace(" Manager", "").replace(" Head", "")}
-            </button>
-          ))}
+        {/* EDIT 15 of 15: nine chips filled in nine Employee IDs — MB-ADM-0001,
+            MB-PUR-0012 and so on. Every one of them was invented for the
+            prototype, and not one of them exists now that the company's real
+            roster is loaded. A chip that fills in an ID the server will reject
+            is worse than no chip: it looks like the app is broken rather than
+            like the ID is wrong. Sign in with your own Employee ID. */}
+        <div style={{ font: `12px ${sans}`, color: C.stone, lineHeight: 1.5 }}>
+          Use the Employee ID on your card. If you do not have one yet, HR will issue it.
         </div>
       </div>
     </div>
@@ -1331,7 +1328,14 @@ function CastPanel({ tab, onClose }) {
   const sensitive = MONEY.includes(tab);
   const [pick, setPick] = useState(null);
   const [stage, setStage] = useState("pick");
-  const [approver, setApprover] = useState("P. Nair · Accounts Head");
+  const { people: allPeople = [] } = useProc();
+  // Department heads: the people nobody in their department reports above.
+  const approvers = allPeople
+    .filter(p => p.status !== "exited" && !p.reportsTo && p.designation)
+    .map(p => `${p.name} · ${p.designation}`)
+    .sort();
+  const [approver, setApprover] = useState("");
+  useEffect(() => { if (!approver && approvers.length) setApprover(approvers[0]); }, [approvers.length]);
   useEffect(() => {
     if (stage !== "waiting") return;
     const t = setTimeout(() => setStage("approved"), 2600);
@@ -1375,7 +1379,10 @@ function CastPanel({ tab, onClose }) {
           <div style={{ font: `12px ${sans}`, color: C.stone, marginBottom: 12 }}>Financial figures are about to appear on <b style={{ color: C.ink }}>{pick.name}</b> in {pick.room}. The approval and the time are logged.</div>
           <label style={{ ...lbl, fontSize: 9 }}>Ask</label>
           <select value={approver} onChange={e => setApprover(e.target.value)} style={{ ...sel, margin: "5px 0 12px" }}>
-            {["P. Nair · Accounts Head", "R. Khanna · Purchase Manager", "Simran Kaur · HR Head", "Nitish Walia · Chairman"].map(x => <option key={x}>{x}</option>)}
+            {/* EDIT 17 of 18: four hardcoded approvers, none of whom work here.
+                The people who can approve are the department heads the server
+                knows about — the ones nobody reports to. */}
+            {approvers.map(x => <option key={x}>{x}</option>)}
           </select>
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
             <GoldButton onClick={() => { setStage("waiting"); toast(`Approval sent to ${approver.split("·")[0].trim()}`, "gold"); }}>Ask for approval</GoldButton>
@@ -1590,7 +1597,15 @@ export function Shell({ userKey: realKey, onLogout }) {
   const [actAs, setActAs] = useState(null);
   const [returnTab, setReturnTab] = useState(null);
   const userKey = actAs || realKey;
-  const u = USERS[userKey], nav = NAV[userKey];
+  /* EDIT 14 of 15: `USERS[userKey]` is a map of nine invented desks that was
+     written before this app had a database. It still drives the navigation,
+     but it must not drive WHO YOU ARE: the name and designation in the corner
+     were whoever the map said, not whoever signed in. They come from the
+     server now, and fall back to the map only when the server has not
+     answered yet. */
+  const { me } = useProc();
+  const nav = NAV[userKey] || NAV.hr;
+  const u = { ...(USERS[userKey] || USERS.hr), ...(me ? { name: me.name, role: me.title || me.role, dept: me.dept || '' } : {}) };
   const [tab, setTab] = useState(nav[0][0]);
   const [reporting, setReporting] = useState(false);
   const [showCalc, setShowCalc] = useState(false);
@@ -4441,6 +4456,13 @@ function PeopleView() {
   const headcount = DEPTS
     .map(d => [d, people.filter(p => p.dept === d && p.status !== "exited").length])
     .filter(([, n]) => n > 0);
+  /* EDIT 16 of 18: was `EMPLOYEES`, twelve invented people frozen in this file
+     — the roster on this screen never matched the company. It is the live
+     roster now. `quality` was a made-up cleanliness score; a real one is
+     whether the record is actually complete, which the server can answer. */
+  const roster = people
+    .filter(p => p.status !== "exited")
+    .map(p => ({ ...p, quality: (p.phone || (contacts[p.id] || {}).phone) && p.photo ? 100 : p.photo ? 85 : 60 }));
   const total = headcount.reduce((a, [, n]) => a + n, 0);
   const genId = () => { if (!name.trim()) return; const n = 20 + Math.floor(Math.random() * 60); setGenerated(`MB-${DEPT_CODES[dept] || "GEN"}-${String(n).padStart(4, "0")}`); };
   const maxDept = Math.max(1, ...headcount.map(d => d[1]));
@@ -4464,7 +4486,7 @@ function PeopleView() {
           <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6, flexWrap: "wrap", gap: 8 }}>
             <Eyebrow>Roster</Eyebrow><Pill tone="gold"><Eye size={11} style={{ verticalAlign: "-1px", marginRight: 4 }} />Head privilege · Investigate</Pill>
           </div>
-          {EMPLOYEES.map((e, i) => (
+          {roster.map((e, i) => (
             <div key={e.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 0", borderTop: i ? `1px solid ${C.lineSoft}` : "none" }}>
               <div style={{ width: 34, height: 34, borderRadius: "50%", background: e.dept === "Admin" ? C.goldSoft : C.lineSoft, color: e.dept === "Admin" ? C.goldDeep : C.inkSoft, display: "grid", placeItems: "center", font: `700 13px ${serif}`, flexShrink: 0 }}>{e.name[0]}</div>
               <div style={{ flex: 1, minWidth: 0 }}><div style={{ font: `600 13px ${sans}` }}>{e.name}</div><div style={{ font: `12px ${mono}`, color: C.stone }}>{e.id} · {e.dept}</div></div>
@@ -6074,6 +6096,21 @@ function DirectoryView({ userKey }) {
   const [act, setAct] = useState(null);
   const mob = useIsMobile();
   const tier = USERS[userKey]?.tier || 3;
+  /* EDIT 19 of 19: the directory listed five colleagues and three vendors that
+     were written into this file. Nobody could ring any of them. It is the live
+     roster now, grouped by department, with the vendor group dropped until
+     there are real vendors to show — an empty group is honest, an invented one
+     is not. */
+  const { people: dirPeople = [], contacts: dirContacts = {} } = useProc();
+  const contactGroups = (() => {
+    const groups = {};
+    for (const p of dirPeople) {
+      if (p.status === "exited") continue;
+      const phone = (dirContacts[p.id] || {}).phone || p.phone || "";
+      (groups[p.dept] ??= []).push({ name: p.name, role: p.designation, phone, wa: !!phone });
+    }
+    return Object.keys(groups).sort().map(g => ({ group: g, people: groups[g].slice(0, 40) }));
+  })();
   const [dept, setDept] = useState("All departments");
   const [msg, setMsg] = useState("");
   return (
@@ -6083,7 +6120,7 @@ function DirectoryView({ userKey }) {
       <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr" : "1fr 320px", gap: 18 }}>
         <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
           {tier <= 2 && <ReportsInbox />}
-          {CONTACTS.map(g => (
+          {contactGroups.map(g => (
             <Card key={g.group} pad={22}>
               <Eyebrow>{g.group}</Eyebrow>
               <div style={{ marginTop: 6 }}>{g.people.map((p, i) => <CallRow key={p.name} p={p} i={i} />)}</div>
@@ -6099,7 +6136,9 @@ function DirectoryView({ userKey }) {
           <Card pad={20}>
             <Eyebrow>Announcement</Eyebrow>
             <div style={{ font: `12px ${sans}`, color: C.stone, margin: "6px 0 12px" }}>Send to a department or everyone.</div>
-            <select value={dept} onChange={e => setDept(e.target.value)} style={{ ...sel, margin: "0 0 10px" }}>{["All departments", "Purchase", "Store", "Accounts", "Maintenance", "Security", "Site Engineering"].map(d => <option key={d}>{d}</option>)}</select>
+            {/* EDIT 18 of 18: the filter listed six departments that were the
+                prototype's, not the company's. It reads the real list now. */}
+            <select value={dept} onChange={e => setDept(e.target.value)} style={{ ...sel, margin: "0 0 10px" }}>{["All departments", ...DEPTS].map(d => <option key={d}>{d}</option>)}</select>
             <input value={msg} onChange={e => setMsg(e.target.value)} placeholder="Message…" style={{ ...inp, margin: "0 0 12px" }} />
             <GoldButton onClick={() => { if (!msg.trim()) return toast("Type a message", "red"); toast(`Sent to ${dept}`, "gold"); setMsg(""); }}><span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Send size={14} /> Send announcement</span></GoldButton>
           </Card>
@@ -8267,7 +8306,7 @@ function PeopleRosterView() {
 /* ---------- HR command (her private homework desk) ---------- */
 function LiveStrength() {
   const mob = useIsMobile();
-  const { people } = useProc();
+  const { people, me } = useProc();
   const active = people.filter(p => p.status === "active");
   const now = new Date();
   const hr = now.getHours() + now.getMinutes() / 60;
@@ -8284,14 +8323,17 @@ function LiveStrength() {
   const byDept = {};
   onNow.forEach(p => { byDept[p.dept] = (byDept[p.dept] || 0) + 1; });
   const pct = active.length ? Math.round((onNow.length / active.length) * 100) : 0;
+  /* EDIT 20 of 20: this list opened with an invented shift change, made by an
+     invented person, for an invented guard. It starts empty — a shift change
+     only exists once somebody makes one. */
   const [changes, setChanges] = useState([
-    { who: "Gurpreet Singh · Gate", from: "22:00 – 06:00", to: "14:00 – 22:00", when: "from Monday", by: "Simran Kaur" },
+
   ]);
   const [nw, setNw] = useState(""); const [nf, setNf] = useState(""); const [nt2, setNt2] = useState(""); const [nwhen, setNwhen] = useState("");
   const cell = { ...inp, margin: 0, padding: "8px 10px", fontSize: 13, boxSizing: "border-box" };
   const addChange = () => {
     if (!nw.trim() || !nt2.trim()) return toast("Add the person and the new timing", "amber");
-    setChanges(c => [{ who: nw.trim(), from: nf.trim() || "current shift", to: nt2.trim(), when: nwhen.trim() || "immediately", by: "Simran Kaur" }, ...c]);
+    setChanges(c => [{ who: nw.trim(), from: nf.trim() || "current shift", to: nt2.trim(), when: nwhen.trim() || "immediately", by: (me && me.name) || "you" }, ...c]);
     setNw(""); setNf(""); setNt2(""); setNwhen(""); toast("Duty change recorded — the person is told", "green");
   };
   return (

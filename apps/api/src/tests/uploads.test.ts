@@ -24,7 +24,7 @@ const PNG = Buffer.from(
   'base64',
 );
 
-const SUBJECT = 'MB-STR-0014';
+const SUBJECT = 'MB-ADM-0001';
 
 beforeAll(async () => {
   ({ app, db } = await makeApp());

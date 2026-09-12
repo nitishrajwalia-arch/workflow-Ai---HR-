@@ -1,473 +1,282 @@
 /**
- * Seed the database.
+ * Seed the database with Marbella Group as it actually is.
  *
- * Idempotent: run it as often as you like. Everything is an upsert keyed on the
- * real identifier, so a second run changes nothing. The one exception is the
- * ledger, which is append-only by construction — it is seeded once and skipped
- * thereafter, because rewriting it is precisely what the ledger exists to prevent.
+ * Everything here comes from real-data.ts, which is generated from the two
+ * workbooks the company supplied. There is no invented data in this file and
+ * no generated roster: what the company sent is what goes in, and where the
+ * company was silent the field stays empty.
  *
- *   npm run db:seed
- *
- * The bootstrap administrator is created only when there are no users at all.
- * Its password comes from BOOTSTRAP_ADMIN_PASSWORD, or is generated and printed
- * ONCE if that is unset. It must be changed at first sign-in.
+ * Run with `--wipe` to clear what is already there first. That path truncates
+ * the ledger, which the database otherwise refuses — see wipe() below.
  */
-
-import 'dotenv/config';
 import { randomBytes } from 'node:crypto';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '@prisma/client';
-import { GENESIS, canonicalPayload, fingerprint } from '@marbella/shared';
+import { DEPT_CODES } from '@marbella/shared';
 import { hashPassword } from '../src/lib/password.js';
-import { buildRoster, type RosterPerson } from './roster.js';
-import { seedProcurement } from './seed-procurement.js';
-import {
-  CARD_LOG_SEED,
-  COMPANY_SEED,
-  CONTACT_SEED,
-  DEPT_RULES_SEED,
-  DEVICE_SEED,
-  EMPLOYER_SEED,
-  LEAVE_SEED,
-  OFFICES,
-  ORG_SEED,
-  PEOPLE_SEED,
-  PROJECT_SEED,
-  SAL_SEED,
-} from './seed-data.js';
+import { REAL_COMPANIES, REAL_PEOPLE, REAL_PROJECTS, REAL_UNITS } from './real-data.js';
+import { LEAVE_POLICY, DEPT_HOURS } from './real-policy.js';
+
+// Same as the server: load .env from apps/api if it is there. Node 22 has this
+// built in, and it throws when the file is absent rather than when it matters.
+try {
+  process.loadEnvFile();
+} catch {
+  /* No .env — the variables are expected to come from the environment. */
+}
 
 const url = process.env.DATABASE_URL;
-if (!url) throw new Error('DATABASE_URL is not set. Copy .env.example to .env first.');
-
+if (!url) throw new Error('DATABASE_URL is not set.');
 const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: url }) });
 
-/** Which project, if any, each office belongs to. Head Office belongs to none. */
-const OFFICE_PROJECT: Record<string, string | null> = {
-  hq: null,
-  grand: 'grand',
-  twin: 'twin',
-  curo: 'curo',
-  royce: 'royce',
-};
+const WIPE = process.argv.includes('--wipe');
 
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-function toDate(display: string | null | undefined): Date | null {
-  if (!display) return null;
-  const m = display.trim().match(/^(\d{1,2}) ([A-Za-z]{3}) (\d{4})$/);
-  if (!m) return null;
-  const mi = MONTHS.indexOf(m[2] as string);
-  if (mi < 0) return null;
-  return new Date(Date.UTC(Number(m[3]), mi, Number(m[1])));
+/**
+ * Empty every table.
+ *
+ * The ledger has BEFORE DELETE and BEFORE TRUNCATE triggers precisely so that
+ * history cannot be quietly rewritten, so clearing it means disabling them,
+ * truncating, and putting them back — inside one transaction, so a failure
+ * halfway cannot leave the table unprotected. This is the only place in the
+ * codebase that does it, it is deliberate, and it is loud.
+ */
+async function wipe() {
+  console.log('  wiping — including the append-only ledger, deliberately');
+  const tables = await prisma.$queryRaw<Array<{ tablename: string }>>`
+    SELECT tablename FROM pg_tables
+    WHERE schemaname = 'public' AND tablename <> '_prisma_migrations'
+  `;
+  const list = tables.map((t) => `"${t.tablename}"`).join(', ');
+  await prisma.$transaction([
+    prisma.$executeRawUnsafe(`ALTER TABLE "ledger_entry" DISABLE TRIGGER USER`),
+    prisma.$executeRawUnsafe(`TRUNCATE TABLE ${list} RESTART IDENTITY CASCADE`),
+    prisma.$executeRawUnsafe(`ALTER TABLE "ledger_entry" ENABLE TRIGGER USER`),
+  ]);
 }
 
 async function main() {
-  console.log('Seeding Marbella HR...\n');
+  console.log('Marbella Group — real company data\n');
+  if (WIPE) await wipe();
 
   /* ------------------------------------------------------------ companies */
 
-  for (const c of COMPANY_SEED) {
+  for (const c of REAL_COMPANIES) {
     await prisma.company.upsert({
       where: { id: c.id },
-      create: { id: c.id, name: c.name, kind: c.kind, gstin: c.gstin, pan: c.pan, addr: c.addr },
-      update: { name: c.name, kind: c.kind, gstin: c.gstin, pan: c.pan, addr: c.addr },
+      create: { id: c.id, name: c.name, kind: c.kind },
+      update: { name: c.name, kind: c.kind },
     });
   }
-  console.log(`  companies   ${COMPANY_SEED.length}`);
+  console.log(`  companies   ${REAL_COMPANIES.length}`);
 
-  /* ------------------------------------------------------------- projects */
+  /* ------------------------------------------------- projects and offices */
 
-  for (const p of PROJECT_SEED) {
-    // The seed uses "exempt" where the schema enum says "na".
-    const reraStatus = p.reraStatus === 'exempt' ? 'na' : p.reraStatus;
+  for (const p of REAL_PROJECTS) {
     await prisma.project.upsert({
       where: { id: p.id },
-      create: {
-        id: p.id,
-        name: p.name,
-        short: p.short,
-        companyId: p.company,
-        reraStatus,
-        rera: p.rera,
-        stage: p.stage,
-        addr: p.addr,
-      },
-      update: {
-        name: p.name,
-        short: p.short,
-        companyId: p.company,
-        reraStatus,
-        rera: p.rera,
-        stage: p.stage,
-        addr: p.addr,
-      },
+      create: { id: p.id, name: p.name, short: p.short, companyId: p.companyId },
+      update: { name: p.name, short: p.short, companyId: p.companyId },
     });
-  }
-  console.log(`  projects    ${PROJECT_SEED.length}`);
-
-  /* -------------------------------------------------------------- offices */
-
-  for (const o of OFFICES) {
+    // One site office per project. Where people sit is not where the money
+    // comes from, so these stay separate from Company above.
     await prisma.office.upsert({
-      where: { id: o.id },
-      create: {
-        id: o.id,
-        name: o.name,
-        short: o.short,
-        tint: o.tint,
-        projectId: OFFICE_PROJECT[o.id] ?? null,
-      },
-      update: {
-        name: o.name,
-        short: o.short,
-        tint: o.tint,
-        projectId: OFFICE_PROJECT[o.id] ?? null,
-      },
+      where: { id: p.id },
+      create: { id: p.id, name: `${p.name} — Site Office`, short: p.short, projectId: p.id },
+      update: { name: `${p.name} — Site Office`, short: p.short, projectId: p.id },
+    });
+    await prisma.firm.upsert({
+      where: { id: p.id },
+      create: { id: p.id, short: p.short, name: p.name, firm: p.firm },
+      update: { short: p.short, name: p.name, firm: p.firm },
     });
   }
-  console.log(`  offices     ${OFFICES.length}`);
+  console.log(`  projects    ${REAL_PROJECTS.length} (with a site office each)`);
 
   /* --------------------------------------------------------------- people */
 
-  const named = (PEOPLE_SEED as RosterPerson[]).map((p) => ({
-    ...p,
-    office: p.office ?? ORG_SEED[p.id]?.office ?? 'hq',
-    employer: p.employer ?? EMPLOYER_SEED[p.id] ?? 'dpre',
-    // `?? ` would be wrong here: the Chairman's boss is deliberately null, and
-    // `null ?? 'MB-ADM-0001'` would make him report to himself. Test for it in
-    // src/tests/roster.test.ts.
-    reportsTo:
-      p.reportsTo !== undefined
-        ? p.reportsTo
-        : p.id in ORG_SEED
-          ? ORG_SEED[p.id].boss
-          : 'MB-ADM-0001',
-  }));
-
-  const all: RosterPerson[] = [...named, ...buildRoster()];
-
-  // Two passes. Reporting lines point at other people, so nobody can be given a
-  // manager until every row exists. Inserting in one pass would fail on the very
-  // first person whose manager happens to come later in the list.
-  for (const p of all) {
-    const joined = toDate(p.joined);
-    const dob = toDate(p.dob);
+  for (const p of REAL_PEOPLE) {
+    const data = {
+      name: p.name,
+      designation: p.designation,
+      dept: p.dept,
+      type: p.type,
+      joined: p.joined,
+      dob: p.dob,
+      shiftIn: p.shiftIn || '10:30',
+      shiftOut: p.shiftOut || '18:30',
+      officeId: p.office,
+      employerId: p.employer,
+    };
     await prisma.person.upsert({
       where: { id: p.id },
-      create: {
-        id: p.id,
-        name: p.name,
-        designation: p.designation,
-        dept: p.dept,
-        type: p.type,
-        joined: p.joined,
-        joinedOn: joined,
-        dob: p.dob ?? null,
-        dobOn: dob,
-        status: p.status === 'exited' ? 'exited' : 'active',
-        exitedOn: p.exitedOn ?? null,
-        perf: p.perf ?? 75,
-        growth: p.growth ?? '',
-        officeId: p.office,
-        employerId: p.employer,
-      },
-      update: { name: p.name, designation: p.designation, dept: p.dept },
+      create: { id: p.id, ...data },
+      update: data,
     });
   }
 
-  for (const p of all) {
+  // Reporting lines in a second pass: a manager has to exist before anyone can
+  // be pointed at them.
+  let placed = 0;
+  for (const p of REAL_PEOPLE) {
     if (!p.reportsTo) continue;
-    // Nobody manages themselves. A self-report renders the org board as a
-    // detached node and silently breaks every headcount above it.
     if (p.reportsTo === p.id) {
-      throw new Error(`${p.id} (${p.name}) was given themselves as a manager. Fix the seed.`);
+      throw new Error(`${p.id} (${p.name}) was given themselves as a manager.`);
     }
     await prisma.person.update({ where: { id: p.id }, data: { reportsToId: p.reportsTo } });
+    placed++;
   }
-  console.log(
-    `  people      ${all.length} (${all.filter((p) => p.status !== 'exited').length} active)`,
-  );
+  const noManager = REAL_PEOPLE.length - placed;
+  console.log(`  people      ${REAL_PEOPLE.length}  (${noManager} with no manager recorded)`);
 
-  /* ---------------------------------------------------------------- notes */
+  /* --------------------------------------------- contact, KYC and assets  */
 
-  for (const p of named) {
-    if (!p.notes?.length) continue;
-    const have = await prisma.personNote.count({ where: { personId: p.id } });
-    if (have) continue;
-    await prisma.personNote.createMany({
-      data: p.notes.map((n: { when: string; text: string }) => ({
-        personId: p.id,
-        when: n.when,
-        text: n.text,
-      })),
-    });
+  let kyc = 0;
+  let devices = 0;
+  for (const p of REAL_PEOPLE) {
+    if (p.phone) {
+      await prisma.contact.upsert({
+        where: { personId: p.id },
+        create: { personId: p.id, phone: p.phone },
+        update: { phone: p.phone },
+      });
+    }
+    if (p.aadhaar || p.pan || p.address) {
+      await prisma.kyc.upsert({
+        where: { personId: p.id },
+        create: { personId: p.id, aadhaar: p.aadhaar, pan: p.pan, address: p.address },
+        update: { aadhaar: p.aadhaar, pan: p.pan, address: p.address },
+      });
+      kyc++;
+    }
+    // The asset sheet lists a computer and sometimes a handset. Each becomes a
+    // device against the person, which is what the exit flow checks for return.
+    if (p.computerType) {
+      const have = await prisma.device.findFirst({
+        where: { personId: p.id, type: p.computerType },
+      });
+      if (!have) {
+        await prisma.device.create({
+          data: {
+            personId: p.id,
+            type: p.computerType,
+            model: p.computerModel,
+            issued: p.assetHandover || '',
+          },
+        });
+        devices++;
+      }
+    }
+    if (p.phoneModel) {
+      const have = await prisma.device.findFirst({ where: { personId: p.id, type: 'Phone' } });
+      if (!have) {
+        await prisma.device.create({
+          data: {
+            personId: p.id,
+            type: 'Phone',
+            model: p.phoneModel,
+            issued: p.assetHandover || '',
+          },
+        });
+        devices++;
+      }
+    }
   }
+  console.log(`  contacts    ${REAL_PEOPLE.filter((p) => p.phone).length}`);
+  console.log(`  KYC         ${kyc}  (Aadhaar / PAN / address — HR and above only)`);
+  console.log(`  assets      ${devices}`);
 
-  /* ------------------------------------------------- salaries / contacts */
+  /* ------------------------------------------------- hours and leave rules */
 
-  for (const [pid, s] of Object.entries(SAL_SEED) as Array<
-    [string, Record<string, number | string>]
-  >) {
-    await prisma.salary.upsert({
-      where: { personId: pid },
-      create: {
-        personId: pid,
-        basic: Number(s.basic),
-        hra: Number(s.hra),
-        special: Number(s.special),
-        pf: Number(s.pf),
-        pt: Number(s.pt),
-        note: String(s.note ?? ''),
-      },
-      update: {
-        basic: Number(s.basic),
-        hra: Number(s.hra),
-        special: Number(s.special),
-        pf: Number(s.pf),
-        pt: Number(s.pt),
-        note: String(s.note ?? ''),
-      },
-    });
-  }
-
-  // The generated roster carries a plausible basic pay; give everyone a structure
-  // so the F&F screens have something real to compute against.
-  for (const p of all) {
-    if (!p._basic) continue;
-    const basic = p._basic;
-    await prisma.salary.upsert({
-      where: { personId: p.id },
-      create: {
-        personId: p.id,
-        basic,
-        hra: Math.round(basic * 0.5),
-        special: Math.round(basic * 0.25),
-        pf: 1800,
-        pt: 200,
-        note: '',
-      },
-      update: {},
-    });
-  }
-
-  for (const [pid, c] of Object.entries(CONTACT_SEED) as Array<[string, Record<string, unknown>]>) {
-    await prisma.contact.upsert({
-      where: { personId: pid },
-      create: {
-        personId: pid,
-        phone: String(c.phone ?? ''),
-        email: String(c.email ?? ''),
-        vPhone: !!c.vPhone,
-        vEmail: !!c.vEmail,
-      },
-      update: {
-        phone: String(c.phone ?? ''),
-        email: String(c.email ?? ''),
-        vPhone: !!c.vPhone,
-        vEmail: !!c.vEmail,
-      },
-    });
-  }
-  for (const p of all) {
-    if (!p._phone) continue;
-    await prisma.contact.upsert({
-      where: { personId: p.id },
-      create: { personId: p.id, phone: p._phone, email: '' },
-      update: {},
-    });
-  }
-  console.log('  salaries and contacts');
-
-  /* -------------------------------------------------------------- devices */
-
-  for (const d of DEVICE_SEED) {
-    const exists = await prisma.device.findFirst({ where: { personId: d.pid, imei: d.imei } });
-    if (exists) continue;
-    await prisma.device.create({
-      data: {
-        personId: d.pid,
-        type: d.type,
-        model: d.model,
-        imei: d.imei,
-        sim: d.sim,
-        issued: d.issued,
-      },
-    });
-  }
-  console.log(`  devices     ${DEVICE_SEED.length}`);
-
-  /* ------------------------------------------------------------ policies */
-
-  for (const [dept, r] of Object.entries(DEPT_RULES_SEED) as Array<
-    [string, Record<string, unknown>]
-  >) {
+  for (const [dept, r] of Object.entries(DEPT_HOURS)) {
     await prisma.deptRule.upsert({
       where: { dept },
-      create: {
-        dept,
-        in: String(r.in),
-        out: String(r.out),
-        hours: Number(r.hours),
-        days: String(r.days),
-        grace: Number(r.grace),
-        setBy: String(r.setBy),
-        note: String(r.note ?? ''),
-      },
-      update: {
-        in: String(r.in),
-        out: String(r.out),
-        hours: Number(r.hours),
-        days: String(r.days),
-        grace: Number(r.grace),
-        setBy: String(r.setBy),
-        note: String(r.note ?? ''),
-      },
+      create: { dept, ...r },
+      update: r,
     });
-  }
-  for (const [dept, l] of Object.entries(LEAVE_SEED) as Array<[string, Record<string, unknown>]>) {
     await prisma.leavePolicy.upsert({
       where: { dept },
+      create: { dept, ...LEAVE_POLICY },
+      update: LEAVE_POLICY,
+    });
+  }
+  console.log(`  hours       ${Object.keys(DEPT_HOURS).length} departments`);
+  console.log(`  leave       company policy applied to every department`);
+
+  /* -------------------------------------------------------------- residents */
+
+  for (const u of REAL_UNITS) {
+    await prisma.unit.upsert({
+      where: { id: u.id },
       create: {
-        dept,
-        casual: Number(l.casual),
-        sick: Number(l.sick),
-        earned: Number(l.earned),
-        halfDay: String(l.halfDay ?? ''),
-        lateAfter: Number(l.lateAfter),
+        id: u.id,
+        tower: u.tower,
+        address: u.address,
+        phone1: u.phone1,
+        phone2: u.phone2,
+        email1: u.email1,
+        email2: u.email2,
       },
       update: {
-        casual: Number(l.casual),
-        sick: Number(l.sick),
-        earned: Number(l.earned),
-        halfDay: String(l.halfDay ?? ''),
-        lateAfter: Number(l.lateAfter),
+        tower: u.tower,
+        address: u.address,
+        phone1: u.phone1,
+        phone2: u.phone2,
+        email1: u.email1,
+        email2: u.email2,
       },
     });
-  }
-  console.log('  department clocks and leave');
-
-  /* ----------------------------------------------------------------- cards */
-
-  for (const c of [...CARD_LOG_SEED].reverse()) {
-    const exists = await prisma.card.findFirst({ where: { personId: c.pid, ver: c.ver } });
-    if (exists) continue;
-    await prisma.card.create({
-      data: {
-        personId: c.pid,
-        name: c.name,
-        ver: c.ver,
-        reason: c.reason,
-        at: c.at,
-        by: c.by,
-        recv: c.recv,
-        note: c.note ?? '',
-        killed: c.killed ? `v${c.ver - 1}` : null,
-        zonesKilled: !!c.zonesKilled,
-      },
-    });
-  }
-  console.log(`  cards       ${CARD_LOG_SEED.length}`);
-
-  /* ---------------------------------------------------------------- ledger */
-
-  // Append-only, so this runs exactly once. If entries already exist we leave
-  // them alone rather than trying to "fix" a chain that is already sealed.
-  const ledgerCount = await prisma.ledgerEntry.count();
-  if (ledgerCount === 0) {
-    const rows = [
-      {
-        at: '10 Feb 2021 · 09:00',
-        who: 'Nitish Walia',
-        kind: 'join',
-        subject: 'MB-HR-0001',
-        detail: 'Simran Kaur joined as HR Head.',
-      },
-      {
-        at: '14 Mar 2020 · 09:00',
-        who: 'Nitish Walia',
-        kind: 'join',
-        subject: 'MB-PUR-0012',
-        detail: 'R. Khanna joined as Purchase Manager.',
-      },
-      {
-        at: '18 Jul 2026 · 10:12',
-        who: 'Simran Kaur',
-        kind: 'card',
-        subject: 'MB-SEC-0007',
-        detail: 'Card v2 issued — damaged replacement.',
-      },
-      {
-        at: '02 Jul 2026 · 16:40',
-        who: 'Simran Kaur',
-        kind: 'card',
-        subject: 'MB-PUR-0018',
-        detail: 'Card v2 issued — previous card lost.',
-      },
-      {
-        at: '01 Aug 2026 · 11:20',
-        who: 'Simran Kaur',
-        kind: 'policy',
-        subject: 'Store',
-        detail: 'Working hours set 08:00–18:00 by S. Verma.',
-      },
-    ];
-    let prev = GENESIS;
-    for (const r of rows) {
-      const seal = await fingerprint(canonicalPayload(r), prev);
-      await prisma.ledgerEntry.create({ data: { ...r, prev, seal } });
-      prev = seal;
+    for (const [i, a] of u.applicants.entries()) {
+      await prisma.applicant.upsert({
+        where: { unitId_seq: { unitId: u.id, seq: i + 1 } },
+        create: { unitId: u.id, seq: i + 1, name: a.name, pan: a.pan },
+        update: { name: a.name, pan: a.pan },
+      });
     }
-    console.log(`  ledger      ${rows.length} sealed`);
-  } else {
-    console.log(`  ledger      ${ledgerCount} entries already sealed, left alone`);
   }
+  const towers = new Set(REAL_UNITS.map((u) => u.tower)).size;
+  const applicants = REAL_UNITS.reduce((n, u) => n + u.applicants.length, 0);
+  console.log(
+    `  residents   ${REAL_UNITS.length} units in ${towers} towers, ${applicants} named applicants`,
+  );
 
-  /* ---------------------------------------------------- bootstrap account */
+  /* ------------------------------------------------------- the first login */
 
-  const userCount = await prisma.user.count();
-  if (userCount === 0) {
-    const email = process.env.BOOTSTRAP_ADMIN_EMAIL ?? 'hr@marbellagroup.in';
-    const name = process.env.BOOTSTRAP_ADMIN_NAME ?? 'Simran Kaur';
-    const generated = !process.env.BOOTSTRAP_ADMIN_PASSWORD;
-    const password = process.env.BOOTSTRAP_ADMIN_PASSWORD ?? randomBytes(12).toString('base64url');
-
+  const existing = await prisma.user.count();
+  if (existing === 0) {
+    const hr = REAL_PEOPLE.find((p) => p.dept === 'HR');
+    const password = process.env.BOOTSTRAP_ADMIN_PASSWORD ?? randomBytes(9).toString('base64url');
     await prisma.user.create({
       data: {
-        email,
-        name,
-        passwordHash: await hashPassword(password),
+        email: process.env.BOOTSTRAP_ADMIN_EMAIL ?? 'admin@marbellagroup.in',
+        name: hr?.name ?? 'Administrator',
         role: 'ADMIN',
-        personId: (await prisma.person.findUnique({ where: { id: 'MB-HR-0001' } }))?.id ?? null,
+        passwordHash: await hashPassword(password),
+        personId: hr?.id ?? null,
+        // The ID people actually sign in with. Separate from personId because
+        // an account can exist before, or without, a person record.
+        employeeId: hr?.id ?? null,
+        // Which set of screens they land on. The HR manager gets the HR desk;
+        // every other department's desk is still to be decided, so nobody else
+        // has an account yet.
+        userKey: 'hr',
         mustChangePassword: true,
       },
     });
-
-    console.log('\n  ─────────────────────────────────────────────────────────');
-    console.log('  Administrator account created.');
-    console.log(`    email     ${email}`);
-    console.log(`    password  ${password}`);
-    if (generated)
-      console.log('  This password is shown ONCE and is not stored anywhere in plain text.');
-    console.log('  It must be changed at first sign-in.');
-    console.log('  ─────────────────────────────────────────────────────────\n');
+    console.log(`\n  FIRST LOGIN  ${hr?.id ?? 'admin@marbellagroup.in'}`);
+    console.log(`  PASSWORD     ${password}`);
+    console.log('  This is shown once. It must be changed at first sign-in.');
   } else {
-    console.log(`  accounts    ${userCount} already exist, none created`);
+    console.log(`  accounts    ${existing} already exist, none created`);
   }
 
-  /* ------------------------------------------------- procurement and the rest */
-
-  // MarbellaProcurementOS.jsx contains the HR system above as a subset, and
-  // adds procurement, the gate, accounts, sales and the calendar on top.
-  await seedProcurement(prisma, {
-    defaultPassword: process.env.BOOTSTRAP_ADMIN_PASSWORD ?? 'ChangeThisAtFirstSignIn!',
-    announce: (line) => console.log(line),
-  });
-
-  console.log('Done.\n');
+  console.log('\nDone. No sample data was loaded.');
+  const codes = Object.keys(DEPT_CODES).length;
+  console.log(`${codes} departments, ${REAL_PEOPLE.length} people, ${REAL_UNITS.length} units.`);
 }
 
 main()
-  .catch((err: unknown) => {
-    console.error('\nSeed failed:', err);
-    process.exitCode = 1;
+  .catch((e) => {
+    console.error(e);
+    process.exit(1);
   })
   .finally(() => prisma.$disconnect());

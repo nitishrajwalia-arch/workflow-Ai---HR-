@@ -24,13 +24,72 @@ let token: string;
 
 const STEEL = 'TMT 550D steel';
 const CEMENT = 'OPC 53 cement';
+const PROJ = 'Test Project';
+const SALE_ID = 'SL-TEST-0001';
+const ESCROW = 'BK-TEST-ESCROW';
 
+/**
+ * These tests build the world they need.
+ *
+ * They used to lean on whatever the seed happened to contain, which broke the
+ * moment the invented data was replaced with the company's own — and would have
+ * broken again on any real stock movement. A rule test should assert the rule,
+ * not the fixtures somebody else loaded.
+ */
 beforeAll(async () => {
   ({ app, db } = await makeApp());
   ({ token } = await signIn(app));
+
+  await db.storageCap.deleteMany({ where: { item: { in: [STEEL, CEMENT] } } });
+  await db.inventoryItem.deleteMany({ where: { item: { in: [STEEL, CEMENT] } } });
+  await db.inventoryItem.createMany({
+    data: [
+      { item: STEEL, qty: 13.4, unit: 'T', proj: PROJ, loc: 'Steel bay' },
+      { item: CEMENT, qty: 1240, unit: 'bags', proj: PROJ, loc: 'Yard shed' },
+    ],
+  });
+  await db.storageCap.createMany({
+    data: [
+      {
+        item: CEMENT,
+        proj: PROJ,
+        max: 2000,
+        unit: 'bags',
+        why: 'Yard shed holds no more; bags cake in the monsoon.',
+      },
+      { item: STEEL, proj: PROJ, max: 25, unit: 'T', why: 'Steel bay capacity.' },
+    ],
+  });
+
+  await db.sale.deleteMany({ where: { id: SALE_ID } });
+  await db.sale.create({
+    data: {
+      id: SALE_ID,
+      unit: 'TEST-0001',
+      proj: PROJ,
+      buyer: 'A Test Buyer',
+      price: BigInt(9_900_000_00),
+    },
+  });
+
+  await db.bankAccount.deleteMany({ where: { id: ESCROW } });
+  await db.bankAccount.create({
+    data: {
+      id: ESCROW,
+      bank: 'Test Bank',
+      acc: '0000',
+      type: 'RERA escrow · Test',
+      bal: BigInt(4_21_00_00_000),
+    },
+  });
 });
 
 afterAll(async () => {
+  await db.hold.deleteMany({ where: { itemName: { in: [STEEL, CEMENT] } } });
+  await db.storageCap.deleteMany({ where: { item: { in: [STEEL, CEMENT] } } });
+  await db.inventoryItem.deleteMany({ where: { item: { in: [STEEL, CEMENT] } } });
+  await db.sale.deleteMany({ where: { id: SALE_ID } });
+  await db.bankAccount.deleteMany({ where: { id: ESCROW } });
   await app.close();
   await db.$disconnect();
 });
@@ -206,7 +265,7 @@ describe('the override code', () => {
 
 describe('a unit is sold once', () => {
   it('refuses a second booking on a unit that is already sold', async () => {
-    const existing = await db.sale.findFirstOrThrow();
+    const existing = await db.sale.findUniqueOrThrow({ where: { id: SALE_ID } });
     const res = await post('/sales', {
       unit: existing.unit,
       proj: existing.proj,

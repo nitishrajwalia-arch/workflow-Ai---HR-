@@ -25,25 +25,25 @@ describe('reading people', () => {
   it('returns where they are posted AND who employs them, separately', async () => {
     const res = await app.inject({
       method: 'GET',
-      url: '/api/v1/people/MB-SEC-0007',
+      url: '/api/v1/people/MB-ADM-0003',
       headers: auth(token),
     });
     expect(res.statusCode).toBe(200);
     const p = res.json<{ office: string; employer: string }>();
-    // Gurpreet Singh sits at Marbella Grand but is paid by SRG. Two fields.
-    expect(p.office).toBe('grand');
-    expect(p.employer).toBe('srg');
+    // Chenema Sharma sits at Marbella Grand and is paid by SRG. Two fields.
+    expect(p.office).toBe('twin');
+    expect(p.employer).toBe('srgmarb');
   });
 
   it('filters, and paginates', async () => {
     const res = await app.inject({
       method: 'GET',
-      url: '/api/v1/people?dept=Store&pageSize=5',
+      url: '/api/v1/people?dept=Project&pageSize=5',
       headers: auth(token),
     });
     const body = res.json<{ items: Array<{ dept: string }>; total: number }>();
     expect(body.items.length).toBeLessThanOrEqual(5);
-    expect(body.items.every((p) => p.dept === 'Store')).toBe(true);
+    expect(body.items.every((p) => p.dept === 'Project')).toBe(true);
     expect(body.total).toBeGreaterThan(5);
   });
 
@@ -53,7 +53,7 @@ describe('reading people', () => {
       url: '/api/v1/people?q=MB-HR-0001',
       headers: auth(token),
     });
-    expect(res.json<{ items: Array<{ name: string }> }>().items[0]?.name).toBe('Simran Kaur');
+    expect(res.json<{ items: Array<{ name: string }> }>().items[0]?.name).toBe('Pooja Dahiya');
   });
 
   it('rejects an employee ID that is not one', async () => {
@@ -79,9 +79,9 @@ describe('changing who employs someone', () => {
   it('will not let it happen as an ordinary edit', async () => {
     const res = await app.inject({
       method: 'PATCH',
-      url: '/api/v1/people/MB-SEC-0007',
+      url: '/api/v1/people/MB-ADM-0003',
       headers: auth(token),
-      payload: { employer: 'dpre' },
+      payload: { employer: 'newmarb' },
     });
     expect(res.statusCode).toBe(400);
     expect(res.json<{ error: { message: string } }>().error.message).toMatch(/written reason/);
@@ -90,9 +90,9 @@ describe('changing who employs someone', () => {
   it('demands a reason on the dedicated route', async () => {
     const res = await app.inject({
       method: 'POST',
-      url: '/api/v1/people/MB-SEC-0007/employer',
+      url: '/api/v1/people/MB-ADM-0003/employer',
       headers: auth(token),
-      payload: { employer: 'dpre' },
+      payload: { employer: 'newmarb' },
     });
     expect(res.statusCode).toBe(400);
   });
@@ -100,24 +100,24 @@ describe('changing who employs someone', () => {
   it('records the move, both companies by name, and the reason', async () => {
     const res = await app.inject({
       method: 'POST',
-      url: '/api/v1/people/MB-SEC-0012/employer',
+      url: '/api/v1/people/MB-ADM-0002/employer',
       headers: auth(token),
-      payload: { employer: 'dpre', reason: 'Moved onto the group payroll from 1 September.' },
+      payload: { employer: 'newmarb', reason: 'Moved onto the group payroll from 1 September.' },
     });
     expect(res.statusCode).toBe(200);
-    expect(res.json<{ employer: string }>().employer).toBe('dpre');
+    expect(res.json<{ employer: string }>().employer).toBe('newmarb');
 
     const entry = await db.ledgerEntry.findFirst({
-      where: { subject: 'MB-SEC-0012', kind: 'person' },
+      where: { subject: 'MB-ADM-0002', kind: 'person' },
       orderBy: { seq: 'desc' },
     });
-    expect(entry?.detail).toMatch(/SRG Developers and Promoters/);
-    expect(entry?.detail).toMatch(/Delhi Punjab Real Estates LLP/);
+    expect(entry?.detail).toMatch(/SRG Developers & Promoters/);
+    expect(entry?.detail).toMatch(/New Marbella Developers And Promoters LLP/);
     expect(entry?.detail).toMatch(/Moved onto the group payroll/);
 
     await app.inject({
       method: 'POST',
-      url: '/api/v1/people/MB-SEC-0012/employer',
+      url: '/api/v1/people/MB-ADM-0002/employer',
       headers: auth(token),
       payload: { employer: 'srg', reason: 'Reverting the test.' },
     });
@@ -125,16 +125,31 @@ describe('changing who employs someone', () => {
 });
 
 describe('the org endpoint', () => {
-  it('gives the manager chain and the direct reports', async () => {
+  it('walks the manager chain up to the department head', async () => {
     const res = await app.inject({
       method: 'GET',
-      url: '/api/v1/people/MB-SIT-0021/org',
+      url: '/api/v1/people/MB-PRJ-0002/org',
       headers: auth(token),
     });
     expect(res.statusCode).toBe(200);
-    const body = res.json<{ chain: Array<{ id: string }>; headcount: number }>();
-    expect(body.chain.at(-1)?.id).toBe('MB-ADM-0001');
-    expect(body.headcount).toBeGreaterThan(0);
+    const body = res.json<{ chain: Array<{ id: string; reportsTo?: string | null }> }>();
+    // The chain is the ancestors, not including the person themselves.
+    expect(body.chain.length).toBeGreaterThanOrEqual(1);
+    // The chain ends at the department head. There is no company-wide root:
+    // the company has not recorded who its department heads report to, and the
+    // system does not invent one.
+    expect(body.chain.at(-1)?.id).toBe('MB-PRJ-0014');
+    expect(body.chain.at(-1)?.reportsTo ?? null).toBeNull();
+  });
+
+  it('gives the department head their direct reports', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/v1/people/MB-PRJ-0014/org',
+      headers: auth(token),
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json<{ headcount: number }>().headcount).toBeGreaterThan(0);
   });
 });
 
@@ -146,8 +161,8 @@ describe('letters', () => {
       headers: auth(token),
       payload: {
         tpl: 'experience-certificate',
-        pid: 'MB-SEC-0007',
-        company: 'dpre',
+        pid: 'MB-ADM-0003',
+        company: 'newmarb',
         via: 'print',
         subject: 'Experience certificate',
       },
@@ -162,7 +177,7 @@ describe('letters', () => {
       method: 'POST',
       url: '/api/v1/documents',
       headers: auth(token),
-      payload: { tpl: 'appreciation', pid: 'MB-HR-0001', company: 'dpre', via: 'email' },
+      payload: { tpl: 'appreciation', pid: 'MB-HR-0001', company: 'newmarb', via: 'email' },
     });
     const body = res.json<{ delivered: boolean; deliveryNote: string }>();
     expect(body.delivered).toBe(false);

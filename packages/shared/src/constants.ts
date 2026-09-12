@@ -8,17 +8,18 @@
 
 /** Department -> employee-ID infix. `MB-PUR-0012` is Purchase employee 12. */
 export const DEPT_CODES = {
-  Admin: 'ADM',
-  Purchase: 'PUR',
-  Store: 'STR',
+  Sales: 'SAL',
+  CRM: 'CRM',
   Accounts: 'ACC',
-  Security: 'SEC',
-  'Site Engineering': 'SIT',
-  Maintenance: 'MNT',
-  'QA / QC': 'QAC',
+  IT: 'IT',
+  Admin: 'ADM',
+  Pantry: 'PAN',
   HR: 'HR',
   Marketing: 'MKT',
-  Labour: 'LAB',
+  Project: 'PRJ',
+  Purchase: 'PUR',
+  Maintenance: 'MNT',
+  Horticulture: 'HRT',
 } as const;
 
 export type Department = keyof typeof DEPT_CODES;
@@ -165,26 +166,18 @@ export const roleAtLeast = (role: Role, min: Role): boolean => ROLES[role].rank 
 export const COMPANY_DOMAINS = ['marbellagroup.in', 'marbella.in'] as const;
 
 export const ZONES_BY_DEPT: Record<Department, string[]> = {
-  Admin: [
-    'Main gate',
-    'Site office',
-    'Store & yard',
-    'Accounts room',
-    'Server room',
-    'Basement plant',
-  ],
+  Admin: ['Main gate', 'Site office', 'Store & yard', 'Accounts room', 'Server room', 'Club house'],
   HR: ['Main gate', 'Site office', 'Accounts room'],
   Accounts: ['Main gate', 'Site office', 'Accounts room'],
+  IT: ['Main gate', 'Site office', 'Accounts room', 'Server room'],
+  Sales: ['Main gate', 'Site office', 'Sales office', 'Club house'],
+  CRM: ['Main gate', 'Site office', 'Sales office', 'Club house'],
+  Marketing: ['Main gate', 'Site office', 'Sales office', 'Club house'],
   Purchase: ['Main gate', 'Site office', 'Store & yard'],
-  Store: ['Main gate', 'Site office', 'Store & yard'],
-  Maintenance: ['Main gate', 'Site office', 'Basement plant'],
-  Security: ['Main gate', 'Site office', 'Store & yard', 'Basement plant'],
-  'Site Engineering': ['Main gate', 'Site office', 'Store & yard'],
-  'QA / QC': ['Main gate', 'Site office', 'Store & yard'],
-  // Marketing meets buyers at the sample flat and walks them round the site.
-  // They have no business in the store, the plant room or accounts.
-  Marketing: ['Main gate', 'Site office'],
-  Labour: ['Main gate'],
+  Project: ['Main gate', 'Site office', 'Store & yard', 'Tower floors'],
+  Maintenance: ['Main gate', 'Site office', 'Basement plant', 'Club house', 'Tower floors'],
+  Pantry: ['Main gate', 'Site office', 'Club house'],
+  Horticulture: ['Main gate', 'Site office'],
 };
 
 export const DEFAULT_SHIFT = { in: '09:30', out: '18:30', hours: 9 } as const;
