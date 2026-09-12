@@ -17,6 +17,7 @@ import {
   EMPLOYEE_TYPES,
   EXIT_REASONS,
   EXIT_STAGE_KEYS,
+  GENDERS,
   LEDGER_KINDS,
   PERSON_STATUSES,
   PROJECT_STAGES,
@@ -51,6 +52,7 @@ export const displayDate = z
 export const department = z.enum(DEPARTMENTS as [string, ...string[]]);
 export const employeeType = z.enum(EMPLOYEE_TYPES);
 export const personStatus = z.enum(PERSON_STATUSES);
+export const gender = z.enum(GENDERS);
 export const role = z.enum(ROLE_KEYS as [string, ...string[]]);
 export const reissueReason = z.enum(REISSUE_KEYS as [string, ...string[]]);
 export const exitStage = z.enum(EXIT_STAGE_KEYS as [string, ...string[]]);
@@ -139,6 +141,8 @@ export const personCore = z.object({
   type: employeeType,
   joined: displayDate,
   dob: displayDate.optional().nullable(),
+  /** Null means nobody has asked yet. 'undisclosed' means they were asked. */
+  gender: gender.optional().nullable(),
   status: personStatus.default('active'),
   exitedOn: displayDate.optional().nullable(),
   /** The project they are POSTED AT. Not who pays them. */
@@ -363,6 +367,9 @@ export const importRow = z.object({
   dept: z.string().trim().min(2).max(60),
   office: z.string().trim().max(80).optional(),
   joined: z.string().trim().min(4).max(40),
+  dob: z.string().trim().max(40).optional(),
+  /** Free text off the sheet ("F", "Female", "महिला"). Normalised server-side. */
+  gender: z.string().trim().max(40).optional(),
   phone: z.string().trim().max(20).optional(),
   email: z.string().trim().max(255).optional(),
   imei: z.string().trim().max(20).optional(),

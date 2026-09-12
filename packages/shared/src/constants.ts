@@ -33,6 +33,59 @@ export const PERSON_STATUSES = ['active', 'exited'] as const;
 export type PersonStatus = (typeof PERSON_STATUSES)[number];
 
 /**
+ * Gender, as the person themselves states it.
+ *
+ * `undisclosed` is a real answer — somebody was asked and chose not to say, and
+ * that record is complete. It is NOT the same as the field being null, which
+ * means nobody has asked yet. HR needs to tell those two apart: one is a
+ * finished record, the other is work outstanding. Never infer this from a name.
+ */
+export const GENDERS = ['female', 'male', 'other', 'undisclosed'] as const;
+export type Gender = (typeof GENDERS)[number];
+
+/**
+ * The bands the workforce is reported in. Chosen to line up with how the
+ * Companies Act and most HR reporting cut it, so a number here can be quoted
+ * straight into a filing without recutting it.
+ */
+export const AGE_BANDS = [
+  { key: '18-25', label: '18–25', min: 18, max: 25 },
+  { key: '26-35', label: '26–35', min: 26, max: 35 },
+  { key: '36-45', label: '36–45', min: 36, max: 45 },
+  { key: '46-55', label: '46–55', min: 46, max: 55 },
+  { key: '56+', label: '56 and over', min: 56, max: 200 },
+] as const;
+
+/**
+ * Age in completed years on `on`, from a display date ("19 Jun 1997").
+ *
+ * Returns null rather than a number when the date is missing or unreadable, so
+ * a person with no date of birth is counted as "not recorded" instead of
+ * quietly landing in a band. Anything outside 14–80 is treated the same way:
+ * it is a typo in the source sheet, not a colleague.
+ */
+export function ageFromDisplayDate(
+  dob: string | null | undefined,
+  on: Date = new Date(),
+): number | null {
+  if (!dob || !dob.trim()) return null;
+  const parsed = new Date(`${dob.trim()} 00:00:00 GMT`);
+  if (Number.isNaN(parsed.getTime())) return null;
+  let age = on.getUTCFullYear() - parsed.getUTCFullYear();
+  const beforeBirthday =
+    on.getUTCMonth() < parsed.getUTCMonth() ||
+    (on.getUTCMonth() === parsed.getUTCMonth() && on.getUTCDate() < parsed.getUTCDate());
+  if (beforeBirthday) age -= 1;
+  return age >= 14 && age <= 80 ? age : null;
+}
+
+/** Which band an age falls in, or null when there is no usable age. */
+export function ageBandOf(age: number | null): string | null {
+  if (age == null) return null;
+  return AGE_BANDS.find((b) => age >= b.min && age <= b.max)?.key ?? null;
+}
+
+/**
  * Card re-issue reasons.
  *
  * `fast: true`  -> the old card came back, so a straight swap is honest.

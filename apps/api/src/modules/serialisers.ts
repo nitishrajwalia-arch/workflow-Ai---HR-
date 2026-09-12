@@ -9,7 +9,7 @@
  * If you add a column, add it here too or the browser will never see it.
  */
 
-import type { BootstrapPerson } from '@marbella/shared';
+import { ageFromDisplayDate, type BootstrapPerson } from '@marbella/shared';
 import type { Prisma } from '@prisma/client';
 
 export const personInclude = {
@@ -34,6 +34,11 @@ export function serialisePerson(p: PersonWithRelations): BootstrapPerson {
     email: p.contact?.email ?? '',
     joined: p.joined,
     dob: p.dob,
+    // Age is computed here, not stored, because a stored age is wrong the day
+    // after you write it. `dobOn` is the sortable copy; `dob` is what letters
+    // merge, and it is what the helper reads.
+    age: ageFromDisplayDate(p.dob),
+    gender: p.gender,
     status: p.status,
     exitedOn: p.exitedOn,
     perf: p.perf,

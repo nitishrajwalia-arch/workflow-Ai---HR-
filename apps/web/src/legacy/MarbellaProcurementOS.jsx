@@ -7895,6 +7895,48 @@ function FullProfile({ p, onClose }) {
   );
 }
 
+/* Age is read off the date of birth, so it is right every morning. Gender is the
+   one field on a person that the app will not fill in for itself — see the note
+   on WorkforceShape. HR sets it here, once, from what the person tells them. */
+function OnRecordCard({ p }) {
+  const { updatePerson, people = [] } = useProc();
+  /* The profile overlay is handed a snapshot of the person. Read the live row
+     instead, so this card shows what is stored the moment it changes rather
+     than what was on screen when the overlay opened. */
+  const live = people.find((x) => x.id === p.id) || p;
+  const age = ageOf(live);
+  const opts = [["female", "Woman"], ["male", "Man"], ["other", "Other"], ["undisclosed", "Prefers not to say"]];
+  const set = (g) => {
+    updatePerson(p.id, { gender: g || null }, `Recorded gender — ${p.name}`);
+    toast(g ? "Saved" : "Cleared", "green");
+  };
+  return (
+    <Card pad={16}>
+      <Eyebrow>On record</Eyebrow>
+      <div style={{ display: "flex", gap: 10, margin: "10px 0 4px" }}>
+        {[["Age", age == null ? "—" : `${age}`, age == null ? "no date of birth" : live.dob],
+          ["Joined", (live.joined || "—").split(" ").slice(-1)[0], live.joined || ""],
+        ].map(([l, v, sub]) => (
+          <div key={l} style={{ flex: 1, background: C.paper, borderRadius: 9, padding: "9px 11px" }}>
+            <div style={{ font: `600 10px ${sans}`, letterSpacing: "0.08em", textTransform: "uppercase", color: C.stone }}>{l}</div>
+            <div style={{ font: `400 21px ${serif}`, color: C.ink, marginTop: 2 }}>{v}</div>
+            <div style={{ font: `11px ${sans}`, color: C.stone }}>{sub}</div>
+          </div>
+        ))}
+      </div>
+      <label style={{ ...lbl, marginTop: 10 }}>Gender</label>
+      <select value={live.gender || ""} onChange={(e) => set(e.target.value)} style={{ ...inp, margin: "6px 0 0" }}>
+        <option value="">Not recorded — ask them</option>
+        {opts.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+      </select>
+      <div style={{ font: `11px ${sans}`, color: C.stone, marginTop: 7, lineHeight: 1.5 }}>
+        Whatever they tell you. "Prefers not to say" is a complete answer and is counted
+        as one — it is not the same as leaving this blank.
+      </div>
+    </Card>
+  );
+}
+
 function PersonProfile({ p, onClose }) {
   const [full, setFull] = useState(false);
   const mob = useIsMobile(); const { updatePerson, addNote, addHrTask, activeFirm } = useProc();
@@ -7936,6 +7978,9 @@ function PersonProfile({ p, onClose }) {
                 <textarea value={growth} onChange={e => setGrowth(e.target.value)} placeholder="Growth note — where are they headed?" style={{ ...inp, minHeight: 60, resize: "vertical", margin: "6px 0 8px" }} />
                 <GoldButton small onClick={() => { updatePerson(p.id, { growth }, `Updated growth note — ${p.name}`); toast("Saved", "green"); }}>Save note</GoldButton>
               </Card>
+
+              {/* What the record knows — and the one field it usually doesn't */}
+              <OnRecordCard p={p} />
 
               {/* Attendance & score */}
               <AttendanceScoreCard p={p} />
@@ -9749,6 +9794,169 @@ function OrgNode({ p, all, depth, expanded, toggle }) {
 }
 
 /* ---------- population: who, where, since when ---------- */
+/* ============================== WORKFORCE SHAPE ==============================
+   How many, how old, and who they are. Three questions any HR manager is asked
+   in their first week, and three the app should never have to guess at.
+
+   AGE is computed from the date of birth on the record, in completed years, on
+   the day you look. It is not stored — a stored age is wrong the morning after
+   you write it.
+
+   GENDER is a field somebody has to fill in. It is NOT inferred from a name:
+   guessing it produces a number that reads like a fact and is wrong for real
+   colleagues. Until it is filled in, this panel says so plainly and tells HR how
+   many records are waiting. "Prefers not to say" is a different answer from an
+   empty field, and the two are counted apart on purpose — one is a finished
+   record, the other is work outstanding.                                      */
+
+const AGE_BANDS = [
+  { key: "18-25", label: "18–25", min: 18, max: 25 },
+  { key: "26-35", label: "26–35", min: 26, max: 35 },
+  { key: "36-45", label: "36–45", min: 36, max: 45 },
+  { key: "46-55", label: "46–55", min: 46, max: 55 },
+  { key: "56+", label: "56 and over", min: 56, max: 200 },
+];
+
+/* Completed years today. Null when there is no date of birth, or when the date
+   is outside 14–80 — that is a typo in the source sheet, not a colleague. */
+function ageOf(p) {
+  if (p && typeof p.age === "number") return p.age >= 14 && p.age <= 80 ? p.age : null;
+  const raw = p && p.dob ? String(p.dob).trim() : "";
+  if (!raw) return null;
+  const d = new Date(`${raw} 00:00:00 GMT`);
+  if (isNaN(d.getTime())) return null;
+  const now = new Date();
+  let a = now.getUTCFullYear() - d.getUTCFullYear();
+  if (now.getUTCMonth() < d.getUTCMonth() || (now.getUTCMonth() === d.getUTCMonth() && now.getUTCDate() < d.getUTCDate())) a -= 1;
+  return a >= 14 && a <= 80 ? a : null;
+}
+
+const GENDER_LABEL = { female: "Women", male: "Men", other: "Other", undisclosed: "Prefers not to say" };
+const GENDER_TINT = { female: "#8A6224", male: "#224A85", other: "#7B4B8A", undisclosed: "#6B7280" };
+
+function ShareBar({ label, n, total, tint, sub }) {
+  const pct = total ? Math.round((n / total) * 100) : 0;
+  return (
+    <div style={{ padding: "7px 0" }}>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+        <span style={{ flex: 1, font: `600 13px ${sans}`, color: C.ink }}>{label}</span>
+        {sub && <span style={{ font: `11px ${sans}`, color: C.stone }}>{sub}</span>}
+        <span style={{ font: `700 15px ${mono}`, color: C.ink, width: 34, textAlign: "right" }}>{n}</span>
+        <span style={{ font: `11px ${mono}`, color: C.stone, width: 34, textAlign: "right" }}>{pct}%</span>
+      </div>
+      <div style={{ height: 6, background: C.lineSoft, borderRadius: 3, marginTop: 5, overflow: "hidden" }}>
+        <div style={{ width: `${pct}%`, height: "100%", background: tint || C.gold }} />
+      </div>
+    </div>
+  );
+}
+
+function WorkforceShape({ people = [], all = [] }) {
+  const mob = useIsMobile();
+  const [tab, setTab] = useState("age");
+
+  const ages = people.map(ageOf).filter((a) => a != null).sort((a, b) => a - b);
+  const noDob = people.length - ages.length;
+  const median = ages.length ? ages[Math.floor(ages.length / 2)] : null;
+  const average = ages.length ? Math.round(ages.reduce((x, y) => x + y, 0) / ages.length) : null;
+
+  const genders = {};
+  let noGender = 0;
+  people.forEach((p) => {
+    const g = p.gender;
+    if (!g) noGender += 1;
+    else genders[g] = (genders[g] || 0) + 1;
+  });
+  const genderKnown = people.length - noGender;
+
+  const kpis = [
+    ["On the rolls", String(people.length), people.length === all.length ? "everyone" : `of ${all.length} in the group`],
+    ["Youngest", ages.length ? String(ages[0]) : "—", ages.length ? "years" : "no dates of birth"],
+    ["Median age", median == null ? "—" : String(median), average == null ? "" : `average ${average}`],
+    ["Oldest", ages.length ? String(ages[ages.length - 1]) : "—", ages.length ? "years" : ""],
+  ];
+
+  return (
+    <Card pad={mob ? 14 : 18} style={{ marginBottom: 16 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
+        <Users size={15} color={C.gold} /><Eyebrow>The shape of the workforce</Eyebrow>
+        <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
+          {[["age", "Age"], ["gender", "Gender"], ["dept", "Department"]].map(([k, l]) => (
+            <button key={k} onClick={() => setTab(k)} style={{ cursor: "pointer", borderRadius: 8, padding: "5px 11px",
+              border: `1px solid ${tab === k ? C.gold : C.line}`, background: tab === k ? C.goldTint : "#fff",
+              font: `600 11px ${sans}`, color: tab === k ? C.goldDeep : C.stone }}>{l}</button>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr 1fr" : "repeat(4,1fr)", gap: 10, marginBottom: 14 }}>
+        {kpis.map(([l, v, sub]) => (
+          <div key={l} style={{ background: C.paper, borderRadius: 10, padding: "10px 12px" }}>
+            <div style={{ font: `600 10px ${sans}`, letterSpacing: "0.08em", textTransform: "uppercase", color: C.stone }}>{l}</div>
+            <div style={{ font: `400 24px ${serif}`, color: C.ink, marginTop: 3 }}>{v}</div>
+            {sub ? <div style={{ font: `11px ${sans}`, color: C.stone, marginTop: 1 }}>{sub}</div> : null}
+          </div>
+        ))}
+      </div>
+
+      {tab === "age" && (
+        <>
+          {AGE_BANDS.map((b) => (
+            <ShareBar key={b.key} label={b.label} tint={C.gold}
+              n={people.filter((p) => { const a = ageOf(p); return a != null && a >= b.min && a <= b.max; }).length}
+              total={ages.length} />
+          ))}
+          <div style={{ font: `11px ${sans}`, color: noDob ? C.amber : C.stone, marginTop: 10, lineHeight: 1.55 }}>
+            {noDob
+              ? `${noDob} of ${people.length} have no usable date of birth, so they are not in any band. Add it on their record and they appear here.`
+              : `Every one of the ${people.length} has a date of birth on file, so nobody is missing from these bands.`}
+          </div>
+        </>
+      )}
+
+      {tab === "gender" && (
+        <>
+          {genderKnown === 0 ? (
+            <div style={{ background: C.amberSoft, border: `1px solid ${C.amber}`, borderRadius: 10, padding: "12px 14px", font: `13px ${sans}`, color: "#6E4E12", lineHeight: 1.65 }}>
+              <b>Not recorded for any of the {people.length}.</b><br />
+              Gender was not in the sheets the company handed over, and the app will not
+              guess it from a name — that produces a number that reads like a fact and is
+              wrong for real colleagues. Open anyone under People and set it, or add a
+              Gender column to the bulk-intake sheet. The moment it is filled in, the split
+              appears here.
+            </div>
+          ) : (
+            <>
+              {Object.keys(GENDER_LABEL).filter((g) => genders[g]).map((g) => (
+                <ShareBar key={g} label={GENDER_LABEL[g]} n={genders[g]} total={genderKnown} tint={GENDER_TINT[g]} />
+              ))}
+              <div style={{ font: `11px ${sans}`, color: noGender ? C.amber : C.stone, marginTop: 10, lineHeight: 1.55 }}>
+                {noGender
+                  ? `Percentages are of the ${genderKnown} recorded. ${noGender} more have not been asked yet — they are not counted in either direction.`
+                  : `All ${people.length} recorded. "Prefers not to say" is somebody who was asked; it is counted, not treated as a gap.`}
+              </div>
+            </>
+          )}
+        </>
+      )}
+
+      {tab === "dept" && (
+        <>
+          {[...new Set(people.map((p) => p.dept))]
+            .map((d) => ({ d, n: people.filter((p) => p.dept === d).length }))
+            .sort((a, b) => b.n - a.n)
+            .map(({ d, n }) => {
+              const bandAges = people.filter((p) => p.dept === d).map(ageOf).filter((a) => a != null);
+              const med = bandAges.length ? [...bandAges].sort((a, b) => a - b)[Math.floor(bandAges.length / 2)] : null;
+              return <ShareBar key={d} label={d} n={n} total={people.length} tint={C.gold}
+                sub={med == null ? "" : `median ${med}`} />;
+            })}
+        </>
+      )}
+    </Card>
+  );
+}
+
 function PopulationView() {
   const mob = useIsMobile();
   const { people, deptRules, companies, projects, scope } = useProc();
@@ -9786,6 +9994,8 @@ function PopulationView() {
           </button>
         ))}
       </div>
+
+      <WorkforceShape people={rows} all={active} />
 
       <Card pad={mob ? 14 : 18} style={{ marginBottom: 16 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
@@ -10055,6 +10265,8 @@ const IMP_FIELDS = [
   { k: "dept",   label: "Department",       req: true,  aliases: ["department", "dept", "division", "section"] },
   { k: "office", label: "Office / site",    req: false, aliases: ["office", "site", "location", "posting", "branch", "place"] },
   { k: "joined", label: "Date of joining",  req: true,  aliases: ["doj", "date of joining", "joining date", "joined", "start date", "date joined"] },
+  { k: "dob",    label: "Date of birth",     req: false, aliases: ["dob", "date of birth", "birth date", "birthday", "born"] },
+  { k: "gender", label: "Gender",            req: false, aliases: ["gender", "sex", "m/f", "male/female"] },
   { k: "phone",  label: "Personal mobile",  req: true,  aliases: ["mobile", "phone", "personal mobile", "contact", "cell", "personal number", "mobile no"] },
   { k: "email",  label: "Personal email",   req: false, aliases: ["email", "personal email", "e-mail", "mail", "email id"] },
   { k: "basic",  label: "Basic pay",        req: false, aliases: ["basic", "basic pay", "basic salary"] },
@@ -10067,7 +10279,7 @@ const IMP_FIELDS = [
 /* The sheet HR is asked to fill in. It carries the header row and nothing else:
    the point is to show which columns the importer reads, and a sample row of
    invented employees is exactly the thing that ends up imported by accident. */
-const SAMPLE_CSV = `Employee Name,Designation,Department,Site,DOJ,Personal Mobile,Personal Email,Basic,HRA,Conveyance,IMEI,Official Number`;
+const SAMPLE_CSV = `Employee Name,Designation,Department,Site,DOJ,Date of Birth,Gender,Personal Mobile,Personal Email,Basic,HRA,Conveyance,IMEI,Official Number`;
 
 function parseSheet(text) {
   const lines = String(text).replace(/\r/g, "").split("\n").filter(l => l.trim());

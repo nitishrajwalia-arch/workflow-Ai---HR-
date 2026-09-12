@@ -75,6 +75,87 @@ describe('reading people', () => {
   });
 });
 
+describe('age and gender', () => {
+  it('computes age in completed years from the date of birth', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/v1/people/MB-ADM-0003',
+      headers: auth(token),
+    });
+    const p = res.json<{ dob: string | null; age: number | null }>();
+    expect(p.dob).toBeTruthy();
+    // Whatever the seed holds, the age must agree with the date of birth it
+    // was computed from. Recomputing here rather than asserting a literal is
+    // the point: a literal would be wrong on somebody's birthday.
+    const born = new Date(`${p.dob} 00:00:00 GMT`);
+    const now = new Date();
+    let expected = now.getUTCFullYear() - born.getUTCFullYear();
+    if (
+      now.getUTCMonth() < born.getUTCMonth() ||
+      (now.getUTCMonth() === born.getUTCMonth() && now.getUTCDate() < born.getUTCDate())
+    ) {
+      expected -= 1;
+    }
+    expect(p.age).toBe(expected);
+  });
+
+  it('reports no age rather than a wrong one when there is no date of birth', async () => {
+    const kept = await db.person.findUniqueOrThrow({ where: { id: 'MB-ADM-0003' } });
+    await db.person.update({ where: { id: 'MB-ADM-0003' }, data: { dob: null, dobOn: null } });
+    try {
+      const res = await app.inject({
+        method: 'GET',
+        url: '/api/v1/people/MB-ADM-0003',
+        headers: auth(token),
+      });
+      expect(res.json<{ age: number | null }>().age).toBeNull();
+    } finally {
+      // Other files read this person. Put them back whatever happens above.
+      await db.person.update({
+        where: { id: 'MB-ADM-0003' },
+        data: { dob: kept.dob, dobOn: kept.dobOn },
+      });
+    }
+  });
+
+  it('starts with gender unrecorded, and keeps "not asked" apart from "would rather not say"', async () => {
+    const before = await app.inject({
+      method: 'GET',
+      url: '/api/v1/people/MB-ADM-0001',
+      headers: auth(token),
+    });
+    // Nobody was asked during the import, so it is null — NOT 'undisclosed'.
+    expect(before.json<{ gender: string | null }>().gender).toBeNull();
+
+    const set = await app.inject({
+      method: 'PATCH',
+      url: '/api/v1/people/MB-ADM-0001',
+      headers: auth(token),
+      payload: { gender: 'undisclosed' },
+    });
+    expect(set.statusCode).toBe(200);
+    expect(set.json<{ gender: string | null }>().gender).toBe('undisclosed');
+
+    const cleared = await app.inject({
+      method: 'PATCH',
+      url: '/api/v1/people/MB-ADM-0001',
+      headers: auth(token),
+      payload: { gender: null },
+    });
+    expect(cleared.json<{ gender: string | null }>().gender).toBeNull();
+  });
+
+  it('refuses a gender it does not recognise', async () => {
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/api/v1/people/MB-ADM-0001',
+      headers: auth(token),
+      payload: { gender: 'inferred-from-the-name' },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+});
+
 describe('changing who employs someone', () => {
   it('will not let it happen as an ordinary edit', async () => {
     const res = await app.inject({

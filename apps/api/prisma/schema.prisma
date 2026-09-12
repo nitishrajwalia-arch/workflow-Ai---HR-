@@ -169,6 +169,16 @@ enum PersonStatus {
   exited
 }
 
+/// As the person themselves states it. `undisclosed` is a real answer given by
+/// somebody who was asked; a NULL column means nobody has asked yet. HR reports
+/// on those separately, so do not collapse them. Never inferred from a name.
+enum Gender {
+  female
+  male
+  other
+  undisclosed
+}
+
 model Person {
   /// MB-PUR-0012. Human-facing, printed on the card, so it is the primary key.
   id          String       @id
@@ -182,6 +192,8 @@ model Person {
   joinedOn    DateTime?
   dob         String?
   dobOn       DateTime?
+  /// NULL means not asked yet — distinct from `undisclosed`. See the enum.
+  gender      Gender?
   status      PersonStatus @default(active)
   exitedOn    String?
   perf        Int          @default(75)
@@ -224,6 +236,7 @@ model Person {
   @@index([employerId])
   @@index([reportsToId])
   @@index([status])
+  @@index([gender])
   @@map("person")
 }
 

@@ -79,8 +79,38 @@ export const importsRoutes: FastifyPluginAsyncZod = async (app) => {
         return hit?.id ?? null;
       };
 
+      /**
+       * What somebody wrote in a Gender column, turned into one of our four
+       * values. Anything we do not recognise comes back null — "not asked yet"
+       * — rather than being forced into the nearest bucket, because a wrong
+       * guess here is indistinguishable from a real answer once it is stored.
+       */
+      function readGender(
+        raw: string | undefined,
+      ): 'female' | 'male' | 'other' | 'undisclosed' | null {
+        const v = (raw ?? '').trim().toLowerCase();
+        if (!v) return null;
+        if (['f', 'female', 'woman', 'women', 'महिला'].includes(v)) return 'female';
+        if (['m', 'male', 'man', 'men', 'पुरुष'].includes(v)) return 'male';
+        if (['o', 'other', 'others', 'nb', 'non-binary', 'transgender'].includes(v)) return 'other';
+        if (
+          ['prefer not to say', 'undisclosed', 'not disclosed', 'declined', 'na', 'n/a'].includes(v)
+        )
+          return 'undisclosed';
+        return null;
+      }
+
       function prepare(r: ImportRow, officeId: string, id: string) {
         const joined = bothForms(r.joined);
+        // A date of birth that will not parse is dropped rather than guessed:
+        // the person simply shows "no date of birth" until somebody fixes it.
+        let dob: { display: string; on: Date } | null = null;
+        if (r.dob?.trim()) {
+          const parsed = bothForms(r.dob);
+          if (parsed.on && /^\d{2} [A-Z][a-z]{2} \d{4}$/.test(parsed.display)) {
+            dob = { display: parsed.display, on: parsed.on };
+          }
+        }
         // Who pays them follows the PROJECT behind the office, not the office.
         // The Head Office has no project, so it falls back to the group's
         // default entity — which is why `employer` is editable afterwards.
@@ -94,6 +124,9 @@ export const importsRoutes: FastifyPluginAsyncZod = async (app) => {
           type: 'Staff',
           joined: joined.display,
           joinedOn: joined.on,
+          dob: dob?.display ?? null,
+          dobOn: dob?.on ?? null,
+          gender: readGender(r.gender),
           officeId,
           employerId,
           imported: true,

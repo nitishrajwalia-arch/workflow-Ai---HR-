@@ -28,6 +28,10 @@ export interface BootstrapPerson {
   email: string;
   joined: string;
   dob: string | null;
+  /** Age in completed years, computed by the server. Null when no usable dob. */
+  age: number | null;
+  /** Null means nobody has asked yet; 'undisclosed' means they were asked. */
+  gender: string | null;
   status: string;
   exitedOn: string | null;
   perf: number;
