@@ -178,7 +178,12 @@ export function ProcurementProvider({ children, toast }: Props) {
 
       /* --------------------------------------------------- screen-local ---- */
       firms: w.firms,
-      activeFirm: (w.firms ?? []).find((f: any) => f.id === firmId) ?? w.firms?.[0],
+      // Never undefined. The shell reads `activeFirm.name` on every render, so a
+      // server that returns no projects — a brand new database, or a company
+      // that has not created one yet — would white-page the whole application
+      // rather than showing an empty switcher.
+      activeFirm: (w.firms ?? []).find((f: any) => f.id === firmId) ??
+        w.firms?.[0] ?? { id: '', short: 'No project', name: 'No project set up yet' },
       setFirm: setFirmId,
       openVendor,
       setOpenVendor,

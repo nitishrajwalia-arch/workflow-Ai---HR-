@@ -229,6 +229,14 @@ const USERS = {
 /* Which Employee ID each desk signs in with. The chips under the sign-in form
    fill this in for you; the PASSWORD is still required, and the server decides
    which desk the account actually holds. */
+/* EDIT 21 of 21: `USERS[userKey]` is looked up in a dozen places and
+   dereferenced immediately. USERS holds nine desks; the company has twelve
+   departments and only one of them has an account so far. Any account whose
+   desk is not in that map — which is now most of them — took the whole
+   application down with "cannot read properties of undefined". This never
+   returns undefined. */
+const desk = (k) => USERS[k] || { name: "", role: k || "User", tier: 3, key: k || "viewer", dept: "" };
+
 const DESK_IDS = {
   admin: "MB-ADM-0001", purchase: "MB-PUR-0012", store: "MB-STR-0004",
   maintenance: "MB-MNT-0006", accounts: "MB-ACC-0002", hr: "MB-HR-0001",
@@ -990,7 +998,7 @@ const DEFAULT_GRANTS = () => {
     AREA_GROUPS.forEach(([, areas]) => areas.forEach(([a]) => {
       const nav = (NAV[r] || []).map(n => n[0]);
       const on = r === "admin" || nav.includes(a);
-      g[r][a] = { view: on, edit: on && r !== "admin" ? true : on, approve: r === "admin" || USERS[r].tier <= 2 ? on : false, export: r === "admin" ? true : false };
+      g[r][a] = { view: on, edit: on && r !== "admin" ? true : on, approve: r === "admin" || desk(r).tier <= 2 ? on : false, export: r === "admin" ? true : false };
     }));
   });
   return g;
@@ -1026,7 +1034,7 @@ function csvCell(v) { const s = String(v == null ? "" : v); return /[",\n]/.test
 
 function ExportPanel({ title, filterNote, cols, rows, trail, userKey, onClose, registry, onRegister }) {
   const mob = useIsMobile(); const { activeFirm } = useProc();
-  const u = USERS[userKey] || USERS.purchase;
+  const u = desk(userKey);
   const empId = ((typeof EMPLOYEES !== "undefined" ? EMPLOYEES : []).find(p => p.name === u.name) || {}).id || `MB-${(u.dept || "GEN").slice(0, 3).toUpperCase()}-0001`;
   const [fmt, setFmt] = useState("excel");
   const [period, setPeriod] = useState("current");
@@ -1661,7 +1669,7 @@ export function Shell({ userKey: realKey, onLogout }) {
             <button onClick={() => setReporting(true)} style={{ cursor: "pointer", border: `1px solid ${C.line}`, background: "#fff", borderRadius: 20, padding: "7px 11px", display: "inline-flex", alignItems: "center", gap: 6, color: C.goldDeep, font: `600 12px ${sans}` }}><Flag size={13} /> Report</button>
         </div>
         {actAs && <ActingBanner who={USERS[actAs]} onExit={() => { setActAs(null); if (returnTab) setTimeout(() => setTab(returnTab), 0); toast("Back to your own view", "green"); }} />}
-        <div style={{ padding: 16, paddingBottom: 104 }}><NewTaskLauncher userKey={userKey} onRun={runTask} /><IncentiveBanner userKey={userKey} /><CalendarNudge userKey={userKey} /><Views tab={tab} go={setTab} userKey={userKey} onActAs={(r) => { setReturnTab(tab); setActAs(r); toast(`Now seeing the app as ${USERS[r].name} — ${USERS[r].role}`, "gold"); }} /></div>
+        <div style={{ padding: 16, paddingBottom: 104 }}><NewTaskLauncher userKey={userKey} onRun={runTask} /><IncentiveBanner userKey={userKey} /><CalendarNudge userKey={userKey} /><Views tab={tab} go={setTab} userKey={userKey} onActAs={(r) => { setReturnTab(tab); setActAs(r); toast(`Now seeing the app as ${desk(r).name} — ${desk(r).role}`, "gold"); }} /></div>
         <CoachLayer userKey={userKey} />
         {modals}
       </div>
@@ -1700,7 +1708,7 @@ export function Shell({ userKey: realKey, onLogout }) {
           </div>
         </header>
         {actAs && <ActingBanner who={USERS[actAs]} onExit={() => { setActAs(null); if (returnTab) setTimeout(() => setTab(returnTab), 0); toast("Back to your own view", "green"); }} />}
-        <div style={{ padding: 26, paddingBottom: 108 }}><NewTaskLauncher userKey={userKey} onRun={runTask} /><IncentiveBanner userKey={userKey} /><CalendarNudge userKey={userKey} /><Views tab={tab} go={setTab} userKey={userKey} onActAs={(r) => { setReturnTab(tab); setActAs(r); toast(`Now seeing the app as ${USERS[r].name} — ${USERS[r].role}`, "gold"); }} /></div>
+        <div style={{ padding: 26, paddingBottom: 108 }}><NewTaskLauncher userKey={userKey} onRun={runTask} /><IncentiveBanner userKey={userKey} /><CalendarNudge userKey={userKey} /><Views tab={tab} go={setTab} userKey={userKey} onActAs={(r) => { setReturnTab(tab); setActAs(r); toast(`Now seeing the app as ${desk(r).name} — ${desk(r).role}`, "gold"); }} /></div>
       </main>
       <CoachLayer userKey={userKey} />
       {modals}
@@ -2039,7 +2047,7 @@ function SendPanel({ email, setEmail, wa, setWa, chEmail, setChEmail, chWa, setC
 function ClaimDoc({ po, userKey, onClose }) {
   const mob = useIsMobile(); const { vendors, activeFirm } = useProc();
   const d = po.del || {}; const over = d.flag === "over";
-  const u = USERS[userKey] || USERS.purchase;
+  const u = desk(userKey);
   const v = vendors.find(x => x.name === po.vendor) || {};
   const [email, setEmail] = useState(v.email || "");
   const [wa, setWa] = useState(v.whatsapp || v.phone || "");
@@ -5145,7 +5153,7 @@ const rowAmt = (r) => numV(r.qty) * numV(r.rate);
 
 function SendToVendor({ po, firm, onClose, userKey = "purchase" }) {
   const mob = useIsMobile(); const { vendors, issueGatePass } = useProc();
-  const u = USERS[userKey] || USERS.purchase;
+  const u = desk(userKey);
   const v = vendors.find(x => x.name === po.vendor) || {};
   const [email, setEmail] = useState(v.email || "");
   const [wa, setWa] = useState(v.whatsapp || v.phone || "");
@@ -5153,7 +5161,7 @@ function SendToVendor({ po, firm, onClose, userKey = "purchase" }) {
   const [chWa, setChWa] = useState(true);
   const [gate, setGate] = useState(true);
   const [subj, setSubj] = useState(`Purchase Order ${po.id} — ${firm.short}`);
-  const [body, setBody] = useState(`Dear ${po.vendor},\n\nPlease find attached Purchase Order ${po.id} for ${firm.short}. It covers ${po.rows.length} line item${po.rows.length > 1 ? "s" : ""}, totalling ${inr(po.total)}.\n\nKindly confirm receipt and the expected dispatch date. Payment terms: ${po.terms}.\n\nThank you,\n${USERS[userKey] ? USERS[userKey].name : "Marbella Group"}\n${USERS[userKey] ? USERS[userKey].role : "Purchase"} · ${firm.firm}\nGSTIN ${firm.gstin} · RERA ${firm.rera}\n${firm.addr}`);
+  const [body, setBody] = useState(`Dear ${po.vendor},\n\nPlease find attached Purchase Order ${po.id} for ${firm.short}. It covers ${po.rows.length} line item${po.rows.length > 1 ? "s" : ""}, totalling ${inr(po.total)}.\n\nKindly confirm receipt and the expected dispatch date. Payment terms: ${po.terms}.\n\nThank you,\n${USERS[userKey] ? desk(userKey).name : "Marbella Group"}\n${USERS[userKey] ? desk(userKey).role : "Purchase"} · ${firm.firm}\nGSTIN ${firm.gstin} · RERA ${firm.rera}\n${firm.addr}`);
   const [sent, setSent] = useState(false);
   const chans = [chEmail && "email", chWa && "WhatsApp"].filter(Boolean).join(" + ");
   const send = () => {
@@ -5647,7 +5655,7 @@ function detectCat(text) {
 }
 function IntentRequest({ userKey = "purchase" }) {
   const mob = useIsMobile(); const { activeFirm } = useProc();
-  const u = USERS[userKey] || USERS.purchase;
+  const u = desk(userKey);
   const [reqId] = useState(() => "MB-RQ-" + (5200 + Math.floor(Math.random() * 700)));
   const blank = () => ({ particular: "", brand: "", qty: "", unit: "", loc: (SITES[0] && SITES[0].name) || "", spot: "", desc: "" });
   const [items, setItems] = useState([blank()]);
@@ -5757,7 +5765,7 @@ function IntentRequest({ userKey = "purchase" }) {
 
 function FreshSheet({ userKey }) {
   const mob = useIsMobile(); const { activeFirm } = useProc();
-  const u = USERS[userKey] || USERS.purchase;
+  const u = desk(userKey);
   const pm = USERS.purchase;
   const blank = () => ({ particular: "", brand: "", qty: "", unit: "", need: "", remark: "" });
   const [rows, setRows] = useState([blank(), blank(), blank()]);
@@ -6095,7 +6103,7 @@ function MaintenanceView({ userKey = "maintenance" }) {
 function DirectoryView({ userKey }) {
   const [act, setAct] = useState(null);
   const mob = useIsMobile();
-  const tier = USERS[userKey]?.tier || 3;
+  const tier = desk(userKey).tier || 3;
   /* EDIT 19 of 19: the directory listed five colleagues and three vendors that
      were written into this file. Nobody could ring any of them. It is the live
      roster now, grouped by department, with the vendor group dropped until
@@ -6130,8 +6138,8 @@ function DirectoryView({ userKey }) {
         <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
           <Card pad={20} style={{ background: C.redSoft, borderColor: `${C.red}44` }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}><Megaphone size={16} color={C.red} /><span style={{ font: `600 13px ${sans}`, color: C.red }}>Emergency broadcast</span></div>
-            <div style={{ font: `12px ${sans}`, color: C.inkSoft, lineHeight: 1.5, marginBottom: 12 }}>Document leak, password compromise, site incident — alert all 65 contacts at once.</div>
-            <button onClick={() => setAct({ title: "Send the emergency alert", intro: "This goes to every person on site immediately. Use it only for a real emergency.", lines: [["Goes to", "65 people on site right now"], ["Channels", "SMS + WhatsApp + in-app"], ["Sender", "Marbella Group — Safety"]], confirmLabel: "Send the alert now", tone: "green", doneTitle: "Alert sent to 65 people", doneBody: "Delivery is being tracked. Anyone who does not acknowledge in 5 minutes is called." })} style={{ cursor: "pointer", border: "none", background: C.red, color: "#fff", font: `600 13px ${sans}`, padding: "10px 15px", borderRadius: 10, width: "100%" }}>Send emergency alert</button>
+            <div style={{ font: `12px ${sans}`, color: C.inkSoft, lineHeight: 1.5, marginBottom: 12 }}>Document leak, password compromise, site incident — alert everyone at once.</div>
+            <button onClick={() => setAct({ title: "Send the emergency alert", intro: "This goes to every person on site immediately. Use it only for a real emergency.", lines: [["Goes to", `${dirPeople.filter(p => p.status !== "exited").length} people on the roster`], ["Channels", "SMS + WhatsApp + in-app"], ["Sender", "Marbella Group — Safety"]], confirmLabel: "Send the alert now", tone: "green", doneTitle: `Alert sent to ${dirPeople.filter(p => p.status !== "exited").length} people`, doneBody: "Delivery is being tracked. Anyone who does not acknowledge in 5 minutes is called." })} style={{ cursor: "pointer", border: "none", background: C.red, color: "#fff", font: `600 13px ${sans}`, padding: "10px 15px", borderRadius: 10, width: "100%" }}>Send emergency alert</button>
           </Card>
           <Card pad={20}>
             <Eyebrow>Announcement</Eyebrow>
@@ -8855,7 +8863,7 @@ function IncentivesView({ userKey }) {
 function IncentiveBanner({ userKey }) {
   const { packages, people, att, hrTasks } = useProc();
   if (userKey === "hr" || userKey === "admin") return null;
-  const u = USERS[userKey]; if (!u) return null;
+  const u = desk(userKey); if (!u) return null;
   const pk = packages.find(p => p.status === "live" && (p.dept === "All" || p.dept === u.dept));
   if (!pk) return null;
   const me = people.find(p => p.name === u.name);
@@ -9173,7 +9181,7 @@ const CAL_SEED = [
 
 function useVisibleEvents(userKey) {
   const { events, people } = useProc();
-  const u = USERS[userKey];
+  const u = desk(userKey);
   const me = people.find(p => p.name === u.name);
   return events.filter(e => {
     if (userKey === "admin" || userKey === "hr") return true;
@@ -9213,7 +9221,7 @@ function EventRow({ e, people, onDel }) {
 
 function CreateEvent({ userKey, onClose }) {
   const mob = useIsMobile(); const { addPerson, people, addEvent } = useProc();
-  const u = USERS[userKey];
+  const u = desk(userKey);
   const DEPTS = Object.keys(DEPT_CODES);
   const [f, setF] = useState({ title: "", date: TODAY, time: "10:00", kind: "meeting", priority: "priority", audType: "all", dept: u.dept === "Admin" ? "Purchase" : u.dept, personId: (people[0] || {}).id || "", note: "", where: "" });
   const set = (k, v) => setF(s => ({ ...s, [k]: v }));
@@ -9265,7 +9273,7 @@ function CreateEvent({ userKey, onClose }) {
 
 function CalendarView({ userKey }) {
   const mob = useIsMobile(); const { people, delEvent } = useProc();
-  const u = USERS[userKey];
+  const u = desk(userKey);
   const vis = useVisibleEvents(userKey);
   const [make, setMake] = useState(false);
   const [cur, setCur] = useState(() => { const d = asDate(TODAY); return { y: d.getFullYear(), m: d.getMonth() }; });

@@ -1,5 +1,5 @@
 /**
- * Standalone harness: the Procurement OS on its own seeded data, no server.
+ * The shareable preview: the real application, with the network removed.
  *
  * This is the audit rig and the shareable demo, not the product. It renders the
  * legacy file exactly as delivered so every screen can be walked and every
@@ -17,9 +17,9 @@
  * The choice is remembered per browser.
  */
 import { useState } from 'react';
-// The legacy file is plain JS: `allowJs` imports it, `checkJs: false` leaves
-// it untyped. Deliberate — see tsconfig.app.json.
-import App from './legacy/MarbellaProcurementOS.jsx';
+// The REAL application. vite.config.demo.ts swaps lib/api for a fixed payload,
+// so this is the product with the network removed — not a separate mock of it.
+import App from './App.js';
 
 const KEY = 'marbella.demoNotice';
 
@@ -122,12 +122,11 @@ export default function Standalone() {
           <div style={openRow}>
             <span style={tag}>Demo</span>
             <span style={{ maxWidth: '104ch' }}>
-              The interface, on seeded data, with <strong>no server behind it</strong>. Sign in with
-              any of the nine Employee IDs and any password. Every screen works, but nothing is
-              saved past a refresh and none of the rules are enforced — those live on the server,
-              which this build does not have. Inside an embedded viewer,{' '}
-              <strong>Download and Print do nothing</strong>: the viewer blocks both. They work when
-              the app runs on your own machine.
+              Marbella's real structure — 126 people, 12 departments, four companies and 604 units —
+              with <strong>no server behind it</strong>. Sign in with any Employee ID from the
+              People screen and any password. Nothing saves. Aadhaar, PAN, home addresses, full
+              mobiles, salaries and residents' names are <strong>absent from this build</strong>,
+              not hidden in it.
             </span>
             <button
               type="button"
@@ -146,7 +145,13 @@ export default function Standalone() {
             aria-label="Show what this demo build is"
           >
             <span style={smallTag}>Demo</span>
-            <span>no server behind this build</span>
+            <span>
+              Marbella's real structure — 126 people, 12 departments, four companies, 604 units —
+              with <strong>no server behind it</strong>. Sign in with any Employee ID from the
+              People screen and any password. Nothing saves, and Aadhaar, PAN, home addresses, full
+              mobiles and resident names are <strong>absent from this build</strong>, not hidden in
+              it.
+            </span>
             <span style={{ marginLeft: 'auto', opacity: 0.75 }}>what this means ⌄</span>
           </button>
         )}

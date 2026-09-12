@@ -27,13 +27,13 @@ closest.
 
 Known things the last run reported, all genuine discrepancies in the source:
 
-| Sheet | Row | What |
-| --- | --- | --- |
-| KYC | Prem Ranjan | Employee Details has a Prem Kumar in Project; no way to tell whether these are the same person |
-| Timings, Companies, Dept list, Assets | Ravinder Singh | Not in Employee Details, which instead has a Vinod Kumar in Project |
-| Dept Wise List | Chetan Malik, Sandeep Pathania, Manoj, Gurpreet Singh | Listed twice each in Purchase |
-| Tower D | D-2103 | Row appears twice, identical |
-| Tower E | E-2102 | Row appears twice, identical |
+| Sheet                                 | Row                                                   | What                                                                                           |
+| ------------------------------------- | ----------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| KYC                                   | Prem Ranjan                                           | Employee Details has a Prem Kumar in Project; no way to tell whether these are the same person |
+| Timings, Companies, Dept list, Assets | Ravinder Singh                                        | Not in Employee Details, which instead has a Vinod Kumar in Project                            |
+| Dept Wise List                        | Chetan Malik, Sandeep Pathania, Manoj, Gurpreet Singh | Listed twice each in Purchase                                                                  |
+| Tower D                               | D-2103                                                | Row appears twice, identical                                                                   |
+| Tower E                               | E-2102                                                | Row appears twice, identical                                                                   |
 
 ## Things the source gets wrong that the scripts work around
 
