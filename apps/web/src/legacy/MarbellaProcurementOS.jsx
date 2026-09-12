@@ -213,23 +213,26 @@ function useIsMobile(bp = 760) {  const [m, setM] = useState(typeof window !== "
 }
 
 /* ============================== COMPANY DATA (at scale) ============================== */
+/* The desks the system knows about. A desk is a SEAT, not a person: what it can
+   see, what it can approve, which department it belongs to. Who is sitting in it
+   comes from the account that signed in, which the server decides — so `name` is
+   deliberately blank here. Anything that needs a person's name reads it off the
+   session, and falls back to the role when there isn't one. */
 const USERS = {
-  admin:       { name: "Nitish Walia", role: "Chairman · Admin",   tier: 1, key: "admin", dept: "Admin" },
-  purchase:    { name: "R. Khanna",    role: "Purchase Manager",   tier: 2, key: "purchase", dept: "Purchase" },
-  store:       { name: "S. Verma",     role: "Store Manager",      tier: 2, key: "store", dept: "Store" },
-  maintenance: { name: "M. Chauhan",   role: "Maintenance Lead",   tier: 2, key: "maintenance", dept: "Maintenance" },
-  accounts:    { name: "P. Nair",      role: "Accounts Head",      tier: 2, key: "accounts", dept: "Accounts" },
-  hr:          { name: "Simran Kaur",  role: "HR Head",            tier: 2, key: "hr", dept: "HR" },
-  purchaseAsst:{ name: "A. Sethi",     role: "Purchase Assistant", tier: 3, key: "purchaseAsst", dept: "Purchase" },
-  storeAsst:   { name: "D. Rana",      role: "Store Assistant",    tier: 3, key: "storeAsst", dept: "Store" },
-  security:    { name: "Gate — Marbella Grand", role: "Security",          tier: 3, key: "security", dept: "Security" },
+  admin:       { name: "", role: "Chairman · Admin",   tier: 1, key: "admin", dept: "Admin" },
+  purchase:    { name: "", role: "Purchase Manager",   tier: 2, key: "purchase", dept: "Purchase" },
+  store:       { name: "", role: "Store Manager",      tier: 2, key: "store", dept: "Store" },
+  maintenance: { name: "", role: "Maintenance Lead",   tier: 2, key: "maintenance", dept: "Maintenance" },
+  accounts:    { name: "", role: "Accounts Head",      tier: 2, key: "accounts", dept: "Accounts" },
+  hr:          { name: "", role: "HR Manager",         tier: 2, key: "hr", dept: "HR" },
+  purchaseAsst:{ name: "", role: "Purchase Assistant", tier: 3, key: "purchaseAsst", dept: "Purchase" },
+  storeAsst:   { name: "", role: "Store Assistant",    tier: 3, key: "storeAsst", dept: "Store" },
+  security:    { name: "", role: "Security · Gate",    tier: 3, key: "security", dept: "Security" },
 };
-
-// 65 people, 4 admin accounts, 8 departments
 /* Which Employee ID each desk signs in with. The chips under the sign-in form
    fill this in for you; the PASSWORD is still required, and the server decides
    which desk the account actually holds. */
-/* EDIT 1 of 20: `USERS[userKey]` is looked up in a dozen places and
+/* EDIT 1 of 23: `USERS[userKey]` is looked up in a dozen places and
    dereferenced immediately. USERS holds nine desks; the company has twelve
    departments and only one of them has an account so far. Any account whose
    desk is not in that map — which is now most of them — took the whole
@@ -252,7 +255,7 @@ const HEAD = { admins: 4, open: 3 };
    load, and this file had it 7,000 lines further down. */
 const DEPT_CODES = { Admin: "ADM", Purchase: "PUR", Store: "STR", Accounts: "ACC", Security: "SEC", "Site Engineering": "SIT", Maintenance: "MNT", "QA / QC": "QAC", HR: "HR", Marketing: "MKT", Labour: "LAB" };
 
-/* EDIT 2 of 20: this was `[["Admin", 4], ["Purchase", 9], …]` — eight
+/* EDIT 2 of 23: this was `[["Admin", 4], ["Purchase", 9], …]` — eight
    departments with headcounts frozen at the moment the file was written. Three
    things were wrong with it. It was missing HR and Labour entirely, so you
    could not address an announcement to either and neither appeared on the
@@ -263,36 +266,8 @@ const DEPT_CODES = { Admin: "ADM", Purchase: "PUR", Store: "STR", Accounts: "ACC
    The names now come from DEPT_CODES, which is the list the server also uses,
    and the counts are computed from the live roster where they are shown. */
 const DEPTS = Object.keys(DEPT_CODES);
-const EMPLOYEES = [ // representative roster (12 shown of 65)
-  { id: "MB-ADM-0001", name: "Nitish Walia", dept: "Admin", quality: null },
-  { id: "MB-ADM-0002", name: "V. Mehta", dept: "Admin", quality: null },
-  { id: "MB-ADM-0003", name: "R. Bhalla", dept: "Admin", quality: null },
-  { id: "MB-ADM-0004", name: "S. Gill", dept: "Admin", quality: null },
-  { id: "MB-PUR-0012", name: "R. Khanna", dept: "Purchase", quality: 94 },
-  { id: "MB-PUR-0018", name: "A. Sethi", dept: "Purchase", quality: 71 },
-  { id: "MB-STR-0004", name: "S. Verma", dept: "Store", quality: 88 },
-  { id: "MB-STR-0009", name: "D. Rana", dept: "Store", quality: 63 },
-  { id: "MB-ACC-0002", name: "P. Nair", dept: "Accounts", quality: 97 },
-  { id: "MB-SIT-0021", name: "K. Iyer", dept: "Site Engineering", quality: 90 },
-  { id: "MB-MNT-0006", name: "M. Chauhan", dept: "Maintenance", quality: 82 },
-  { id: "MB-QAC-0003", name: "T. Fernandes", dept: "QA / QC", quality: 91 },
-];
-const VENDORS = [ // 84 active — 14 shown
-  { code: "MB-STL-0007", name: "RSW Steel Traders", cat: "Steel", terms: "30 days" },
-  { code: "MB-STL-0014", name: "Jindal Panther (Auth. Dealer)", cat: "Steel", terms: "45 days" },
-  { code: "MB-CEM-0003", name: "Ambuja Depot — Zirakpur", cat: "Cement", terms: "15 days" },
-  { code: "MB-CEM-0009", name: "UltraTech — Kharar", cat: "Cement", terms: "30 days" },
-  { code: "MB-RMC-0002", name: "Marbella RMC Plant", cat: "RMC", terms: "In-house" },
-  { code: "MB-RMC-0005", name: "ACC Concrete", cat: "RMC", terms: "21 days" },
-  { code: "MB-AGG-0011", name: "Shivalik Aggregates", cat: "Aggregate", terms: "COD" },
-  { code: "MB-AGG-0018", name: "Nangal Sand Suppliers", cat: "Sand", terms: "COD" },
-  { code: "MB-BRK-0004", name: "Kumar Brick & Block Kilns", cat: "Blocks", terms: "15 days" },
-  { code: "MB-TIL-0021", name: "Kajaria Tiles — Panchkula", cat: "Finishes", terms: "30 days" },
-  { code: "MB-MEP-0033", name: "Havells Electricals", cat: "MEP", terms: "45 days" },
-  { code: "MB-LAB-0006", name: "Sharma Labour Contractors", cat: "Labour", terms: "Weekly" },
-  { code: "MB-EQP-0012", name: "Gmmco Equipment Hire", cat: "Equipment", terms: "30 days" },
-  { code: "MB-TRN-0005", name: "Malhotra Transport", cat: "Transport", terms: "45 days" },
-];
+const EMPLOYEES = [];
+const VENDORS = [];
 const VENDOR_SEED = VENDORS.map((v, i) => ({
   ...v,
   phone: "+91 " + (98140 + i * 7) + " " + String(10000 + i * 373).slice(0, 5),
@@ -316,106 +291,13 @@ const VEND_ALIASES = {
 };
 const VEND_SAMPLE = `Party Name,Material,GSTIN,PAN,Contact Person,Mobile,Email,Credit,City\nBharat Cement Agency,Cement,03ABCDE1234F1Z5,ABCDE1234F,Rakesh Kumar,9814000011,rakesh@bharatcement.in,30 days,Mohali\nBansal Hardware,Hardware,03PQRSX9876G2Z1,PQRSX9876G,Vinod Bansal,9815000022,sales@bansalhw.com,15 days,Chandigarh\nSaini Tiles & Sanitary,Finishes,,,Harpreet Saini,9876500033,,COD,Zirakpur\nDeep Electricals,MEP,03LMNOP4567H3Z9,LMNOP4567H,Deepak,9814500044,deep.elec@gmail.com,45 days,Panchkula`;
 const _SN = Date.now();
-const SUB_SEED = [
-  { id: "SUB-2087", title: "March steel invoices — Twin Towers", fromName: "R. Khanna", fromDept: "Purchase", to: "Accounts", status: "revised",
-    versions: [
-      { v: 1, fileName: "steel-invoices-mar.pdf", by: "R. Khanna", at: _SN - 3 * 864e5, note: "" },
-      { v: 2, fileName: "steel-invoices-mar-REV.pdf", by: "R. Khanna", at: _SN - 3 * 864e5 + (3 * 3600e3 + 20 * 60e3), note: "Wrong GST on 2 bills — corrected and re-sent." },
-    ] },
-  { id: "SUB-2085", title: "Cement PO backup — Marbella Grand", fromName: "A. Sethi", fromDept: "Purchase", to: "Accounts", status: "sent",
-    versions: [{ v: 1, fileName: "cement-po-grand.pdf", by: "A. Sethi", at: _SN - 26 * 3600e3, note: "" }] },
-  { id: "SUB-2081", title: "Labour bills — April (Sharma Contractors)", fromName: "R. Khanna", fromDept: "Purchase", to: "Accounts", status: "sent",
-    versions: [{ v: 1, fileName: "labour-bills-apr.pdf", by: "R. Khanna", at: _SN - 5 * 864e5, note: "" }] },
-];
-const GATEPASS_SEED = [
-  { id: "GP-4471", po: "PO-4471", vendor: "Jindal Panther (Auth. Dealer)", items: "TMT 550D — 120 T (Twin Towers · A)", total: 7800000, by: "R. Khanna", at: _SN - 2 * 3600e3, status: "expected" },
-  { id: "GP-4468", po: "PO-4468", vendor: "UltraTech — Kharar", items: "OPC 53 — 4,000 bags", total: 1560000, by: "A. Sethi", at: _SN - 5 * 3600e3, status: "arrived" },
-];
-const BILLS_SEED = [
-  // RSW Steel Traders — PRIME (7 bills, long heavy history)
-  { id: "BILL-3301", vendor: "RSW Steel Traders", date: "2023-01-18", item: "TMT 550D — 85 T (Grand · raft)", amt: 5525000, file: "rsw-jan23.pdf" },
-  { id: "BILL-3319", vendor: "RSW Steel Traders", date: "2023-06-22", item: "TMT 550D — 70 T (Grand · columns)", amt: 4620000, file: "rsw-jun23.pdf" },
-  { id: "BILL-3352", vendor: "RSW Steel Traders", date: "2023-11-14", item: "TMT 550D — 95 T (Twin Towers)", amt: 6175000, file: "rsw-nov23.pdf" },
-  { id: "BILL-3390", vendor: "RSW Steel Traders", date: "2024-04-09", item: "TMT 550D — 120 T (Twin Towers · A)", amt: 7800000, file: "rsw-apr24.pdf" },
-  { id: "BILL-3432", vendor: "RSW Steel Traders", date: "2024-09-16", item: "TMT 550D — 90 T (Twin Towers · B)", amt: 5940000, file: "rsw-sep24.pdf" },
-  { id: "BILL-3478", vendor: "RSW Steel Traders", date: "2025-02-11", item: "TMT 550D — 100 T (Curo One)", amt: 6700000, file: "rsw-feb25.pdf" },
-  { id: "BILL-3510", vendor: "RSW Steel Traders", date: "2025-07-08", item: "TMT 550D — 78 T (Curo One · slab)", amt: 5226000, file: "rsw-jul25.pdf" },
-  // Jindal Panther (Auth. Dealer) — PRIME (6 bills)
-  { id: "BILL-3601", vendor: "Jindal Panther (Auth. Dealer)", date: "2023-03-12", item: "TMT 550D — 90 T (Grand)", amt: 5850000, file: "jindal-mar23.pdf" },
-  { id: "BILL-3640", vendor: "Jindal Panther (Auth. Dealer)", date: "2023-09-05", item: "TMT 550D — 60 T (Grand · columns)", amt: 3960000, file: "jindal-sep23.pdf" },
-  { id: "BILL-3688", vendor: "Jindal Panther (Auth. Dealer)", date: "2024-02-20", item: "TMT 550D — 120 T (Twin Towers)", amt: 7800000, file: "jindal-feb24.pdf" },
-  { id: "BILL-3721", vendor: "Jindal Panther (Auth. Dealer)", date: "2024-08-14", item: "TMT 550D — 80 T (Twin Towers · B)", amt: 5280000, file: "jindal-aug24.pdf" },
-  { id: "BILL-3766", vendor: "Jindal Panther (Auth. Dealer)", date: "2025-01-30", item: "TMT 550D — 100 T (Curo One)", amt: 6700000, file: "jindal-jan25.pdf" },
-  { id: "BILL-3802", vendor: "Jindal Panther (Auth. Dealer)", date: "2025-06-25", item: "TMT 550D — 65 T (Royce)", amt: 4485000, file: "jindal-jun25.pdf" },
-  // UltraTech — Kharar — Established (5)
-  { id: "BILL-4101", vendor: "UltraTech — Kharar", date: "2023-07-12", item: "OPC 53 — 3,200 bags", amt: 1248000, file: "ultratech-jul23.pdf" },
-  { id: "BILL-4140", vendor: "UltraTech — Kharar", date: "2023-12-03", item: "OPC 53 — 4,000 bags", amt: 1560000, file: "ultratech-dec23.pdf" },
-  { id: "BILL-4180", vendor: "UltraTech — Kharar", date: "2024-05-19", item: "PPC — 3,500 bags", amt: 1330000, file: "ultratech-may24.pdf" },
-  { id: "BILL-4220", vendor: "UltraTech — Kharar", date: "2024-10-08", item: "OPC 53 — 4,200 bags", amt: 1638000, file: "ultratech-oct24.pdf" },
-  { id: "BILL-4266", vendor: "UltraTech — Kharar", date: "2025-06-14", item: "OPC 53 — 4,000 bags", amt: 1620000, file: "ultratech-jun25.pdf" },
-  // Marbella RMC Plant — Established (5, in-house pours)
-  { id: "BILL-4501", vendor: "Marbella RMC Plant", date: "2023-05-10", item: "M30 RMC — 380 m³ (Grand)", amt: 2470000, file: "rmc-may23.pdf" },
-  { id: "BILL-4540", vendor: "Marbella RMC Plant", date: "2023-10-22", item: "M35 RMC — 470 m³ (Twin Towers)", amt: 3290000, file: "rmc-oct23.pdf" },
-  { id: "BILL-4588", vendor: "Marbella RMC Plant", date: "2024-03-15", item: "M30 RMC — 430 m³", amt: 2795000, file: "rmc-mar24.pdf" },
-  { id: "BILL-4631", vendor: "Marbella RMC Plant", date: "2024-09-28", item: "M40 RMC — 500 m³ (raft)", amt: 3750000, file: "rmc-sep24.pdf" },
-  { id: "BILL-4677", vendor: "Marbella RMC Plant", date: "2025-05-20", item: "M35 RMC — 440 m³", amt: 3080000, file: "rmc-may25.pdf" },
-  // ACC Concrete — Established (4)
-  { id: "BILL-4801", vendor: "ACC Concrete", date: "2024-01-14", item: "M30 RMC — 900 m³", amt: 5850000, file: "acc-jan24.pdf" },
-  { id: "BILL-4838", vendor: "ACC Concrete", date: "2024-06-30", item: "M25 RMC — 700 m³", amt: 4200000, file: "acc-jun24.pdf" },
-  { id: "BILL-4880", vendor: "ACC Concrete", date: "2024-11-25", item: "M30 RMC — 620 m³", amt: 3906000, file: "acc-nov24.pdf" },
-  { id: "BILL-4922", vendor: "ACC Concrete", date: "2025-05-06", item: "M35 RMC — 780 m³", amt: 5460000, file: "acc-may25.pdf" },
-  // Kajaria Tiles — Panchkula — Established (3)
-  { id: "BILL-6110", vendor: "Kajaria Tiles — Panchkula", date: "2024-01-20", item: "Vitrified 600×600 — 8,000 sq ft", amt: 2400000, file: "kajaria-jan24.pdf" },
-  { id: "BILL-6155", vendor: "Kajaria Tiles — Panchkula", date: "2024-09-11", item: "Vitrified 800×800 — 10,000 sq ft", amt: 3500000, file: "kajaria-sep24.pdf" },
-  { id: "BILL-6190", vendor: "Kajaria Tiles — Panchkula", date: "2025-05-06", item: "Vitrified 800×800 — 12,000 sq ft", amt: 4200000, file: "kajaria-may25.pdf" },
-  // Havells Electricals — Established (4)
-  { id: "BILL-7050", vendor: "Havells Electricals", date: "2023-09-15", item: "Cabling — Grand · towers", amt: 2850000, file: "havells-sep23.pdf" },
-  { id: "BILL-7092", vendor: "Havells Electricals", date: "2024-04-22", item: "DBs + MCBs — Twin Towers", amt: 1920000, file: "havells-apr24.pdf" },
-  { id: "BILL-7128", vendor: "Havells Electricals", date: "2024-12-10", item: "Wiring — Twin Towers · A", amt: 2400000, file: "havells-dec24.pdf" },
-  { id: "BILL-7160", vendor: "Havells Electricals", date: "2025-04-09", item: "Cabling & DBs — Twin Towers · B", amt: 6620000, file: "havells-apr25.pdf" },
-  // Malhotra Transport — Established (5) — the search-suggestion vendor
-  { id: "BILL-5201", vendor: "Malhotra Transport", date: "2024-11-06", item: "Freight — TMT + cement (Nov)", amt: 385000, file: "malhotra-nov24.pdf" },
-  { id: "BILL-5233", vendor: "Malhotra Transport", date: "2025-01-15", item: "Freight — aggregate trips (Jan)", amt: 298000, file: "malhotra-jan25.pdf" },
-  { id: "BILL-5270", vendor: "Malhotra Transport", date: "2025-03-28", item: "Freight — tiles + fittings (Mar)", amt: 342000, file: "malhotra-mar25.pdf" },
-  { id: "BILL-5299", vendor: "Malhotra Transport", date: "2025-05-20", item: "Freight — mixed loads (May)", amt: 410000, file: "malhotra-may25.pdf" },
-  { id: "BILL-5322", vendor: "Malhotra Transport", date: "2025-07-02", item: "Freight — July trips", amt: 620000, file: "malhotra-jul25.pdf" },
-  // Gmmco Equipment Hire — NEW (2 recent)
-  { id: "BILL-9001", vendor: "Gmmco Equipment Hire", date: "2025-05-18", item: "Excavator + boom hire — May", amt: 1840000, file: "gmmco-may25.pdf" },
-  { id: "BILL-9020", vendor: "Gmmco Equipment Hire", date: "2025-07-10", item: "Concrete pump hire — Jul", amt: 960000, file: "gmmco-jul25.pdf" },
-  // Ambuja Depot — Zirakpur — NEW (2 recent)
-  { id: "BILL-9101", vendor: "Ambuja Depot — Zirakpur", date: "2025-06-12", item: "PPC — 2,000 bags (trial)", amt: 760000, file: "ambuja-jun25.pdf" },
-  { id: "BILL-9120", vendor: "Ambuja Depot — Zirakpur", date: "2025-07-22", item: "OPC 43 — 2,400 bags", amt: 912000, file: "ambuja-jul25.pdf" },
-  // No history (genuinely new suppliers → empty-state): Shivalik Aggregates, Nangal Sand Suppliers, Kumar Brick & Block Kilns, Sharma Labour Contractors
-];
-const POS = [
-  { id: "PO-4471", vendor: "Jindal Panther", item: "TMT 550D — 120 T (Twin Towers · A slab)", amt: 7800000, status: "Approved",
-    del: { flag: "ok", who: "Balwinder Singh · PB-11-AC-4471", at: "12 Aug, 9:40 AM", got: "120 T", exp: "120 T", by: "R. Chauhan (Store)", note: "Weighbridge slip matched. 20 bundles, all tagged." } },
-  { id: "PO-4468", vendor: "UltraTech — Kharar", item: "OPC 53 — 4,000 bags", amt: 1560000, status: "Received",
-    del: { flag: "short", tag: "SHORT LOAD", who: "Manjeet Kumar · PB-65-AB-1189", at: "10 Aug, 7:15 AM", got: "3,860 bags", exp: "4,000 bags", short: 140, gap: -54600, by: "R. Chauhan (Store)", note: "140 bags short — 62 torn/caked bags rejected at gate, 78 never loaded. Vendor informed, credit note asked." } },
-  { id: "PO-4462", vendor: "ACC Concrete", item: "M30 RMC — 900 m³", amt: 5850000, status: "Partial",
-    del: { flag: "ok", who: "6 transit mixers · fleet", at: "14 Aug, 5:00 AM – 1:30 PM", got: "540 m³", exp: "900 m³", by: "K. Iyer (Site Engineer)", note: "Scheduled pour — balance 360 m³ on next slab cycle. Not a shortage." } },
-  { id: "PO-4459", vendor: "Shivalik Aggregates", item: "20 mm aggregate — 600 m³", amt: 900000, status: "Approved",
-    del: { flag: "over", tag: "OVER TIP", who: "Sukhdev Rana · HR-38-C-7702 (+2 tippers)", at: "9 Aug, 6:20 AM", got: "648 m³", exp: "600 m³", over: 48, gap: 72000, by: "R. Chauhan (Store)", note: "48 m³ extra tipped — driver dumped a third load before the gate check. Held: accept & amend PO, or return at vendor's cost." } },
-  { id: "PO-4455", vendor: "Kajaria Tiles", item: "Vitrified 800×800 — 12,000 sq ft", amt: 4200000, status: "Pending",
-    del: null },
-  { id: "PO-4451", vendor: "Havells Electricals", item: "Cabling & DBs — Twin Towers · B", amt: 6620000, status: "Approved",
-    del: { flag: "ok", who: "Vikas Sharma · CH-01-BX-3390", at: "11 Aug, 2:05 PM", got: "Full set", exp: "Full set", by: "A. Bedi (Store Asst)", note: "38 drums + 12 DBs. Serials logged, stored in Bay 3." } },
-  { id: "PO-4447", vendor: "Gmmco Equipment", item: "Excavator + boom hire — Aug", amt: 1840000, status: "Received",
-    del: { flag: "ok", who: "Operator: Ram Prasad", at: "1 Aug, 8:00 AM", got: "2 machines", exp: "2 machines", by: "K. Iyer (Site Engineer)", note: "On site since 1 Aug. Hour-meter photographed at handover." } },
-  { id: "PO-4443", vendor: "Sharma Labour", item: "Structure gang — Jul", amt: 3175000, status: "Paid",
-    del: { flag: "ok", who: "Gang of 42 · supervisor Om Prakash", at: "Jul · daily muster", at2: true, got: "1,164 man-days", exp: "1,150 man-days", by: "HR attendance", note: "14 extra man-days approved for the Sunday pour." } },
-];
-const SITES = [
-  { name: "Marbella Grand", area: "4.8 L sq ft", prog: 62, note: "Structure + blockwork", cost: "₹2,190/sqft" },
-  { name: "Twin Towers", area: "3.6 L sq ft", prog: 48, note: "RCC framing · east tower", cost: "₹2,320/sqft" },
-  { name: "Marbella Curo One", area: "2.4 L sq ft", prog: 34, note: "Slab cycle underway", cost: "₹2,510/sqft" },
-  { name: "Marbella Royce", area: "1.9 L sq ft", prog: 21, note: "Foundation + raft", cost: "₹2,680/sqft" },
-  { name: "Marbella Manifest", area: "2.2 L sq ft", prog: 0, note: "Pre-construction · approvals", cost: "not started" },
-];
-const SPEND_CAT = [ // H1 by category, ₹ Cr (sum 163)
-  { name: "Steel", v: 34 }, { name: "RMC", v: 26 }, { name: "Labour", v: 22 }, { name: "Cement", v: 21 },
-  { name: "Finishes", v: 19 }, { name: "MEP", v: 17 }, { name: "Aggregate", v: 12 }, { name: "Equip.", v: 8 }, { name: "Transport", v: 4 },
-];
+const SUB_SEED = [];
+const GATEPASS_SEED = [];
+const BILLS_SEED = [];
+const POS = [];
+const SITES = [];
+/* Spend by category, ₹ Cr. Adds up from the expense ledger once it has entries. */
+const SPEND_CAT = [];
 const WELCOME_LINES = [
   "Good work is quiet work. Let's get after it.",
   "Build it clean the first time. It never costs more.",
@@ -424,33 +306,17 @@ const WELCOME_LINES = [
   "Do it right, do it once, sleep well tonight.",
   "Small things done properly are what great buildings are made of.",
 ];
-const TREND = [ // monthly spend ₹ Cr (H1 = 163 Cr)
-  { m: "Feb", v: 22 }, { m: "Mar", v: 28 }, { m: "Apr", v: 31 }, { m: "May", v: 24 }, { m: "Jun", v: 33 }, { m: "Jul", v: 25 },
-];
-const DELIVERIES = [
-  { time: "08:15", vendor: "Jindal Panther", item: "TMT 550D — 40 T", po: "PO-4471", state: "expected" },
-  { time: "09:30", vendor: "UltraTech — Kharar", item: "Cement — 4,000 bags", po: "PO-4468", state: "expected" },
-  { time: "10:00", vendor: "ACC Concrete", item: "M30 RMC — 300 m³", po: "PO-4462", state: "expected" },
-  { time: "11:45", vendor: "Gmmco Equipment", item: "Excavator on trailer", po: "PO-4447", state: "expected" },
-  { time: "—", vendor: "Nangal Sand Suppliers", item: "Sand — 200 m³ (unscheduled)", po: "PO-4459", state: "offschedule" },
-];
-const REQUESTS = [
-  { id: "RQ-2210", dept: "Marbella Grand · Structure", item: "Binding wire — 400 kg", qty: "400 kg" },
-  { id: "RQ-2208", dept: "MEP", item: "Conduits + junction boxes", qty: "18 boxes" },
-  { id: "RQ-2205", dept: "Maintenance", item: "DG set — filters + oil", qty: "2 sets" },
-];
-const ISSUE_QUEUE = [
-  { id: "RQ-2210", dept: "Marbella Grand · Structure", item: "Binding wire — 400 kg", qty: "400 kg", who: "H. Yadav (Foreman)", eid: "MB-SIT-0044" },
-  { id: "RQ-2201", dept: "MEP", item: "Cable drums ×6", qty: "6 drums", who: "K. Iyer", eid: "MB-SIT-0021" },
-  { id: "RQ-2197", dept: "Maintenance", item: "DG spares kit", qty: "1 kit", who: "M. Chauhan", eid: "MB-MNT-0006" },
-];
-const RECON = [
-  ["Jindal Panther", 7800000, "Matched · PO-4471", "green"],
-  ["ACC Concrete", 5850000, "Matched · PO-4462", "green"],
-  ["Havells Electricals", 6620000, "Matched · PO-4451", "green"],
-  ["UltraTech — Kharar", 1560000, "Matched · PO-4468", "green"],
-  ["Malhotra Transport", 620000, "Paid · no PO on file", "red"],
-];
+/* Monthly procurement run-rate. Built from the POs the system has actually
+   raised — so it starts flat and fills in as the months go by. */
+const TREND = [];
+/* Today's expected deliveries — derived from open POs with a delivery date. */
+const DELIVERIES = [];
+const REQUESTS = [];
+/* Approved requests waiting to be handed over the store counter. */
+const ISSUE_QUEUE = [];
+/* Bank statement lines matched against purchases. Populated by the
+   reconciliation run, which needs a statement import to have happened. */
+const RECON = [];
 const SEARCH_INDEX = [
   ...VENDORS.map(v => ({ type: "Vendor", label: v.name, sub: v.code })),
   ...POS.map(p => ({ type: "PO", label: p.id, sub: p.vendor })),
@@ -459,100 +325,30 @@ const SEARCH_INDEX = [
 const STEPS = ["Scan ID", "Confirm items", "Two-party sign"];
 
 /* ---- Intent → recommendation engine. App vets to standard, asks "where will you use it?" ---- */
-const INTENT_CATALOG = {
-  "water tank": {
-    label: "Water tank", unit: "2000 L",
-    uses: ["Rooftop overhead", "Underground sump", "Drinking water", "Temporary site"],
-    options: [
-      { vendor: "Sintex", code: "MB-PLB-0021", product: "Titus 3-layer 2000 L", grade: "ISI IS:12701 · food-grade · UV", warranty: "5 yr", price: 18500, terms: "30 days", std: "pass", fit: ["Drinking water", "Rooftop overhead"], note: "Food-grade, UV-stabilised — safe for potable water" },
-      { vendor: "Vectus", code: "MB-PLB-0034", product: "Roto 4-layer 2000 L", grade: "ISI · 4-layer · anti-algae", warranty: "7 yr", price: 21200, terms: "30 days", std: "pass", fit: ["Rooftop overhead", "Temporary site"], note: "7-yr warranty, best for exposed rooftop" },
-      { vendor: "Local unbranded", code: "—", product: "Single-layer 2000 L", grade: "No ISI mark", warranty: "—", price: 9800, terms: "COD", std: "fail", fit: [], note: "Single-layer, no ISI — below Marbella standard" },
-    ],
-  },
-  "cement": {
-    label: "Cement", unit: "bags",
-    uses: ["Structure / RCC", "Plaster / finishing", "Non-structural"],
-    options: [
-      { vendor: "UltraTech — Kharar", code: "MB-CEM-0009", product: "OPC 53 Grade", grade: "IS:12269 · 53 grade", warranty: "—", price: 410, terms: "30 days", std: "pass", fit: ["Structure / RCC"], note: "53-grade for load-bearing RCC" },
-      { vendor: "Ambuja Depot", code: "MB-CEM-0003", product: "PPC", grade: "IS:1489 · PPC", warranty: "—", price: 375, terms: "15 days", std: "pass", fit: ["Plaster / finishing", "Non-structural"], note: "Fly-ash PPC — better finish, lower heat" },
-    ],
-  },
-  "steel": {
-    label: "TMT steel", unit: "tonnes",
-    uses: ["Columns / structure", "Slab / secondary", "Temporary"],
-    options: [
-      { vendor: "Jindal Panther", code: "MB-STL-0014", product: "TMT 550D", grade: "IS:1786 · Fe550D", warranty: "—", price: 65000, terms: "45 days", std: "pass", fit: ["Columns / structure"], note: "Fe550D — high ductility for seismic zones" },
-      { vendor: "RSW Steel Traders", code: "MB-STL-0007", product: "TMT 500", grade: "IS:1786 · Fe500", warranty: "—", price: 61500, terms: "30 days", std: "pass", fit: ["Slab / secondary"], note: "Fe500 — economical for slabs" },
-    ],
-  },
-};
+/* Vetted options, shown when someone names a thing to buy: what we will approve,
+   what we will not, and why. Purchasing builds this up per item as it approves
+   vendors — it is deliberately empty until they do, because a recommendation
+   nobody vetted is worse than no recommendation. */
+const INTENT_CATALOG = {};
 const catalogKeys = Object.keys(INTENT_CATALOG);
 const matchCatalog = (t) => { const s = t.toLowerCase(); return catalogKeys.find(k => s.includes(k) || k.split(" ").some(w => s.includes(w))); };
 
 /* ---- Invoices pulled from the Purchase Manager's Google Workspace inbox ---- */
-const INVOICES_SEED = [
-  { id: "INV-88213", from: "billing@jindalpanther.in", vendor: "Jindal Panther", subj: "Tax Invoice · TMT 550D · 40 T", amt: 2600000, po: "PO-4471", gstin: true, age: "2 h", state: "toclear" },
-  { id: "INV-88207", from: "accounts@ultratechkharar.com", vendor: "UltraTech — Kharar", subj: "Invoice OPC 53 — 4,000 bags", amt: 1560000, po: "PO-4468", gstin: true, age: "5 h", state: "toclear" },
-  { id: "INV-88198", from: "sales@accconcrete.co.in", vendor: "ACC Concrete", subj: "RMC M30 — part supply", amt: 1950000, po: "PO-4462", gstin: true, age: "yest", state: "toclear" },
-  { id: "INV-88191", from: "malhotra.transport@gmail.com", vendor: "Malhotra Transport", subj: "Freight — July trips", amt: 620000, po: null, gstin: false, age: "2 d", state: "flag" },
-  { id: "INV-88184", from: "havells.dealer@outlook.com", vendor: "Havells Electricals", subj: "Cabling & DBs — Twin Towers · B", amt: 6620000, po: "PO-4451", gstin: true, age: "3 d", state: "toclear" },
-];
+const INVOICES_SEED = [];
 
 /* ---- Call directory — tap to call the people who matter ---- */
-const CONTACTS = [
-  { group: "Internal", people: [
-    { name: "R. Khanna", role: "Purchase Manager", phone: "+91 98140 •• 012", wa: true },
-    { name: "S. Verma", role: "Store Manager", phone: "+91 98140 •• 044", wa: true },
-    { name: "P. Nair", role: "Accounts Head", phone: "+91 98140 •• 077", wa: true },
-    { name: "K. Iyer", role: "Site Engineer · Marbella Grand", phone: "+91 98140 •• 121", wa: true },
-    { name: "M. Chauhan", role: "Maintenance Lead", phone: "+91 98140 •• 006", wa: true },
-  ]},
-  { group: "Vendors", people: [
-    { name: "Jindal Panther", role: "Steel · MB-STL-0014", phone: "+91 172 •• 4471", wa: false },
-    { name: "UltraTech — Kharar", role: "Cement · MB-CEM-0009", phone: "+91 160 •• 8890", wa: true },
-    { name: "Gmmco Equipment", role: "Equipment hire", phone: "+91 172 •• 3320", wa: true },
-  ]},
-];
-const MAINT_JOBS = [
-  { id: "JB-3312", title: "DG set — filter & oil change", site: "Marbella Grand · Basement", pri: "high", need: "DG filters + 20 L oil" },
-  { id: "JB-3309", title: "Lift AMC — quarterly service", site: "Twin Towers · A", pri: "med", need: null },
-  { id: "JB-3305", title: "Plumbing leak — 4th floor riser", site: "Twin Towers · B", pri: "high", need: "PVC couplers + solvent" },
-  { id: "JB-3301", title: "Repaint site office", site: "Marbella Grand", pri: "low", need: "Emulsion — 40 L" },
-];
+/* Call directory — built from the people and vendors on file, not a fixed list. */
+const CONTACTS = [];
+const MAINT_JOBS = [];
 
 /* ---- your projects — each carries its legal entity + its own RERA + GSTIN. Uploads/POs land on the right one. ---- */
-const FIRMS = [
-  { id: "grand", short: "Grand", name: "Marbella Grand", firm: "Delhi Punjab Real Estates LLP", gstin: "03AAEFD4921K1Z9", rera: "PBRERA-SAS79-PR0421", stage: "building",
-    addr: "GHS 3, Sector 82-A, IT City Road, Sector 82, Sahibzada Ajit Singh Nagar, Punjab 140306, India" },
-  { id: "twin", short: "Twin Towers", name: "Twin Towers", firm: "Delhi Punjab Real Estates LLP", gstin: "03AAEFD4921K1Z9", rera: "PBRERA-SAS79-PR0512", stage: "building",
-    addr: "Marbella Twin Towers, 1st LOT, Main Road Sector 2, Madhya Marg, DLF Mullanpur, New Chandigarh, Punjab 140901" },
-  { id: "curo", short: "Curo One", name: "Marbella Curo One", firm: "D.R. Developers & Colonisers", gstin: "03AAKFD3356N1ZB", rera: "PBRERA-SAS79-PR0338", stage: "building",
-    addr: "1st LOT, Main Road Sector 2, Madhya Marg, DLF Mullanpur, New Chandigarh, Punjab 140901" },
-  { id: "royce", short: "Royce", name: "Marbella Royce", firm: "D.R. Developers & Colonisers", gstin: "03AAKFD3356N1ZB", rera: "PBRERA-SAS79-PR0445", stage: "building",
-    addr: "Site No. 7, Block C, Sector 83-A, IT City Road, Sahibzada Ajit Singh Nagar, Punjab 140306" },
-  { id: "manifest", short: "Manifest", name: "Marbella Manifest", firm: "Des Raj Real Estates Pvt. Ltd.", gstin: "03AABCD7890P1ZR", rera: "applied · pre-launch", stage: "pre",
-    addr: "SCO 2417-18, Sector 22-C, Chandigarh 160022" },
-];
+const FIRMS = [];
 const firmById = (id) => FIRMS.find(f => f.id === id) || FIRMS[0];
 
 /* ---- live store inventory — counts the store manager can check any time ---- */
-const INVENTORY = [
-  { item: "OPC 53 cement", unit: "bags", qty: 1240, reorder: 500, loc: "Grand · Yard", proj: "Marbella Grand" },
-  { item: "TMT 550D steel", unit: "T", qty: 18.4, reorder: 10, loc: "Grand · Steel bay", proj: "Marbella Grand" },
-  { item: "Binding wire", unit: "kg", qty: 120, reorder: 80, loc: "Grand · Store", proj: "Marbella Grand" },
-  { item: "PVC conduits 25mm", unit: "nos", qty: 340, reorder: 150, loc: "Twin · MEP", proj: "Twin Towers" },
-  { item: "Vitrified tiles 800×800", unit: "sq ft", qty: 2100, reorder: 1500, loc: "Curo · FG store", proj: "Marbella Curo One" },
-  { item: "Emulsion paint", unit: "L", qty: 60, reorder: 40, loc: "Grand · Store", proj: "Marbella Grand" },
-  { item: "Safety gloves", unit: "pairs", qty: 38, reorder: 100, loc: "Grand · PPE", proj: "Marbella Grand" },
-  { item: "DG oil 15W40", unit: "L", qty: 20, reorder: 40, loc: "Grand · Basement", proj: "Marbella Grand" },
-  { item: "Aggregate 20mm", unit: "m³", qty: 85, reorder: 50, loc: "Grand · Yard", proj: "Marbella Grand" },
-];
+const INVENTORY = [];
 /* last paid rate per unit — what the stuff on the shelf actually cost us */
-const ITEM_RATES = {
-  "OPC 53 cement": 390, "TMT 550D steel": 65000, "Binding wire": 82, "PVC conduits 25mm": 96,
-  "Vitrified tiles 800×800": 200, "Emulsion paint": 285, "Safety gloves": 145, "DG oil 15W40": 420,
-  "Aggregate 20mm": 1500,
-};
+const ITEM_RATES = {};
 const rateOf = (item) => {
   const k = Object.keys(ITEM_RATES).find(x => x.toLowerCase() === String(item).toLowerCase())
         || Object.keys(ITEM_RATES).find(x => String(item).toLowerCase().includes(x.toLowerCase().split(" ")[0]));
@@ -571,15 +367,8 @@ function stockValue(holds, inv) {
 }
 const SEED_PHOTO = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAKAAAAB4CAIAAAD6wG44AAABuklEQVR42u3ZoU7DUBSAYcamEEhExRIEBEUmq1E8YR+CJyCI6SqCJICqqFjQOBLsIGTcrmU76/1+N8jo2i93vT1MHt/ejzTejl0CwAIswAIswAIswIAFWIAFWIAFWIABC7AAC7B22Sy3E26enyJ/vPnVwgoWYAEGLMACLMDyHDxcbdtm9RycHXBRFL6iBViABVhRd9Efr/fRzuTk4hanFQxYgAVYgBV5F324mUWPPLNoARZgARZgARZgwAIswIqYWXSszKL7ltssOjvgrtV1PdSfKsvSPViABViAAcsuesCmq+X6y8+zGzYjAf5Bu/5DzAf/Ff2rbuJvFR04xY/xSO7BO2uPs+iUQ49nFp2+NKer5YA3466z6KZp9nVoj0kCDNglACzA3UvfNxl3WMEKCZyyNC3fw17Bm/3o9m9WP9xt8bbr89Nhjfv/NynxRIr5ZWSP7Tg2AQc5MYv1v1ZwbiccfBYNuG/BZ9Ft8+IxSYAFGLAAC7AAC7AAC3COmUWP/NBm0X9kFq3QTaqqchVssgRYgAVYgAVYgAELsAALsAALsAADFmABFmABFmABFmDAAizAAizAAqxvfQEXnWBkHO+QXgAAAABJRU5ErkJggg==";
 /* ---- reports raised by anyone on site — text + optional voice note ---- */
-const REPORTS_SEED = [
-  { id: "RP-208", cat: "Missing material", by: "D. Rana (Store Asst)", proj: "Marbella Grand", when: "2 h ago", text: "12 cement bags counted yesterday evening aren't on the rack this morning.", voice: { dur: "0:14" }, media: { type: "image", url: SEED_PHOTO } },
-  { id: "RP-205", cat: "Need support", by: "K. Iyer (Site Engineer)", proj: "Twin Towers", when: "yesterday", text: "Short on labour for Thursday's slab pour — need 4 more hands.", voice: null },
-  { id: "RP-201", cat: "Safety", by: "M. Chauhan (Maintenance)", proj: "Marbella Grand", when: "2 d ago", text: "Edge protection missing on 3rd floor east side.", voice: { dur: "0:09" } },
-];
-const PR_SEED = [
-  { id: "PR-1042", item: "Waterproofing membrane", qty: "600 sq ft", when: "In 2 days", proj: "Marbella Grand", by: "K. Iyer (Site Engineer)" },
-  { id: "PR-1039", item: "Scaffolding couplers", qty: "400 nos", when: "This week", proj: "Twin Towers", by: "" },
-];
+const REPORTS_SEED = [];
+const PR_SEED = [];
 
 /* ============================== PRIMITIVES ============================== */
 function Card({ children, pad = 20, style }) {
@@ -621,7 +410,7 @@ const roleChip = { cursor: "pointer", display: "inline-flex", alignItems: "cente
 const lbl = { font: `600 11px ${sans}`, letterSpacing: "0.1em", textTransform: "uppercase", color: C.inkSoft };
 
 /* ---- shared procurement state across the four pillars ---- */
-/* EDIT 3 of 20 (see legacy/PATCHES-PROCUREMENT.md): the context comes from
+/* EDIT 3 of 23 (see legacy/PATCHES-PROCUREMENT.md): the context comes from
    ../proc/context.js so ProcurementProvider can put LIVE SERVER DATA into the
    same object these screens read. Two createContext() calls make two unrelated
    contexts and useProc() silently returns null. */
@@ -651,11 +440,9 @@ function GreenButton({ children, onClick, small, tone = "green" }) {
 }
 
 /* ---- the upload engine every assistant uses: snap → auto-draft → confirm ---- */
-const DRAFTS = [
-  { file: "IMG_4471.jpg", vendor: "Jindal Panther", amt: 2600000, gstin: true, conf: 98, learned: true, firm: "grand" },
-  { file: "ambuja_scan.pdf", vendor: "Ambuja Depot — Zirakpur", amt: 842000, gstin: true, conf: 95, learned: true, firm: "curo" },
-  { file: "wa_quote.jpg", vendor: "Shivalik Aggregates", amt: 900000, gstin: false, conf: 80, learned: false, firm: "royce" },
-];
+/* What the reader returns is a draft built from the document you hand it.
+   Nothing is pre-loaded — an empty list means "no document read yet". */
+const DRAFTS = [];
 function Uploader({ label = "Snap an invoice or drop a document", sub = "Any format — the engine reads it and drafts the entry. You just confirm.", onFiled }) {
   const [fixOpen, setFixOpen] = useState(false);
   const { activeFirm } = useProc();
@@ -771,7 +558,7 @@ export function Login({ onLogin }) {
       <input value={id} onChange={e => setId(e.target.value)} placeholder="MB-PUR-0012" style={inp} />
       <label style={lbl}>Password</label>
       <input value={pw} onChange={e => setPw(e.target.value)} type="password" placeholder="••••••••" style={inp} />
-      {/* EDIT 4 of 20 — THE IMPORTANT ONE.
+      {/* EDIT 4 of 23 — THE IMPORTANT ONE.
 
           This used to read `onClick={() => onLogin("admin")}`. It ignored the
           Employee ID and the password you just typed and signed EVERYONE in as
@@ -782,7 +569,7 @@ export function Login({ onLogin }) {
       <GoldButton onClick={submit}>{busy ? "Signing in…" : "Sign in"}</GoldButton>
       <div style={{ height: 1, background: C.line, margin: "18px 0 0" }} />
       <div style={{ marginTop: 18 }}>
-        {/* EDIT 5 of 20: nine chips filled in nine Employee IDs — MB-ADM-0001,
+        {/* EDIT 5 of 23: nine chips filled in nine Employee IDs — MB-ADM-0001,
             MB-PUR-0012 and so on. Every one of them was invented for the
             prototype, and not one of them exists now that the company's real
             roster is loaded. A chip that fills in an ID the server will reject
@@ -1019,14 +806,12 @@ function ActingBanner({ who, onExit }) {
   );
 }
 /* ===== CAMERAS — assigned to a place and a person, watched on the record ===== */
-const CAMERAS_SEED = [
-  { id: "CAM-01", place: "Main store — Marbella Grand", who: "S. Verma", role: "Store Manager", on: true, note: "Shelf aisle + issue counter" },
-  { id: "CAM-02", place: "Main gate — Marbella Grand", who: "Balbir Singh", role: "Security", on: true, note: "Gate arm + weighbridge" },
-  { id: "CAM-03", place: "Purchase room — SCO 2417", who: "R. Khanna", role: "Purchase Manager", on: true, note: "Desk + meeting corner" },
-  { id: "CAM-04", place: "Accounts room — SCO 2417", who: "P. Nair", role: "Accounts Head", on: true, note: "Cabin" },
-  { id: "CAM-05", place: "Site office — Twin Towers", who: "K. Iyer", role: "Site Engineer", on: false, note: "Offline since 06:10" },
-  { id: "CAM-06", place: "Steel bay — Marbella Grand", who: "—", role: "Unassigned", on: true, note: "Open yard" },
-];
+/* EDIT 6 of 23: six cameras, at invented locations, with invented people
+   assigned to watch them. There is no camera system — nothing here was ever
+   connected to a lens. Six live tiles on the Chairman's first screen implied
+   otherwise. The list starts empty; the "New camera" control is still there for
+   when real ones exist. */
+const CAMERAS_SEED = [];
 /* ===== EXPORT — branded, right-sized, and never the same file twice ===== */
 const PERIODS = [["current", "What is on screen"], ["m1", "This month"], ["m3", "Last 3 months"], ["fy", "This financial year"], ["all", "Everything on record"]];
 const PERIOD_MULT = { current: 1, m1: 1.4, m3: 3.6, fy: 9, all: 22 };
@@ -1265,6 +1050,7 @@ function CameraLive({ cam, onClose, onLogged }) {
 }
 function CameraWall({ compact }) {
   const mob = useIsMobile();
+  const { me } = useProc();
   const [cams, setCams] = useState(CAMERAS_SEED);
   const [live, setLive] = useState(null);
   const [log, setLog] = useState([]);
@@ -1295,11 +1081,11 @@ function CameraWall({ compact }) {
         <div style={{ marginTop: 12, paddingTop: 10, borderTop: `1px solid ${C.line}` }}>
           <div style={{ font: `600 9px ${sans}`, letterSpacing: "0.06em", textTransform: "uppercase", color: C.stone, marginBottom: 6 }}>Who looked, and when</div>
           {log.slice(0, 3).map((l, i) => (
-            <div key={i} style={{ font: `11px ${sans}`, color: C.inkSoft, padding: "3px 0" }}>Nitish Walia viewed <b style={{ color: C.ink }}>{l.place}</b> at {l.at}</div>
+            <div key={i} style={{ font: `11px ${sans}`, color: C.inkSoft, padding: "3px 0" }}>{l.who} viewed <b style={{ color: C.ink }}>{l.place}</b> at {l.at}</div>
           ))}
         </div>
       )}
-      {live && <CameraLive cam={live} onClose={() => setLive(null)} onLogged={(c) => setLog(l => [{ place: c.place, at: new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }) }, ...l])} />}
+      {live && <CameraLive cam={live} onClose={() => setLive(null)} onLogged={(c) => setLog(l => [{ who: (me && me.name) || "You", place: c.place, at: new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }) }, ...l])} />}
       {assign && (
         <Overlay onClose={() => setAssign(null)} width={460}>
           <div style={{ padding: mob ? 18 : 22 }}>
@@ -1325,10 +1111,10 @@ function CameraWall({ compact }) {
 
 /* ===== CAST TO A SCREEN — with consent when money is on it ===== */
 const TVS = [
-  { id: "tv1", name: "Boardroom — LG OLED", how: "Smart View", room: "SCO 2417 · Boardroom" },
+  { id: "tv1", name: "Boardroom display", how: "Smart View", room: "Head office · Boardroom" },
   { id: "tv2", name: "Site office — Samsung", how: "Smart View", room: "Marbella Grand" },
-  { id: "tv3", name: "Chromecast — Meeting 2", how: "Google Cast", room: "SCO 2417" },
-  { id: "tv4", name: "Apple TV — Chairman's cabin", how: "AirPlay", room: "SCO 2417" },
+  { id: "tv3", name: "Chromecast — Meeting 2", how: "Google Cast", room: "Head office" },
+  { id: "tv4", name: "Apple TV — Chairman's cabin", how: "AirPlay", room: "Head office" },
 ];
 function CastPanel({ tab, onClose }) {
   const mob = useIsMobile();
@@ -1387,7 +1173,7 @@ function CastPanel({ tab, onClose }) {
           <div style={{ font: `12px ${sans}`, color: C.stone, marginBottom: 12 }}>Financial figures are about to appear on <b style={{ color: C.ink }}>{pick.name}</b> in {pick.room}. The approval and the time are logged.</div>
           <label style={{ ...lbl, fontSize: 9 }}>Ask</label>
           <select value={approver} onChange={e => setApprover(e.target.value)} style={{ ...sel, margin: "5px 0 12px" }}>
-            {/* EDIT 6 of 20: four hardcoded approvers, none of whom work here.
+            {/* EDIT 7 of 23: four hardcoded approvers, none of whom work here.
                 The people who can approve are the department heads the server
                 knows about — the ones nobody reports to. */}
             {approvers.map(x => <option key={x}>{x}</option>)}
@@ -1446,7 +1232,7 @@ function AccessConsole({ onActAs }) {
   const [added, setAdded] = useState([]);
   const cell = { ...inp, margin: 0, padding: "9px 10px", fontSize: 13, boxSizing: "border-box" };
   const flip = (area, power) => setGrants(g => ({ ...g, [pick]: { ...g[pick], [area]: { ...g[pick][area], [power]: !g[pick][area][power] } } }));
-  const u = USERS[pick] || { name: pick, role: pick, dept: "—" };
+  const u = { ...desk(pick), name: desk(pick).role || pick };
   const count = (r) => { let n = 0; AREA_GROUPS.forEach(([, as]) => as.forEach(([a]) => { if (grants[r] && grants[r][a] && grants[r][a].view) n++; })); return n; };
   const totalAreas = AREA_GROUPS.reduce((a, g) => a + g[1].length, 0);
 
@@ -1464,7 +1250,11 @@ function AccessConsole({ onActAs }) {
         <div style={{ font: `12px ${sans}`, color: C.stone, marginBottom: 12 }}>Their exact screen — their tabs, their buttons, their limits. You can come back with one tap.</div>
         <div style={{ display: mob ? "block" : "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 9 }}>
           {roles.filter(r => r !== "admin").map(r => {
-            const p = USERS[r] || { name: r, role: r, dept: "—" };
+            /* EDIT 8 of 23: this rendered `USERS[r].name` — the invented
+               holder of each desk — on a screen about permissions, so eight
+               people who do not work here appeared to have access. The desk is
+               the thing being granted; the holder comes from the account. */
+            const p = { ...desk(r), name: desk(r).role || r };
             return (
               <div key={r} style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 11, padding: 11, marginBottom: mob ? 9 : 0 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
@@ -1489,7 +1279,7 @@ function AccessConsole({ onActAs }) {
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
           <ShieldCheck size={16} color={C.goldDeep} /><span style={{ font: `600 13px ${sans}`, color: C.ink }}>What they are allowed to touch</span>
           <select value={pick} onChange={e => setPick(e.target.value)} style={{ ...sel, margin: 0, width: mob ? "100%" : 230, padding: "7px 9px", fontSize: 12, marginLeft: mob ? 0 : "auto", marginTop: mob ? 8 : 0 }}>
-            {roles.map(r => <option key={r} value={r}>{(USERS[r] || {}).name || r} — {(USERS[r] || {}).role || r}</option>)}
+            {roles.map(r => <option key={r} value={r}>{desk(r).role || r}</option>)}
           </select>
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
@@ -1525,7 +1315,7 @@ function AccessConsole({ onActAs }) {
         <div style={{ display: "flex", gap: 9, flexWrap: "wrap", alignItems: "center", paddingTop: 10, borderTop: `2px solid ${C.gold}` }}>
           <span style={{ font: `12px ${sans}`, color: C.inkSoft, flex: 1, minWidth: 150 }}>{u.name} can currently open <b style={{ color: C.ink }}>{count(pick)}</b> of {totalAreas} areas.</span>
           <GoldButton small onClick={() => (async () => {
-                    /* EDIT 7 of 20: this used to announce a change and forget it the
+                    /* EDIT 9 of 23: this used to announce a change and forget it the
                        moment the screen closed. Nobody's access ever moved. It writes
                        rows now, sealed against the administrator who made the change. */
                     const grid = grants[pick] || {};
@@ -1605,7 +1395,7 @@ export function Shell({ userKey: realKey, onLogout }) {
   const [actAs, setActAs] = useState(null);
   const [returnTab, setReturnTab] = useState(null);
   const userKey = actAs || realKey;
-  /* EDIT 8 of 20: `USERS[userKey]` is a map of nine invented desks that was
+  /* EDIT 10 of 23: `USERS[userKey]` is a map of nine invented desks that was
      written before this app had a database. It still drives the navigation,
      but it must not drive WHO YOU ARE: the name and designation in the corner
      were whoever the map said, not whoever signed in. They come from the
@@ -1668,8 +1458,8 @@ export function Shell({ userKey: realKey, onLogout }) {
           <button onClick={() => setCasting(true)} title="Cast to a screen" style={{ cursor: "pointer", border: `1px solid ${C.line}`, background: "#fff", borderRadius: 20, padding: "7px 11px", display: "inline-flex", alignItems: "center", gap: 6, color: C.goldDeep, font: `600 12px ${sans}` }}><Share2 size={13} /> Cast</button>
             <button onClick={() => setReporting(true)} style={{ cursor: "pointer", border: `1px solid ${C.line}`, background: "#fff", borderRadius: 20, padding: "7px 11px", display: "inline-flex", alignItems: "center", gap: 6, color: C.goldDeep, font: `600 12px ${sans}` }}><Flag size={13} /> Report</button>
         </div>
-        {actAs && <ActingBanner who={USERS[actAs]} onExit={() => { setActAs(null); if (returnTab) setTimeout(() => setTab(returnTab), 0); toast("Back to your own view", "green"); }} />}
-        <div style={{ padding: 16, paddingBottom: 104 }}><NewTaskLauncher userKey={userKey} onRun={runTask} /><IncentiveBanner userKey={userKey} /><CalendarNudge userKey={userKey} /><Views tab={tab} go={setTab} userKey={userKey} onActAs={(r) => { setReturnTab(tab); setActAs(r); toast(`Now seeing the app as ${desk(r).name} — ${desk(r).role}`, "gold"); }} /></div>
+        {actAs && <ActingBanner who={{ ...desk(actAs), name: desk(actAs).role || actAs }} onExit={() => { setActAs(null); if (returnTab) setTimeout(() => setTab(returnTab), 0); toast("Back to your own view", "green"); }} />}
+        <div style={{ padding: 16, paddingBottom: 104 }}><NewTaskLauncher userKey={userKey} onRun={runTask} /><IncentiveBanner userKey={userKey} /><CalendarNudge userKey={userKey} /><Views tab={tab} go={setTab} userKey={userKey} onActAs={(r) => { setReturnTab(tab); setActAs(r); toast(`Now seeing the app as the ${desk(r).role} desk`, "gold"); }} /></div>
         <CoachLayer userKey={userKey} />
         {modals}
       </div>
@@ -1707,8 +1497,8 @@ export function Shell({ userKey: realKey, onLogout }) {
             <div style={{ position: "relative" }}><Bell size={17} color={C.inkSoft} /><div style={{ position: "absolute", top: -3, right: -3, width: 7, height: 7, borderRadius: "50%", background: C.red }} /></div>
           </div>
         </header>
-        {actAs && <ActingBanner who={USERS[actAs]} onExit={() => { setActAs(null); if (returnTab) setTimeout(() => setTab(returnTab), 0); toast("Back to your own view", "green"); }} />}
-        <div style={{ padding: 26, paddingBottom: 108 }}><NewTaskLauncher userKey={userKey} onRun={runTask} /><IncentiveBanner userKey={userKey} /><CalendarNudge userKey={userKey} /><Views tab={tab} go={setTab} userKey={userKey} onActAs={(r) => { setReturnTab(tab); setActAs(r); toast(`Now seeing the app as ${desk(r).name} — ${desk(r).role}`, "gold"); }} /></div>
+        {actAs && <ActingBanner who={{ ...desk(actAs), name: desk(actAs).role || actAs }} onExit={() => { setActAs(null); if (returnTab) setTimeout(() => setTab(returnTab), 0); toast("Back to your own view", "green"); }} />}
+        <div style={{ padding: 26, paddingBottom: 108 }}><NewTaskLauncher userKey={userKey} onRun={runTask} /><IncentiveBanner userKey={userKey} /><CalendarNudge userKey={userKey} /><Views tab={tab} go={setTab} userKey={userKey} onActAs={(r) => { setReturnTab(tab); setActAs(r); toast(`Now seeing the app as the ${desk(r).role} desk`, "gold"); }} /></div>
       </main>
       <CoachLayer userKey={userKey} />
       {modals}
@@ -1848,19 +1638,46 @@ function GateActivity({ compact }) {
 
 function BossView() {
   const mob = useIsMobile();
-  const [approvals, setApprovals] = useState([
-    { id: "AP-214", who: "Purchase · R. Khanna", what: "PO-4471 · Jindal Panther TMT · " + cr(7800000) },
-    { id: "AP-213", who: "Accounts · P. Nair", what: "Release archived bills (>1yr) — FY22" },
-    { id: "AP-212", who: "Purchase · A. Sethi", what: "Onboard vendor · Kajaria Tiles" },
-  ]);
-  const pulse = [["Spent today", "₹1.12 Cr", C.gold], ["Committed · Aug", "₹28.4 Cr", "#E8ECF4"], ["Open POs", "137", "#E8ECF4"], ["Blended cost / sq ft", "₹2,190", C.gold]];
+  /* EDIT 11 of 23: the Chairman's first screen opened with four figures that
+     were typed into this file — "Spent today ₹1.12 Cr", "Committed ₹28.4 Cr",
+     "137 open POs", "₹2,190 blended cost per sq ft" — and three approvals
+     waiting from people who do not work here, about a purchase order that does
+     not exist. Invented numbers anywhere are bad; invented MONEY on the screen
+     of the person who signs things is the kind that gets acted on. They are
+     computed now, and they read zero until there is something to count. */
+  const { me, pos = [], expenses = [], invoices = [], vendors = [], people = [], firms = [], holds = [] } = useProc();
+  const [approvals, setApprovals] = useState([]);
+  const headcount = people.filter(p => (p.status || "active") === "active").length;
+  const openPos = pos.filter(p => String(p.status || "").toLowerCase() !== "closed").length;
+  const spentToday = expenses
+    .filter(e => String(e.date || "").slice(0, 10) === new Date().toISOString().slice(0, 10))
+    .reduce((a, e) => a + (Number(e.amt) || 0), 0);
+  const committed = pos.reduce((a, p) => a + (Number(p.amt) || 0), 0);
+  const billed = invoices.reduce((a, i) => a + (Number(i.amt) || 0), 0);
+  /* The radar earns its place by watching real records, not a typed list: a
+     delivery that turned up off-schedule, a hold nobody released, a bill with
+     no purchase order behind it. No records, nothing to raise. */
+  const anomalies = [
+    ...DELIVERIES.filter(d => d.state === "offschedule")
+      .map(d => [TriangleAlert, C.red, `${d.vendor} off-schedule at the gate`, `${d.item} · held pending a site call`]),
+    ...holds.filter(h => h.days && Number(h.days) < 0)
+      .map(h => [CircleDot, C.gold, `Hold expired on ${h.item}`, `${h.qty} held · needs releasing or renewing`]),
+    ...invoices.filter(i => !i.po)
+      .map(i => [TriangleAlert, C.amber, `${i.vendor || "A bill"} has no purchase order behind it`, `${cr(Number(i.amt) || 0)} · Accounts cannot pass it`]),
+  ].slice(0, 6);
+  const pulse = [
+    ["Spent today", cr(spentToday), C.gold],
+    ["Committed on POs", cr(committed), "#E8ECF4"],
+    ["Open POs", String(openPos), "#E8ECF4"],
+    ["Invoices received", cr(billed), C.gold],
+  ];
   return (
     <div>
       <div style={{ display: "flex", alignItems: "baseline", gap: 12, marginBottom: 4, flexWrap: "wrap" }}>
         <Eyebrow>Command · Group Pulse</Eyebrow>
         <Pill tone="gold"><Crown size={11} style={{ marginRight: 4, verticalAlign: "-1px" }} />Chairman view</Pill>
       </div>
-      <h1 style={{ font: `400 27px ${serif}`, margin: "6px 0 18px" }}>Good day, Nitish.</h1>
+      <h1 style={{ font: `400 27px ${serif}`, margin: "6px 0 18px" }}>Good day{me && me.name ? `, ${String(me.name).split(" ")[0]}` : ""}.</h1>
       <CameraWall />
       <ReminderApprovals />
       <SiteLimits />
@@ -1879,10 +1696,10 @@ function BossView() {
           ))}
         </div>
         <div style={{ position: "relative", marginTop: 18, paddingTop: 14, borderTop: "1px solid rgba(255,255,255,.1)", font: `12px ${sans}`, color: "#A9B3C5", display: "flex", flexWrap: "wrap", gap: mob ? 6 : 18 }}>
-          <span>H1 procurement <b style={{ color: "#E8ECF4" }}>₹163 Cr</b></span><span style={{ opacity: .4 }}>·</span>
-          <span><b style={{ color: "#E8ECF4" }}>84</b> active vendors</span><span style={{ opacity: .4 }}>·</span>
-          <span><b style={{ color: "#E8ECF4" }}>4</b> sites building</span><span style={{ opacity: .4 }}>·</span>
-          <span><b style={{ color: "#E8ECF4" }}>65</b> on team</span>
+          <span>Procurement to date <b style={{ color: "#E8ECF4" }}>{cr(committed)}</b></span><span style={{ opacity: .4 }}>·</span>
+          <span><b style={{ color: "#E8ECF4" }}>{vendors.length}</b> vendor{vendors.length === 1 ? "" : "s"} on file</span><span style={{ opacity: .4 }}>·</span>
+          <span><b style={{ color: "#E8ECF4" }}>{(firms || []).length}</b> project{(firms || []).length === 1 ? "" : "s"}</span><span style={{ opacity: .4 }}>·</span>
+          <span><b style={{ color: "#E8ECF4" }}>{headcount}</b> on the team</span>
         </div>
       </div>
 
@@ -1909,9 +1726,10 @@ function BossView() {
       <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr" : "1.4fr 1fr", gap: 18 }}>
         <Card pad={22}>
           <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 14 }}>
-            <div><Eyebrow>Spend by category · H1</Eyebrow><div style={{ font: `400 16px ${serif}`, marginTop: 6 }}>Where ₹163 Cr went</div></div>
+            <div><Eyebrow>Spend by category</Eyebrow><div style={{ font: `400 16px ${serif}`, marginTop: 6 }}>Where the money went</div></div>
             <Pill tone="stone">₹ Cr</Pill>
           </div>
+          {SPEND_CAT.length === 0 ? <div style={{ padding: "34px 0", textAlign: "center", color: C.stone, font: `13px ${sans}` }}>Nothing booked to a category yet. This fills in as bills are filed.</div> :
           <ResponsiveContainer width="100%" height={180}>
             <BarChart data={SPEND_CAT} margin={{ left: -18 }}>
               <XAxis dataKey="name" tick={{ fontSize: 10, fill: C.stone }} axisLine={false} tickLine={false} interval={0} />
@@ -1919,16 +1737,13 @@ function BossView() {
               <Tooltip cursor={{ fill: C.lineSoft }} contentStyle={{ border: `1px solid ${C.line}`, borderRadius: 4, font: `12px ${sans}` }} formatter={(v) => ["₹" + v + " Cr", "Spend"]} />
               <Bar dataKey="v" radius={[3, 3, 0, 0]}>{SPEND_CAT.map((_, i) => <Cell key={i} fill={i === 0 ? C.gold : C.line} />)}</Bar>
             </BarChart>
-          </ResponsiveContainer>
+          </ResponsiveContainer>}
         </Card>
         <Card pad={22}>
           <Eyebrow color={C.red}>Anomaly radar</Eyebrow>
-          <div style={{ font: `400 16px ${serif}`, margin: "6px 0 14px" }}>Three things for your eyes</div>
-          {[
-            [TriangleAlert, C.red, "Sand truck off-schedule at Gate A", "Held · awaiting site call"],
-            [TriangleAlert, C.amber, "Buyer A. Sethi quality dipped to 71%", "5 open invoices · Purchase"],
-            [CircleDot, C.gold, "Over-delivery held: 8 T extra steel", "Store B · needs fresh PO"],
-          ].map(([Ic, col, t, s], i) => (
+          <div style={{ font: `400 16px ${serif}`, margin: "6px 0 14px" }}>{anomalies.length ? `${anomalies.length} thing${anomalies.length > 1 ? "s" : ""} for your eyes` : "Nothing out of place"}</div>
+          {anomalies.length === 0 && <div style={{ font: `13px ${sans}`, color: C.stone, padding: "6px 0 4px" }}>The radar watches off-schedule deliveries, rate jumps and over-deliveries. It has nothing to report.</div>}
+          {anomalies.map(([Ic, col, t, s], i) => (
             <div key={i} style={{ display: "flex", gap: 11, padding: "11px 0", borderTop: i ? `1px solid ${C.lineSoft}` : "none" }}>
               <Ic size={16} color={col} style={{ marginTop: 2, flexShrink: 0 }} />
               <div><div style={{ font: `600 13px ${sans}` }}>{t}</div><div style={{ font: `12px ${sans}`, color: C.stone, marginTop: 2 }}>{s}</div></div>
@@ -1940,8 +1755,9 @@ function BossView() {
       <Card pad={22} style={{ marginTop: 18 }}>
         <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 14 }}>
           <div><Eyebrow>Monthly procurement</Eyebrow><div style={{ font: `400 16px ${serif}`, marginTop: 6 }}>Run-rate — last 6 months</div></div>
-          <Pill tone="gold">avg ₹27 Cr/mo</Pill>
+          {TREND.length > 0 && <Pill tone="gold">avg {cr(Math.round(TREND.reduce((a, t) => a + t.v, 0) / TREND.length * 1e7))}/mo</Pill>}
         </div>
+        {TREND.length === 0 ? <div style={{ padding: "30px 0", textAlign: "center", color: C.stone, font: `13px ${sans}` }}>Six months of purchase orders will draw this line. There are none yet.</div> :
         <ResponsiveContainer width="100%" height={150}>
           <LineChart data={TREND} margin={{ left: -18 }}>
             <XAxis dataKey="m" tick={{ fontSize: 11, fill: C.stone }} axisLine={false} tickLine={false} />
@@ -1949,7 +1765,7 @@ function BossView() {
             <Tooltip contentStyle={{ border: `1px solid ${C.line}`, borderRadius: 4, font: `12px ${sans}` }} formatter={(v) => ["₹" + v + " Cr", "Spend"]} />
             <Line type="monotone" dataKey="v" stroke={C.gold} strokeWidth={2.5} dot={{ r: 3, fill: C.gold }} />
           </LineChart>
-        </ResponsiveContainer>
+        </ResponsiveContainer>}
       </Card>
 
       <Card pad={22} style={{ marginTop: 18 }}>
@@ -2153,13 +1969,8 @@ function ClaimDoc({ po, userKey, onClose }) {
   );
 }
 
-const FLAGGED_SEED = [
-  { id: "FL-2201", kind: "Missing invoice", po: "PO-4471", vendor: "Jindal Panther (Auth. Dealer)", what: "TMT 550D — 120 T", amt: 7800000, why: "Goods received and matched, but no vendor invoice attached. Accounts cannot pass it for payment.", need: "invoice" },
-  { id: "FL-2202", kind: "Missing invoice", po: "PO-4451", vendor: "Havells Electricals", what: "Cabling & DBs — Twin Towers · B", amt: 6620000, why: "Delivery logged on 11 Aug. Invoice never uploaded.", need: "invoice" },
-  { id: "FL-2203", kind: "Missing invoice", po: "PO-4447", vendor: "Gmmco Equipment Hire", what: "Excavator + boom hire — Aug", amt: 1840000, why: "Hire running since 1 Aug with no bill on file.", need: "invoice" },
-  { id: "FL-2204", kind: "Rate jump", po: "PO-4459", vendor: "Shivalik Aggregates", what: "20 mm aggregate — 600 m³", amt: 900000, why: "₹1,500/m³ against ₹1,280 last paid — 17% higher with no note explaining it.", need: "reason" },
-  { id: "FL-2205", kind: "Unverified vendor", po: "PO-4462", vendor: "ACC Concrete", what: "M30 RMC — 900 m³", amt: 5850000, why: "Vendor has no GST verification on file. OTP verification never completed.", need: "verify" },
-];
+/* Records the system is holding back because something is missing. */
+const FLAGGED_SEED = [];
 /* ===== ONE SOURCE OF TRUTH FOR STOCK — visible to purchase, enforced on the store ===== */
 function heldFor(holds, item) {
   return holds.filter(h => h.item.toLowerCase() === String(item).toLowerCase()).reduce((a, h) => a + Number(h.qty || 0), 0);
@@ -2167,7 +1978,8 @@ function heldFor(holds, item) {
 function availableOf(holds, row) { return Math.round(Math.max(0, Number(row.qty) - heldFor(holds, row.item)) * 100) / 100; }
 
 function HoldModal({ row, onClose }) {
-  const mob = useIsMobile(); const { placeHold } = useProc();
+  const mob = useIsMobile(); const { placeHold, me } = useProc();
+  const heldBy = (me && me.name) ? `${me.name}${me.title ? ` · ${me.title}` : ""}` : "Purchase";
   const avail = 0;
   const [qty, setQty] = useState("");
   const [days, setDays] = useState(7);
@@ -2178,7 +1990,7 @@ function HoldModal({ row, onClose }) {
     if (!n || n <= 0) return toast("How much do you want held?", "amber");
     if (n > row.avail) return toast(`Only ${row.avail} ${row.unit} are free to hold`, "amber");
     if (!why.trim()) return toast("Say why — the store manager will read it", "amber");
-    placeHold({ item: row.item, qty: n, unit: row.unit, days, by: "R. Khanna · Purchase Manager", why: why.trim() });
+    placeHold({ item: row.item, qty: n, unit: row.unit, days, by: heldBy, why: why.trim() });
     toast(`${n} ${row.unit} of ${row.item} held for ${days} days`, "gold"); onClose();
   };
   return (
@@ -2200,7 +2012,7 @@ function HoldModal({ row, onClose }) {
           </div>
         </div>
         <label style={{ ...lbl, fontSize: 9 }}>Why *</label>
-        <textarea value={why} onChange={e => setWhy(e.target.value)} rows={2} placeholder="e.g. Twin Towers slab may pull forward — keep it back" style={{ ...cell, marginTop: 5, resize: "vertical" }} />
+        <textarea value={why} onChange={e => setWhy(e.target.value)} rows={2} placeholder="e.g. the slab may pull forward — keep it back" style={{ ...cell, marginTop: 5, resize: "vertical" }} />
         <div style={{ display: "flex", gap: 10, marginTop: 14, flexWrap: "wrap" }}>
           <GoldButton onClick={place}>Hold it</GoldButton>
           <GoldButton ghost onClick={onClose}>Cancel</GoldButton>
@@ -2295,7 +2107,7 @@ function StockWindow({ canHold, userKey = "purchase" }) {
           ))}
         </div>
       </div>
-      <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search stock or a bill — cement, TMT, INV-8841, PO-4468" style={{ ...cell, marginBottom: 10 }} />
+      <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search stock or a bill — an item, an invoice number, a PO" style={{ ...cell, marginBottom: 10 }} />
 
       {tab === "stock" ? (<>
         {!mob && (
@@ -2465,7 +2277,7 @@ function PurchaseView({ userKey = "purchase" }) {
   const [claim, setClaim] = useState(null);
   const [flagged, setFlagged] = useState(false);
   const stTone = (s) => s === "Approved" ? "green" : s === "Received" || s === "Paid" ? "gold" : s === "Partial" ? "stone" : "amber";
-  /* EDIT 9 of 20: was `[...pos, ...POS]`. `pos` is the live list from the
+  /* EDIT 12 of 23: was `[...pos, ...POS]`. `pos` is the live list from the
      server now, and the server was seeded from the POS constant below — so
      every purchase order rendered twice, with a duplicate React key. */
   const list = pos;
@@ -2577,7 +2389,15 @@ function StoreHolds() {
 }
 function StoreView() {
   const mob = useIsMobile();
-  const { reqs, fulfillReq } = useProc();
+  const { reqs, fulfillReq, gatepasses = [], pos = [] } = useProc();
+  /* What arrived at the gate, checked against the PO it was raised under. A
+     quantity over what the PO allows is held rather than quietly accepted. */
+  const goodsIn = gatepasses.filter(g => g.status === "arrived").map(g => {
+    const po = pos.find(p => p.id === g.po);
+    const over = po && Number(g.qty) > Number(po.qty);
+    return [g.items || g.item || "Delivery", over ? "Over-delivery" : po ? `Matches ${po.id}` : "No PO on file",
+      over || !po ? "split" : "green", over ? "Held · needs PO" : po ? "Barcode printed" : "Held · needs a PO"];
+  });
   const [active, setActive] = useState(null);
   const [win, setWin] = useState(null);
   const WINDOWS = ["10 min", "30 min", "1 hr", "2 hr", "Half day", "1 day", "2 days"];
@@ -2626,12 +2446,9 @@ function StoreView() {
         </Card>
         <Card pad={22}>
           <Eyebrow>Goods-in check</Eyebrow>
+          {goodsIn.length === 0 && <div style={{ font: `13px ${sans}`, color: C.stone, marginTop: 10, lineHeight: 1.6 }}>Nothing has come through the gate against an open PO. As deliveries are scanned they land here — matched in green, over-delivered in half-red and held.</div>}
           <div style={{ font: `400 16px ${serif}`, margin: "6px 0 12px" }}>Scan · match · label</div>
-          {[
-            ["TMT 550D — 40 T", "Matches PO-4471", "green", "Barcode printed"],
-            ["OPC Cement — 4,000 bags", "Matches PO-4468", "green", "Barcode printed"],
-            ["TMT — 8 T extra", "Over-delivery", "split", "Held · needs PO"],
-          ].map(([item, note, tone, tag], i) => (
+          {goodsIn.map(([item, note, tone, tag], i) => (
             <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "13px 0", borderTop: `1px solid ${C.lineSoft}` }}>
               <div style={{ width: 12, height: 12, borderRadius: 3, flexShrink: 0, background: tone === "green" ? C.green : `linear-gradient(90deg, ${C.red} 50%, ${C.green} 50%)` }} />
               <div style={{ flex: 1 }}><div style={{ font: `600 13px ${sans}` }}>{item}</div><div style={{ font: `12px ${sans}`, color: C.stone }}>{note}</div></div>
@@ -2740,7 +2557,7 @@ function StoreView() {
                   <div>
                     <div style={{ font: `13px ${sans}`, color: C.inkSoft, marginBottom: 14 }}>Both sides confirm the handover. Nothing is recorded until both sign.</div>
                     <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr" : "1fr 1fr", gap: 12 }}>
-                      {[["Store — S. Verma", storeOk, () => setStoreOk(v => !v)], [`Recipient — ${pick.who.split(" (")[0]}`, recipOk, () => setRecipOk(v => !v)]].map(([label, on, tog], i) => (
+                      {[["Store", storeOk, () => setStoreOk(v => !v)], [`Recipient — ${pick.who.split(" (")[0]}`, recipOk, () => setRecipOk(v => !v)]].map(([label, on, tog], i) => (
                         <button key={i} onClick={tog} style={{ cursor: "pointer", textAlign: "left", border: `1.5px solid ${on ? C.green : C.line}`, background: on ? C.greenSoft : "#fff", borderRadius: 6, padding: "14px 16px" }}>
                           <div style={{ display: "flex", alignItems: "center", gap: 8 }}><div style={{ width: 22, height: 22, borderRadius: "50%", background: on ? C.green : C.lineSoft, display: "grid", placeItems: "center", color: "#fff" }}>{on ? <Check size={13} /> : null}</div><span style={{ font: `600 12px ${sans}`, color: on ? C.green : C.inkSoft }}>{on ? "Confirmed" : "Tap to confirm"}</span></div>
                           <div style={{ font: `13px ${sans}`, color: C.ink, marginTop: 8 }}>{label}</div>
@@ -2765,27 +2582,13 @@ function StoreView() {
 
 /* ============================== SECURITY ============================== */
 /* ===== GUARDS — each guard has their own post and only sees it ===== */
-const MOVES_SEED = [
-  { at: Date.now() - 1000*60*60*6,  dir: "in",  item: "OPC 53 cement", qty: 3860, unit: "bags", ref: "PO-4468", bill: "INV-8841", who: "R. Chauhan (Store)", note: "Short load — 140 bags less" },
-  { at: Date.now() - 1000*60*60*30, dir: "in",  item: "TMT 550D steel", qty: 120, unit: "T", ref: "PO-4471", bill: "INV-8836", who: "R. Chauhan (Store)", note: "Weighbridge matched" },
-  { at: Date.now() - 1000*60*60*52, dir: "out", item: "OPC 53 cement", qty: 900, unit: "bags", ref: "RQ-2210", bill: "", who: "K. Iyer (Site Engineer)", note: "Basement raft pour" },
-  { at: Date.now() - 1000*60*60*70, dir: "in",  item: "20 mm aggregate", qty: 648, unit: "m³", ref: "PO-4459", bill: "INV-8829", who: "R. Chauhan (Store)", note: "Over tip — 48 m³ extra" },
-  { at: Date.now() - 1000*60*60*96, dir: "out", item: "Binding wire", qty: 60, unit: "kg", ref: "RQ-2204", bill: "", who: "Structure gang", note: "" },
-];
-const HOLDS_SEED = [
-  { id: "HD-311", item: "TMT 550D steel", qty: 6, unit: "T", days: 10, by: "R. Khanna · Purchase Manager", why: "Twin Towers B slab is likely to pull forward — keep it back.", at: Date.now() - 1000*60*60*20 },
-];
-const GATELOG_SEED = [
-  { id: "GT-4407", at: Date.now() - 1000 * 60 * 52, outcome: "deny", label: "Walk-in — scrap buyer, no appointment", plate: "PB11AC7745", guard: "Balbir Singh", guardId: "MB-SEC-0001", post: "Marbella Grand · Main Gate", who: "R. Khanna · Purchase Manager", ev: 2, note: "Asked for the site supervisor by name. Nobody expecting him." },
-  { id: "GT-4405", at: Date.now() - 1000 * 60 * 60 * 3.5, outcome: "deny", label: "Nangal Sand Suppliers — unscheduled tipper", plate: "PB65AH2210", guard: "Balbir Singh", guardId: "MB-SEC-0001", post: "Marbella Grand · Main Gate", who: "S. Verma · Store Manager", ev: 3, note: "Sand not ordered for today. Sent back, vendor informed." },
-  { id: "GT-4402", at: Date.now() - 1000 * 60 * 60 * 6, outcome: "permit", label: "UltraTech — Kharar · PO-4468", plate: "PB65AB1189", guard: "Balbir Singh", guardId: "MB-SEC-0001", post: "Marbella Grand · Main Gate", who: "R. Khanna · Purchase Manager", ev: 2, note: "" },
-];
-const GUARDS = [
-  { id: "MB-SEC-0001", name: "Balbir Singh", post: "Marbella Grand · Main Gate", shift: "06:00 – 14:00", phone: "+91 98140 00301" },
-  { id: "MB-SEC-0002", name: "Ranjit Kumar", post: "Twin Towers · Gate 2", shift: "14:00 – 22:00", phone: "+91 98140 00302" },
-  { id: "MB-SEC-0003", name: "Gurpreet Singh", post: "Marbella Royce · Site Gate", shift: "22:00 – 06:00", phone: "+91 98140 00303" },
-];
-const AUTHORISERS = ["Nitish Walia · Chairman", "R. Khanna · Purchase Manager", "S. Verma · Store Manager", "Simran Kaur · HR Head", "P. Nair · Accounts Head", "K. Iyer · Site Engineer"];
+const MOVES_SEED = [];
+const HOLDS_SEED = [];
+const GATELOG_SEED = [];
+const GUARDS = [];
+/* Who can authorise a movement. These are the desks that carry the authority —
+   the person holding the desk comes from whoever is signed into it. */
+const AUTHORISERS = Object.values(USERS).filter(u => u.tier <= 2).map(u => u.role);
 
 function EvidenceRow({ ev, setEv }) {
   const add = (kind, name) => setEv(e => [...e, { kind, name, at: new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }) }]);
@@ -3305,42 +3108,14 @@ const EXP_CATS = [
   ["Repairs", "Upkeep and breakdowns"],
 ];
 const EXP_DEPTS = ["Purchase", "Store", "Site Engineering", "Maintenance", "HR", "Accounts", "Admin", "Security"];
-const EXP_SEED = [
-  { id: "EX-9051", cat: "Material", dept: "Purchase", amt: 1560000, party: "UltraTech — Kharar", date: "10 Aug", src: "PO-4468", how: "pdf", ok: true },
-  { id: "EX-9050", cat: "Material", dept: "Purchase", amt: 7800000, party: "Jindal Panther", date: "12 Aug", src: "PO-4471", how: "pdf", ok: true },
-  { id: "EX-9049", cat: "Salaries", dept: "HR", amt: 4180000, party: "July payroll · 65 people", date: "01 Aug", src: "Payroll run", how: "sheet", ok: true },
-  { id: "EX-9048", cat: "Equipment", dept: "Site Engineering", amt: 1840000, party: "Gmmco Equipment Hire", date: "01 Aug", src: "PO-4447", how: "pdf", ok: true },
-  { id: "EX-9047", cat: "Subscriptions", dept: "Accounts", amt: 42000, party: "Tally · annual renewal", date: "28 Jul", src: "Email receipt", how: "email", ok: true },
-  { id: "EX-9046", cat: "Subscriptions", dept: "Admin", amt: 18600, party: "Google Workspace", date: "26 Jul", src: "Email receipt", how: "email", ok: true },
-  { id: "EX-9045", cat: "Interest paid", dept: "Accounts", amt: 962000, party: "HDFC · project facility", date: "05 Aug", src: "Bank statement", how: "zip", ok: true },
-  { id: "EX-9044", cat: "Bank charges", dept: "Accounts", amt: 8450, party: "HDFC · NEFT + cheque return", date: "05 Aug", src: "Bank statement", how: "zip", ok: true },
-  { id: "EX-9043", cat: "Canteen & food", dept: "Site Engineering", amt: 128400, party: "Site canteen · Grand", date: "31 Jul", src: "Monthly bill", how: "photo", ok: true },
-  { id: "EX-9042", cat: "Grocery", dept: "Admin", amt: 34700, party: "Guest house supplies", date: "29 Jul", src: "Shop bill", how: "photo", ok: true },
-  { id: "EX-9041", cat: "Fuel & travel", dept: "Maintenance", amt: 96200, party: "Diesel · DG sets", date: "30 Jul", src: "Fuel slips", how: "photo", ok: true },
-  { id: "EX-9040", cat: "Rent & utilities", dept: "Admin", amt: 285000, party: "Office + power", date: "05 Aug", src: "Bank statement", how: "zip", ok: true },
-  { id: "EX-9039", cat: "Professional fees", dept: "Accounts", amt: 175000, party: "CA · quarterly", date: "20 Jul", src: "Invoice", how: "pdf", ok: true },
-  { id: "EX-9038", cat: "Repairs", dept: "Maintenance", amt: 64300, party: "Lift AMC call-out", date: "22 Jul", src: "Invoice", how: "pdf", ok: true },
-  { id: "EX-9037", cat: "Salaries", dept: "Security", amt: 312000, party: "Guard contract · July", date: "01 Aug", src: "Contract bill", how: "pdf", ok: true },
-  { id: "EX-9052", cat: "Fuel & travel", dept: "Store", amt: 486000, party: "Malhotra Transport — material cartage", date: "08 Aug", src: "INV-8852", how: "pdf", ok: true },
-  { id: "EX-9053", cat: "Fuel & travel", dept: "Site Engineering", amt: 152000, party: "Transport — tipper hire, Royce", date: "02 Aug", src: "Contract bill", how: "pdf", ok: true },
-  { id: "EX-9036", cat: "Material", dept: "Store", amt: 900000, party: "Shivalik Aggregates", date: "09 Aug", src: "PO-4459", how: "pdf", ok: true },
-];
+const EXP_SEED = [];
 const HOW_ICON = { pdf: "📄", photo: "📷", email: "✉️", zip: "🗂️", sheet: "📊", scan: "🖨️" };
 const inrShort = (n) => n >= 1e7 ? "₹" + (n / 1e7).toFixed(2) + " Cr" : n >= 1e5 ? "₹" + (n / 1e5).toFixed(1) + " L" : inr(n);
 
 /* the intake pipeline — what the app "eats" */
-const INTAKE_SAMPLE = {
-  zip: [
-    { cat: "Interest paid", dept: "Accounts", amt: 962000, party: "HDFC · project facility", date: "05 Aug", conf: 96 },
-    { cat: "Bank charges", dept: "Accounts", amt: 8450, party: "HDFC · NEFT charges", date: "05 Aug", conf: 94 },
-    { cat: "Rent & utilities", dept: "Admin", amt: 285000, party: "Office rent — auto debit", date: "05 Aug", conf: 91 },
-    { cat: "Material", dept: "Purchase", amt: 1560000, party: "UltraTech — matched to PO-4468", date: "10 Aug", conf: 98 },
-    { cat: "", dept: "", amt: 47800, party: "IMPS to “S. TRADERS” — no match", date: "08 Aug", conf: 38 },
-  ],
-  pdf: [{ cat: "Material", dept: "Purchase", amt: 1560000, party: "UltraTech — Kharar · INV-8841", date: "10 Aug", conf: 97 }],
-  photo: [{ cat: "Canteen & food", dept: "Site Engineering", amt: 128400, party: "Site canteen · Grand — July", date: "31 Jul", conf: 88 }],
-  email: [{ cat: "Subscriptions", dept: "Accounts", amt: 42000, party: "Tally · annual renewal", date: "28 Jul", conf: 93 }],
-};
+/* What the intake pipeline produces per file type. Filled by the reader when a
+   real file is handed to it — there is nothing to show before that. */
+const INTAKE_SAMPLE = { zip: [], pdf: [], photo: [], email: [] };
 
 function IntakeStyles() {
   return <style>{`
@@ -3516,19 +3291,10 @@ const PAY_PLANS = {
     ["On booking · within 30 days", 20], ["Foundation", 15], ["10th floor completion", 15],
     ["20th floor completion", 15], ["Structure", 15], ["Finishing", 10], ["On possession", 10]] },
 };
-/* how far each tower has actually got — drives what is billable */
-const BUILD_STAGE = {
-  "Royce · Tower A": 4, "Royce · Tower B": 3, "Royce · Tower C": 2, "Royce · Tower D": 2,
-  "Marbella Grand · Tower 1": 5, "Twin Towers · A": 4, "Twin Towers · B": 3,
-};
-const SALES_SEED = [
-  { id: "SL-2041", unit: "B-1204", tower: "Royce · Tower B", proj: "Marbella Royce", firm: "D.R. Developers & Colonisers", plan: "Royce · Tower B, C, D", price: 14200000, booked: "18 Apr 2025", buyer: "Aman Gill", phone: "+91 98155 41207", email: "amangill@gmail.com", paid: 4970000 },
-  { id: "SL-2042", unit: "A-0803", tower: "Royce · Tower A", proj: "Marbella Royce", firm: "D.R. Developers & Colonisers", plan: "Royce · Tower A", price: 16800000, booked: "02 Jun 2025", buyer: "Ritu Sharma", phone: "+91 99880 33412", email: "ritu.sharma@outlook.com", paid: 4200000 },
-  { id: "SL-2043", unit: "C-0906", tower: "Royce · Tower C", proj: "Marbella Royce", firm: "D.R. Developers & Colonisers", plan: "Royce · Tower B, C, D", price: 13400000, booked: "11 Jan 2026", buyer: "Harpreet Bedi", phone: "+91 98760 22118", email: "hbedi@yahoo.in", paid: 4690000 },
-  { id: "SL-2044", unit: "D-1502", tower: "Royce · Tower D", proj: "Marbella Royce", firm: "D.R. Developers & Colonisers", plan: "Royce · Tower B, C, D", price: 15100000, booked: "27 Feb 2026", buyer: "Sunil Mehta", phone: "+91 98140 77903", email: "sunilmehta@gmail.com", paid: 3775000 },
-  { id: "SL-2045", unit: "T1-2101", tower: "Marbella Grand · Tower 1", proj: "Marbella Grand", firm: "Delhi Punjab Real Estates LLP", plan: "Grand · standard", price: 19500000, booked: "09 Sep 2024", buyer: "Karan Anand", phone: "+91 97790 11245", email: "karan.anand@gmail.com", paid: 15600000 },
-  { id: "SL-2046", unit: "TT-A-1106", tower: "Twin Towers · A", proj: "Twin Towers", firm: "Delhi Punjab Real Estates LLP", plan: "Grand · standard", price: 17800000, booked: "21 Nov 2024", buyer: "Neha Kapoor", phone: "+91 98729 55031", email: "neha.kapoor@gmail.com", paid: 10680000 },
-];
+/* How far each tower has actually got — the number of payment-plan stages
+   reached, which is what makes a stage billable. Set per tower under Masters. */
+const BUILD_STAGE = {};
+const SALES_SEED = [];
 function saleMath(s) {
   const plan = PAY_PLANS[s.plan] || PAY_PLANS["Grand · standard"];
   const reached = BUILD_STAGE[s.tower] || 1;
@@ -3686,23 +3452,18 @@ function ReminderCompose({ s, m, onClose, onQueue }) {
 }
 
 /* ===== MASTERS — companies, bank accounts, cards, and what we actually hold ===== */
+/* Group entities as Accounts sees them — the same four legal entities as the
+   project masters, so a bill can only ever be booked to one that exists. */
 const COMPANIES_SEED = [
-  { id: "CO-01", name: "Delhi Punjab Real Estates LLP", kind: "Own firm", gstin: "03AAEFD4921K1Z9", pan: "AAEFD4921K", city: "Chandigarh" },
-  { id: "CO-02", name: "D.R. Developers & Colonisers", kind: "Own firm", gstin: "03AAKFD3356N1ZB", pan: "AAKFD3356N", city: "Chandigarh" },
-  { id: "CO-03", name: "Des Raj Real Estates Pvt. Ltd.", kind: "Own firm", gstin: "03AABCD7890P1ZR", pan: "AABCD7890P", city: "Chandigarh" },
-  { id: "CO-04", name: "Marbella Facility Services", kind: "Associate", gstin: "03AAFCM2211Q1Z4", pan: "AAFCM2211Q", city: "Mohali" },
+  { id: "srg",     name: "SRG Developers & Promoters",                gstin: "", pan: "", kind: "Own firm", city: "" },
+  { id: "newmarb", name: "New Marbella Developers And Promoters LLP",  gstin: "", pan: "", kind: "Own firm", city: "" },
+  { id: "srgmarb", name: "SRG Marbella Developers And Promoters LLP",  gstin: "", pan: "", kind: "Own firm", city: "" },
+  { id: "garg",    name: "Garg Builders And Promoters LLP",            gstin: "", pan: "", kind: "Own firm", city: "" },
 ];
-const BANKS_SEED = [
-  { id: "BK-01", bank: "HDFC Bank", acc: "•••• 4417", type: "Current", firm: "Delhi Punjab Real Estates LLP", till: "Aug 26", gaps: [], bal: 18450000 },
-  { id: "BK-02", bank: "ICICI Bank", acc: "•••• 9082", type: "Current", firm: "D.R. Developers & Colonisers", till: "May 26", gaps: ["Jun 26", "Jul 26", "Aug 26"], bal: 9260000 },
-  { id: "BK-03", bank: "SBI", acc: "•••• 2231", type: "RERA escrow · Royce", firm: "D.R. Developers & Colonisers", till: "Aug 26", gaps: [], bal: 42100000 },
-  { id: "BK-04", bank: "Axis Bank", acc: "•••• 7756", type: "RERA escrow · Grand", firm: "Delhi Punjab Real Estates LLP", till: "Jul 26", gaps: ["Aug 26"], bal: 27800000 },
-];
-const CARDS_SEED = [
-  { id: "CC-01", bank: "HDFC Regalia", last: "4402", holder: "Nitish Walia", limit: 1500000, used: 284000, cycle: "16th – 15th", due: "3rd of every month", firm: "Delhi Punjab Real Estates LLP" },
-  { id: "CC-02", bank: "ICICI Amazon Pay", last: "8819", holder: "Accounts — office", limit: 400000, used: 61400, cycle: "1st – 30th", due: "18th of every month", firm: "D.R. Developers & Colonisers" },
-  { id: "CC-03", bank: "Axis Magnus", last: "3307", holder: "Nitish Walia", limit: 2000000, used: 0, cycle: "6th – 5th", due: "25th of every month", firm: "Des Raj Real Estates Pvt. Ltd." },
-];
+const BANKS_SEED = [];
+/* Company cards. Nothing is listed until somebody enters a real card, because a
+   card on this screen is a spending limit somebody will act on. */
+const CARDS_SEED = [];
 function DataStrength() {
   const mob = useIsMobile();
   const { holds } = useProc();
@@ -4223,7 +3984,7 @@ function ExpenseDetail({ r, onClose }) {
   /* the trail behind this one line */
   const trail = [];
   if (po) {
-    trail.push(["Purchase order raised", `${po.id} — ${po.item}`, "R. Khanna · Purchase", po.del ? "before delivery" : "—"]);
+    trail.push(["Purchase order raised", `${po.id} — ${po.item}`, po.by || "Purchase", po.del ? "before delivery" : "—"]);
     if (po.del) {
       trail.push(["Reached the gate", `${po.del.who}`, "Security", po.del.at]);
       trail.push(["Taken into store", `Ordered ${po.del.exp} · received ${po.del.got}`, po.del.by, po.del.at]);
@@ -4399,9 +4160,11 @@ function AccountsView() {
       <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr" : "1fr 320px", gap: 18 }}>
         <Card pad={22}>
           <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, flexWrap: "wrap", gap: 8 }}>
-            <Eyebrow>Bank reconciliation · Aug</Eyebrow><Pill tone="green">₹27.4 Cr · 98% matched</Pill>
+            <Eyebrow>Bank reconciliation</Eyebrow>
+            {RECON.length > 0 && <Pill tone="green">{cr(RECON.reduce((a, r) => a + r[1], 0))} · {Math.round(RECON.filter(r => r[3] === "green").length / RECON.length * 100)}% matched</Pill>}
           </div>
           <div style={{ font: `400 16px ${serif}`, margin: "6px 0 12px" }}>Statement ↔ purchases</div>
+          {RECON.length === 0 && <div style={{ font: `13px ${sans}`, color: C.stone, padding: "8px 0 2px", lineHeight: 1.6 }}>Import a bank statement and the system will line it up against the purchase orders. Nothing has been imported yet.</div>}
           {RECON.map(([n, a, s, tone], i) => (
             <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "13px 0", borderTop: `1px solid ${C.lineSoft}` }}>
               <div style={{ flex: 1 }}><div style={{ font: `600 13px ${sans}` }}>{n}</div><div style={{ font: `12px ${sans}`, color: tone === "red" ? C.red : C.stone }}>{s}</div></div>
@@ -4414,8 +4177,8 @@ function AccountsView() {
             <div style={{ display: "flex", gap: 10 }}>
               <FileText size={18} color={C.goldDeep} style={{ marginTop: 1, flexShrink: 0 }} />
               <div>
-                <div style={{ font: `600 13px ${sans}`, color: C.goldDeep }}>6 bills likely produced, not uploaded</div>
-                <div style={{ font: `12px ${sans}`, color: C.inkSoft, margin: "4px 0 10px", lineHeight: 1.5 }}>Goods received on 6 POs with no invoice on file. Upload to close the loop.</div>
+                <div style={{ font: `600 13px ${sans}`, color: C.goldDeep }}>Missing bills</div>
+                <div style={{ font: `12px ${sans}`, color: C.inkSoft, margin: "4px 0 10px", lineHeight: 1.5 }}>Where goods were received against a PO but no invoice was ever attached, upload it here to close the loop.</div>
                 <Uploader label="Upload a missing bill" sub="Drop it here — matched to its PO automatically." />
               </div>
             </div>
@@ -4454,17 +4217,22 @@ function PeopleView() {
   const [name, setName] = useState("");
   const [generated, setGenerated] = useState(null);
   const [investigate, setInvestigate] = useState(null);
-  /* EDIT 10 of 20: the third department list. This one was a local `codes` map
+  const { ledger = [] } = useProc();
+  /* The timeline is the ledger, filtered to this person. A person with nothing
+     recorded against them shows nothing — not four invented events. */
+  const activity = (investigate ? ledger.filter(l => l.subject === investigate.id) : [])
+    .slice(0, 12).map(l => [String(l.at || "").split(" · ")[0] || "—", l.detail || l.kind || ""]);
+  /* EDIT 13 of 23: the third department list. This one was a local `codes` map
      of eight departments used to preview a new employee ID — so picking HR or
      Labour previewed `MB-GEN-…`, which is not an ID this company issues. It
      uses DEPT_CODES now, like everything else.
 
      The bars below counted from a frozen array. They count live people. */
-  const { people = [] } = useProc();
+  const { people = [], contacts = {} } = useProc();
   const headcount = DEPTS
     .map(d => [d, people.filter(p => p.dept === d && p.status !== "exited").length])
     .filter(([, n]) => n > 0);
-  /* EDIT 11 of 20: was `EMPLOYEES`, twelve invented people frozen in this file
+  /* EDIT 14 of 23: was `EMPLOYEES`, twelve invented people frozen in this file
      — the roster on this screen never matched the company. It is the live
      roster now. `quality` was a made-up cleanliness score; a real one is
      whether the record is actually complete, which the server can answer. */
@@ -4549,13 +4317,14 @@ function PeopleView() {
             <h2 style={{ font: `400 24px ${serif}`, margin: "12px 0 2px" }}>{investigate.name}</h2>
             <div style={{ font: `13px ${mono}`, color: C.stone, marginBottom: 18 }}>{investigate.id} · {investigate.dept}</div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 18 }}>
-              {[["Data quality", investigate.quality == null ? "—" : investigate.quality + "%"], ["Tasks closed", "37"], ["Handovers", "12"], ["Open flags", investigate.quality != null && investigate.quality < 75 ? "3" : "0"]].map(([l, v]) => (
+              {[["Data quality", investigate.quality == null ? "—" : investigate.quality + "%"], ["Entries on file", String(activity.length)], ["Handovers", String(ledger.filter(l => l.subject === investigate.id && l.kind === "handover").length)], ["Open flags", investigate.quality != null && investigate.quality < 75 ? "3" : "0"]].map(([l, v]) => (
                 <Card key={l} pad={14}><div style={{ font: `600 10px ${sans}`, letterSpacing: "0.1em", textTransform: "uppercase", color: C.stone }}>{l}</div><div style={{ font: `400 22px ${serif}`, marginTop: 5 }}>{v}</div></Card>
               ))}
             </div>
             <Eyebrow>Activity timeline</Eyebrow>
             <div style={{ marginTop: 12 }}>
-              {[["09:14", "Raised PO-4471 · Jindal Panther"], ["Yesterday", "Handover to Marbella Grand — signed"], ["Yesterday", "Invoice flagged · missing GSTIN"], ["Mon", "Vendor added · Kajaria Tiles"]].map(([t, e], i) => (
+              {activity.length === 0 && <div style={{ font: `13px ${sans}`, color: C.stone, paddingBottom: 12 }}>Nothing recorded against this person yet.</div>}
+              {activity.map(([t, e], i) => (
                 <div key={i} style={{ display: "flex", gap: 12, paddingBottom: 14 }}>
                   <div style={{ font: `12px ${mono}`, color: C.stone, width: 64, flexShrink: 0 }}>{t}</div>
                   <div style={{ borderLeft: `2px solid ${C.goldSoft}`, paddingLeft: 12, font: `13px ${sans}` }}>{e}</div>
@@ -4662,7 +4431,7 @@ function SendDoc({ userKey, onClose }) {
           <button onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
         </div>
         <h2 style={{ font: `400 20px ${serif}`, margin: "2px 0 12px" }}>Hand a file to a department</h2>
-        <label style={lbl}>What is it</label><input value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g. May cement bills — Twin Towers" style={{ ...inp, margin: "6px 0 14px" }} />
+        <label style={lbl}>What is it</label><input value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g. May cement bills" style={{ ...inp, margin: "6px 0 14px" }} />
         <label style={lbl}>Send to</label><select value={to} onChange={e => setTo(e.target.value)} style={sel}>{["Accounts", "Admin", "Purchase"].map(d => <option key={d}>{d}</option>)}</select>
         <label style={lbl}>File</label>
         <div style={{ margin: "6px 0 14px" }}><label style={{ ...softBtn, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6 }}><Upload size={14} /> {file ? file.slice(0, 28) : "Attach file"}<input type="file" onChange={e => setFile((e.target.files[0] || {}).name || "document.pdf")} style={{ display: "none" }} /></label></div>
@@ -5029,7 +4798,7 @@ function AddVendor({ prefill, onClose }) {
         </div>
         <h2 style={{ font: `400 21px ${serif}`, margin: "2px 0 4px" }}>Enrol a new supplier</h2>
         <div style={{ font: `12px ${sans}`, color: C.stone, marginBottom: 14 }}>Anyone can add a vendor. They go on the ledger straight away as <b>unverified</b> — run the OTP check whenever you're ready to make them a verified vendor.</div>
-        <label style={lbl}>Vendor / firm name *</label><input value={f.name} onChange={set("name")} placeholder="e.g. Sharma Steel Syndicate" style={{ ...inp, margin: "6px 0 12px" }} />
+        <label style={lbl}>Vendor / firm name *</label><input value={f.name} onChange={set("name")} placeholder="The firm name, as it appears on their GST certificate" style={{ ...inp, margin: "6px 0 12px" }} />
         <div style={half}>
           <div><label style={lbl}>Category</label><input value={f.cat} onChange={set("cat")} placeholder="Steel, Cement, MEP…" style={{ ...inp, margin: "6px 0 12px" }} /></div>
           <div><label style={lbl}>Credit terms</label><input value={f.terms} onChange={set("terms")} placeholder="30 days / COD" style={{ ...inp, margin: "6px 0 12px" }} /></div>
@@ -5125,35 +4894,19 @@ const sel = { ...inp, margin: "6px 0 14px", appearance: "auto" };
 /* ============================== SHARED: CREATE PO (multi-item builder) ============================== */
 const numV = (x) => { const n = parseFloat(String(x == null ? "" : x).replace(/[^\d.]/g, "")); return isNaN(n) ? 0 : n; };
 const inr = (n) => "₹" + (Math.round(n) || 0).toLocaleString("en-IN");
-const CATALOG_SEED = [
-  { name: "Cement OPC 53 grade", unit: "bag", rate: 380, vendor: "Ambuja Cement" },
-  { name: "TMT steel bar 8mm", unit: "kg", rate: 66, vendor: "RSW Steel Traders" },
-  { name: "TMT steel bar 12mm", unit: "kg", rate: 68, vendor: "RSW Steel Traders" },
-  { name: "TMT steel bar 16mm", unit: "kg", rate: 67, vendor: "RSW Steel Traders" },
-  { name: "Binding wire", unit: "kg", rate: 72, vendor: "RSW Steel Traders" },
-  { name: "River sand", unit: "cft", rate: 55, vendor: "Verma Suppliers" },
-  { name: "Aggregate 20mm", unit: "cft", rate: 48, vendor: "Verma Suppliers" },
-  { name: "Red clay bricks", unit: "nos", rate: 8, vendor: "Local Kiln" },
-  { name: "Sintex water tank 2000L", unit: "nos", rate: 18500, vendor: "Sintex Depot" },
-  { name: "PVC pipe 4 inch", unit: "m", rate: 240, vendor: "Supreme Traders" },
-  { name: "Vitrified tiles 600x600", unit: "box", rate: 720, vendor: "Tile House" },
-  { name: "Emulsion paint 20L", unit: "bucket", rate: 3200, vendor: "Asian Paints Dealer" },
-  { name: "Plywood 18mm", unit: "sheet", rate: 2100, vendor: "Century Ply Dealer" },
-  { name: "Safety gloves", unit: "pair", rate: 45, vendor: "Safety Mart" },
-  { name: "Safety helmet", unit: "nos", rate: 180, vendor: "Safety Mart" },
-];
-const SCAN_SAMPLE = { vendor: "Sharma Steel Syndicate", rows: [
-  { item: "TMT steel bar 12mm", qty: "500", unit: "kg", rate: "68", from: "scan" },
-  { item: "TMT steel bar 16mm", qty: "300", unit: "kg", rate: "67", from: "scan" },
-  { item: "TMT steel bar 8mm", qty: "200", unit: "kg", rate: "66", from: "scan" },
-  { item: "Binding wire", qty: "50", unit: "kg", rate: "72", from: "scan" },
-  { item: "Cover blocks 25mm", qty: "20", unit: "box", rate: "180", from: "scan" },
-] };
+const CATALOG_SEED = [];
+/* What the scanner returns when it reads a vendor's quotation: the vendor and
+   its line items, ready to become a PO. It is filled from the document you hand
+   it, so an empty one means nothing has been scanned. */
+const SCAN_SAMPLE = { vendor: "", rows: [] };
 const rowAmt = (r) => numV(r.qty) * numV(r.rate);
 
 function SendToVendor({ po, firm, onClose, userKey = "purchase" }) {
-  const mob = useIsMobile(); const { vendors, issueGatePass } = useProc();
+  const mob = useIsMobile(); const { vendors, issueGatePass, me } = useProc();
   const u = desk(userKey);
+  /* The letter is signed by whoever is sending it. If the session has no name
+     on it, it goes out under the company rather than under a made-up person. */
+  const signedBy = (me && me.name) || "Marbella Group";
   const v = vendors.find(x => x.name === po.vendor) || {};
   const [email, setEmail] = useState(v.email || "");
   const [wa, setWa] = useState(v.whatsapp || v.phone || "");
@@ -5161,7 +4914,7 @@ function SendToVendor({ po, firm, onClose, userKey = "purchase" }) {
   const [chWa, setChWa] = useState(true);
   const [gate, setGate] = useState(true);
   const [subj, setSubj] = useState(`Purchase Order ${po.id} — ${firm.short}`);
-  const [body, setBody] = useState(`Dear ${po.vendor},\n\nPlease find attached Purchase Order ${po.id} for ${firm.short}. It covers ${po.rows.length} line item${po.rows.length > 1 ? "s" : ""}, totalling ${inr(po.total)}.\n\nKindly confirm receipt and the expected dispatch date. Payment terms: ${po.terms}.\n\nThank you,\n${USERS[userKey] ? desk(userKey).name : "Marbella Group"}\n${USERS[userKey] ? desk(userKey).role : "Purchase"} · ${firm.firm}\nGSTIN ${firm.gstin} · RERA ${firm.rera}\n${firm.addr}`);
+  const [body, setBody] = useState(`Dear ${po.vendor},\n\nPlease find attached Purchase Order ${po.id} for ${firm.short}. It covers ${po.rows.length} line item${po.rows.length > 1 ? "s" : ""}, totalling ${inr(po.total)}.\n\nKindly confirm receipt and the expected dispatch date. Payment terms: ${po.terms}.\n\nThank you,\n${signedBy}\n${desk(userKey).role || "Purchase"} · ${firm.firm}\nGSTIN ${firm.gstin} · RERA ${firm.rera}\n${firm.addr}`);
   const [sent, setSent] = useState(false);
   const chans = [chEmail && "email", chWa && "WhatsApp"].filter(Boolean).join(" + ");
   const send = () => {
@@ -6058,9 +5811,17 @@ function InvoicesView() {
 /* ============================== MAINTENANCE ============================== */
 function MaintenanceView({ userKey = "maintenance" }) {
   const mob = useIsMobile();
-  const { addItem: addItemM } = useProc();
+  const { addItem: addItemM, vendors = [], people = [] } = useProc();
   const [addingM, setAddingM] = useState(false);
   const [prefill, setPrefill] = useState("");
+  /* Who to reach, drawn from the directory: the maintenance team and the
+     vendors we actually have a number for. */
+  const callList = [
+    ...people.filter(p => p.dept === "Maintenance" && (p.phone || p._phone))
+      .slice(0, 3).map(p => ({ name: p.name, role: `${p.designation} · Maintenance`, phone: p.phone || p._phone, wa: true })),
+    ...vendors.filter(v => v.phone).slice(0, 3)
+      .map(v => ({ name: v.name, role: v.category || "Vendor", phone: v.phone, wa: Boolean(v.whatsapp) })),
+  ];
   const priTone = (p) => p === "high" ? "red" : p === "med" ? "amber" : "stone";
   return (
     <div>
@@ -6090,7 +5851,9 @@ function MaintenanceView({ userKey = "maintenance" }) {
           <Card pad={18}>
             <Eyebrow>Reach the right person</Eyebrow>
             <div style={{ marginTop: 6 }}>
-              {[{ name: "K. Iyer", role: "Site Engineer · Marbella Grand", phone: "+91 98140 •• 121", wa: true }, { name: "Gmmco Equipment", role: "DG / equipment vendor", phone: "+91 172 •• 3320", wa: true }].map((p, i) => <CallRow key={p.name} p={p} i={i} />)}
+              {callList.length === 0
+                ? <div style={{ font: `12px ${sans}`, color: C.stone, padding: "8px 0" }}>Nobody on the call list yet. Add a vendor or a colleague and they appear here.</div>
+                : callList.map((p, i) => <CallRow key={p.name} p={p} i={i} />)}
             </div>
           </Card>
         </div>
@@ -6104,7 +5867,7 @@ function DirectoryView({ userKey }) {
   const [act, setAct] = useState(null);
   const mob = useIsMobile();
   const tier = desk(userKey).tier || 3;
-  /* EDIT 12 of 20: the directory listed five colleagues and three vendors that
+  /* EDIT 15 of 23: the directory listed five colleagues and three vendors that
      were written into this file. Nobody could ring any of them. It is the live
      roster now, grouped by department, with the vendor group dropped until
      there are real vendors to show — an empty group is honest, an invented one
@@ -6144,7 +5907,7 @@ function DirectoryView({ userKey }) {
           <Card pad={20}>
             <Eyebrow>Announcement</Eyebrow>
             <div style={{ font: `12px ${sans}`, color: C.stone, margin: "6px 0 12px" }}>Send to a department or everyone.</div>
-            {/* EDIT 13 of 20: the filter listed six departments that were the
+            {/* EDIT 16 of 23: the filter listed six departments that were the
                 prototype's, not the company's. It reads the real list now. */}
             <select value={dept} onChange={e => setDept(e.target.value)} style={{ ...sel, margin: "0 0 10px" }}>{["All departments", ...DEPTS].map(d => <option key={d}>{d}</option>)}</select>
             <input value={msg} onChange={e => setMsg(e.target.value)} placeholder="Message…" style={{ ...inp, margin: "0 0 12px" }} />
@@ -6158,16 +5921,18 @@ function DirectoryView({ userKey }) {
 }
 
 /* ============================== COST / BUDGET (owner) ============================== */
-const BUDGET = [
-  { site: "Marbella Grand", budget: 720, spent: 466, sqft: 2190, plan: 2150 },
-  { site: "Twin Towers", budget: 560, spent: 268, sqft: 2320, plan: 2250 },
-  { site: "Marbella Curo One", budget: 410, spent: 139, sqft: 2510, plan: 2400 },
-  { site: "Marbella Royce", budget: 300, spent: 63, sqft: 2680, plan: 2550 },
-  { site: "Marbella Manifest", budget: 260, spent: 0, sqft: 0, plan: 3000 },
-];
+/* Sanctioned budget against actual spend, per project. Needs the budgets to be
+   entered under Masters before it can say anything. */
+const BUDGET = [];
 function CostView() {
   const mob = useIsMobile();
-  const kpis = [["Project value", "₹2,000 Cr", C.gold], ["Committed (POs)", "₹428 Cr", C.ink], ["Spent · H1", "₹163 Cr", C.ink], ["Cash out · this wk", "₹6.2 Cr", C.amber]];
+  const { pos = [], expenses = [] } = useProc();
+  const committed = pos.reduce((a, p) => a + (Number(p.amt) || 0), 0);
+  const spent = expenses.reduce((a, e) => a + (Number(e.amt) || 0), 0);
+  const sanctioned = BUDGET.reduce((a, b) => a + b.budget, 0) * 1e7;
+  const week = Date.now() - 7 * 864e5;
+  const cashWeek = expenses.filter(e => Date.parse(e.date) >= week).reduce((a, e) => a + (Number(e.amt) || 0), 0);
+  const kpis = [["Sanctioned budget", cr(sanctioned), C.gold], ["Committed (POs)", cr(committed), C.ink], ["Spent", cr(spent), C.ink], ["Cash out · this wk", cr(cashWeek), C.amber]];
   return (
     <div>
       <Eyebrow>Cost & budget</Eyebrow>
@@ -6178,6 +5943,7 @@ function CostView() {
       <Card pad={22}>
         <Eyebrow>Budget vs actual · cost per sq ft</Eyebrow>
         <div style={{ font: `400 16px ${serif}`, margin: "6px 0 16px" }}>Each site, against its sanctioned budget</div>
+        {BUDGET.length === 0 && <div style={{ font: `13px ${sans}`, color: C.stone, lineHeight: 1.6 }}>No budgets have been sanctioned in the system yet. Enter a budget per project under Masters and this screen starts comparing it against what has actually been spent.</div>}
         {BUDGET.map((b, i) => {
           const pct = Math.round((b.spent / b.budget) * 100);
           const over = b.sqft > b.plan;
@@ -6199,35 +5965,25 @@ function CostView() {
 }
 
 /* ============================== TAX & RERA ============================== */
-const ITC_ROWS = [
-  ["Jindal Panther", "INV-88213", 468000, "green", "In GSTR-2B"],
-  ["UltraTech — Kharar", "INV-88207", 280800, "green", "In GSTR-2B"],
-  ["Havells Electricals", "INV-88184", 1191600, "green", "In GSTR-2B"],
-  ["Shivalik Aggregates", "INV-88160", 162000, "red", "Vendor hasn't filed — credit at risk"],
-  ["Kumar Brick & Block", "INV-88144", 90000, "red", "Not in 2B yet"],
-];
-const TDS_ROWS = [
-  ["194C · Contractors", "Sharma Labour", 63500, "2%", "Deposited"],
-  ["194C · Contractors", "Malhotra Transport", 12400, "2%", "Due 7th"],
-  ["194Q · Purchase >₹50L", "Jindal Panther", 78000, "0.1%", "Deposited"],
-  ["194J · Professional", "Structural Consultant", 45000, "10%", "Due 7th"],
-];
-const PAYABLES = [
-  ["Jindal Panther", 2600000, "Due in 2 days", true],
-  ["ACC Concrete", 1950000, "Due Fri", true],
-  ["Havells Electricals", 6620000, "Due in 9 days", false],
-  ["Sharma Labour", 1587500, "Due Mon", true],
-  ["Kajaria Tiles", 2100000, "Due in 14 days", false],
-];
+/* Input tax credit, reconciled against GSTR-2B. Needs a 2B download. */
+const ITC_ROWS = [];
+/* TDS deducted and its deposit status. Needs the deduction ledger. */
+const TDS_ROWS = [];
+/* What is owed and when. Built from invoices passed for payment. */
+const PAYABLES = [];
 function TaxSection({ title, right, children }) {
   return <Card pad={22}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, flexWrap: "wrap", gap: 8 }}><Eyebrow>{title}</Eyebrow>{right}</div>{children}</Card>;
 }
 function TaxView() {
   const [act, setAct] = useState(null);
   const mob = useIsMobile();
-  const { raiseWithdrawal, banks = [] } = useProc();
+  const { raiseWithdrawal, banks = [], sales = [], expenses = [] } = useProc();
   const [certs, setCerts] = useState({ ca: false, eng: false, arch: false });
   const allCerts = certs.ca && certs.eng && certs.arch;
+  /* RERA's 70% rule is about money actually collected from buyers and money
+     actually drawn against certified cost. Both come from the books. */
+  const collections = sales.reduce((a, x) => a + (Number(x.paid) || 0), 0);
+  const withdrawn = expenses.reduce((a, e) => a + (Number(e.amt) || 0), 0);
   const itcRisk = ITC_ROWS.filter(r => r[3] === "red").reduce((s, r) => s + r[2], 0);
   const dueWeek = PAYABLES.filter(p => p[3]).reduce((s, p) => s + p[1], 0);
   return (
@@ -6238,7 +5994,7 @@ function TaxView() {
       <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr" : "1fr 1fr", gap: 18 }}>
         <TaxSection title="GST · Input tax credit" right={<Pill tone={itcRisk ? "red" : "green"}>{cr(itcRisk)} at risk</Pill>}>
           <div style={{ display: "flex", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
-            {[["ITC claimed", "₹4.9 Cr"], ["In GSTR-2B", "₹4.4 Cr"], ["At risk", cr(itcRisk)]].map(([l, v], i) => <div key={l} style={{ background: C.paper, borderRadius: 8, padding: "8px 12px", flex: 1, minWidth: 90 }}><div style={{ font: `600 10px ${sans}`, textTransform: "uppercase", letterSpacing: "0.06em", color: C.stone }}>{l}</div><div style={{ font: `600 15px ${sans}`, color: i === 2 ? C.red : C.ink, marginTop: 3 }}>{v}</div></div>)}
+            {[["ITC claimed", cr(ITC_ROWS.reduce((a, r) => a + r[2], 0))], ["In GSTR-2B", cr(ITC_ROWS.filter(r => r[3] === "green").reduce((a, r) => a + r[2], 0))], ["At risk", cr(itcRisk)]].map(([l, v], i) => <div key={l} style={{ background: C.paper, borderRadius: 8, padding: "8px 12px", flex: 1, minWidth: 90 }}><div style={{ font: `600 10px ${sans}`, textTransform: "uppercase", letterSpacing: "0.06em", color: C.stone }}>{l}</div><div style={{ font: `600 15px ${sans}`, color: i === 2 ? C.red : C.ink, marginTop: 3 }}>{v}</div></div>)}
           </div>
           {ITC_ROWS.map(([n, inv, amt, tone, note], i) => (
             <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 0", borderTop: `1px solid ${C.lineSoft}` }}>
@@ -6247,7 +6003,7 @@ function TaxView() {
               <div style={{ font: `13px ${serif}` }}>{cr(amt)}</div>
             </div>
           ))}
-          <div style={{ font: `11px ${sans}`, color: C.stone, marginTop: 10, lineHeight: 1.5 }}>Credit only lands when the vendor files. The app chases the two vendors holding up ₹2.5 L.</div>
+          <div style={{ font: `11px ${sans}`, color: C.stone, marginTop: 10, lineHeight: 1.5 }}>{ITC_ROWS.length === 0 ? "Download GSTR-2B and the system will match it line by line against the bills on file." : `Credit only lands when the vendor files. The app chases whoever is holding up ${cr(itcRisk)}.`}</div>
         </TaxSection>
 
         <TaxSection title="TDS ledger" right={<GoldButton small onClick={() => setAct({ title: "Draft the TDS challan", intro: "We will prepare the challan and the 26Q return for you to file.", lines: [["Form", "26Q · quarterly"], ["Due", "By the 7th"], ["Section", "194Q on vendors above ₹50 L a year"]], confirmLabel: "Draft the challan", doneTitle: "Challan drafted", doneBody: "26Q is ready for review. Filing on the government portal is done by you or your CA." })}>Deposit due</GoldButton>}>
@@ -6258,14 +6014,14 @@ function TaxView() {
               <Pill tone={st === "Deposited" ? "green" : "amber"}>{st}</Pill>
             </div>
           ))}
-          <div style={{ font: `11px ${sans}`, color: C.stone, marginTop: 10, lineHeight: 1.5 }}>Next challan by the 7th. 194Q auto-applies on vendors crossing ₹50 L a year.</div>
+          <div style={{ font: `11px ${sans}`, color: C.stone, marginTop: 10, lineHeight: 1.5 }}>{TDS_ROWS.length === 0 ? "Nothing deducted yet. As bills are passed, the deduction and its due date appear here." : "Next challan by the 7th. 194Q auto-applies on vendors crossing ₹50 L a year."}</div>
         </TaxSection>
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr" : "1fr 1fr", gap: 18, marginTop: 18 }}>
         <TaxSection title="RERA · Escrow (70% rule)" right={<Pill tone="green">Compliant</Pill>}>
           <div style={{ marginBottom: 14 }}>
-            {[["Buyer collections · project", "₹214 Cr", C.ink], ["Held in RERA escrow (70%)", "₹150 Cr", C.gold], ["Withdrawn vs certified cost", "₹96 Cr", C.ink]].map(([l, v, col]) => (
+            {[["Buyer collections · project", cr(collections), C.ink], ["Held in RERA escrow (70%)", cr(Math.round(collections * 0.7)), C.gold], ["Withdrawn vs certified cost", cr(withdrawn), C.ink]].map(([l, v, col]) => (
               <div key={l} style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: `1px solid ${C.lineSoft}` }}><span style={{ font: `13px ${sans}`, color: C.inkSoft }}>{l}</span><span style={{ font: `600 14px ${sans}`, color: col }}>{v}</span></div>
             ))}
           </div>
@@ -6371,15 +6127,15 @@ function GatePassModal({ po, firm, onClose }) {
 const BOT_SAMPLES = ["How do I raise a PO?", "What's a gate pass?", "Cost per napkin?", "Show this month's spend"];
 const BOT_KB = [
   { k: ["gate pass", "gatepass", "driver", "gate"], text: "A gate pass is auto-issued the moment a PO is approved. The driver carries it, and security scans its QR at the gate to confirm the delivery was expected. It lists what's on the truck and the vehicle the software estimated.", viz: "steps", steps: ["PO approved", "Gate pass + QR issued", "Driver carries it", "Security scans", "Match ✓ entry"] },
-  { k: ["napkin", "per napkin", "canteen"], text: "Napkins land at ₹0.82 each — ₹4,100 for 5,000, with GST and freight folded in. That's the resolution the system works at: every line item, priced per unit.", viz: "kpis", kpis: [["Per napkin", "₹0.82"], ["Qty", "5,000"], ["Total", "₹4,100"]] },
-  { k: ["per unit", "unit cost", "per bag", "per kg", "per sq", "cost of", "how much per"], text: "Open Cost IQ — the engine divides every bill by its quantity. Cement ₹390/bag (₹8.7/kg), tiles ₹350/sq ft, TMT ₹65/kg, napkins ₹0.82 each.", viz: "kpis", kpis: [["Cement /bag", "₹390"], ["Tile /sq ft", "₹350"], ["Napkin", "₹0.82"]] },
+  { k: ["napkin", "per napkin", "canteen"], text: "Canteen consumables are priced per piece, same as everything else — a bill for a carton of napkins gets divided by the count in it, with GST and freight folded in. That's the resolution the system works at.", viz: "steps", steps: ["Bill filed", "Quantity read", "GST + freight added", "Divided per unit", "Cost IQ"] },
+  { k: ["per unit", "unit cost", "per bag", "per kg", "per sq", "cost of", "how much per"], text: "Open Cost IQ. The engine divides every bill by its quantity, so cement reads per bag and per kg, tiles per square foot, steel per kg. It shows what we actually paid, not a list price.", viz: "steps", steps: ["Bill filed", "Quantity read", "Divided per unit", "Compared to last paid", "Cost IQ"] },
   { k: ["vehicle", "transport", "truck", "which truck", "truck size", "cart", "auto", "pickup"], text: "The software picks the right vehicle for the load — from a hand cart or auto for small stuff, a Mahindra pickup, up to 6- and 10-wheeler trucks and a multi-axle trailer for heavy steel. It prints on the gate pass.", viz: "steps", steps: ["Hand cart", "Auto/tempo", "Pickup", "6-wheeler", "10-wheeler", "Trailer"] },
   { k: ["over-delivery", "over delivery", "extra", "surplus", "more than"], text: "Extra beyond the PO gets a half-red / half-green label and is held aside. Raise a fresh PO and pay the vendor — then it flips green on its own.", viz: "steps", steps: ["Extra detected", "Half-red · held", "Raise fresh PO", "Vendor paid", "Flips green ✓"] },
   { k: ["raise a po", "create po", "purchase order", "new po", "make a po"], text: "Go to Intent → PO, describe what you need, and the app vets 2–3 options to standard. Pick one and tap Raise PO — approval and the gate pass are automatic.", viz: "steps", steps: ["Describe need", "App vets options", "Pick one", "Raise PO", "Approval + pass"] },
   { k: ["handover", "issue out", "chain of custody", "collect"], text: "Material only leaves the store after the requester's Marbella ID is scanned and both sides sign. Every handover is time-stamped.", viz: "steps", steps: ["Pick item", "Scan requester ID", "Confirm items", "Both sign", "Issued ✓"] },
-  { k: ["spend", "how much", "this month", "category", "cost"], text: "Here's the half's spend by category — ₹163 Cr across the live sites.", viz: "spend" },
-  { k: ["cash", "payable", "due", "payment", "this week"], text: "₹6.2 Cr is due to vendors this week. The payables calendar in Tax & RERA shows exactly who and when.", viz: "kpis", kpis: [["Due this week", "₹6.2 Cr"], ["Committed", "₹428 Cr"], ["ITC at risk", "₹2.5 L"]] },
-  { k: ["gst", "itc", "input credit", "2b", "gstr"], text: "Input credit only lands once the vendor files. ₹2.5 L is at risk right now because two vendors haven't filed — the app is chasing them.", viz: "kpis", kpis: [["ITC claimed", "₹4.9 Cr"], ["In GSTR-2B", "₹4.4 Cr"], ["At risk", "₹2.5 L"]] },
+  { k: ["spend", "how much", "this month", "category", "cost"], text: "Here is the spend by category, straight off the expense ledger. If a bar is missing it is because nothing has been booked to that category yet.", viz: "spend" },
+  { k: ["cash", "payable", "due", "payment", "this week"], text: "The payables calendar in Tax & RERA lists exactly who is owed and when, built from the invoices that have been passed for payment.", viz: "steps", steps: ["Invoice filed", "Matched to PO", "Passed for payment", "Due date set", "Payables calendar"] },
+  { k: ["gst", "itc", "input credit", "2b", "gstr"], text: "Input credit only lands once the vendor files their return. Download GSTR-2B into Tax & RERA and the system matches it bill by bill, then flags whatever is missing so you can chase that vendor.", viz: "steps", steps: ["Bill filed", "GSTR-2B imported", "Matched", "Gaps flagged", "Vendor chased"] },
   { k: ["firm", "rera", "which company", "entity", "wrong firm"], text: "Every upload is filed against the right firm's RERA and GSTIN. Pick your entity in the firm switcher up top. If a bill points elsewhere, I'll suggest the move — and you can always say ‘remind me later’.", viz: null },
 ];
 function botReply(q) {
@@ -6473,30 +6229,27 @@ export function Assistant() {
 }
 
 /* ============================== COST IQ — per-unit intelligence ============================== */
-const UNIT_ITEMS = [
-  { item: "Paper napkins", qty: 5000, unit: "napkin", amount: 4100, note: "site canteen" },
-  { item: "OPC 53 cement", qty: 4000, unit: "bag", amount: 1560000, note: "≈ ₹8.7 / kg" },
-  { item: "TMT 550D steel", qty: 120000, unit: "kg", amount: 7800000, note: "120 T load" },
-  { item: "Vitrified tiles", qty: 12000, unit: "sq ft", amount: 4200000, note: "800×800" },
-  { item: "M30 RMC", qty: 900, unit: "m³", amount: 5850000, note: "" },
-  { item: "Safety gloves", qty: 600, unit: "pair", amount: 54000, note: "PPE" },
-  { item: "Chai — canteen", qty: 3200, unit: "cup", amount: 19200, note: "" },
-  { item: "A4 paper", qty: 20000, unit: "sheet", amount: 9000, note: "office" },
-  { item: "Binding wire", qty: 400, unit: "kg", amount: 32000, note: "" },
-];
+/* Every line item the system has ever seen on a bill, with its quantity — which
+   is all it takes to price one bag, one sq ft, one napkin. It is built from the
+   bills, so it is empty until bills are filed. */
+const UNIT_ITEMS = [];
 const fmtUnit = (n) => n >= 100 ? "₹" + Math.round(n).toLocaleString("en-IN") : "₹" + n.toFixed(2);
 function CostIQView() {
   const mob = useIsMobile();
   const [q, setQ] = useState("");
   const rows = UNIT_ITEMS.map(r => ({ ...r, per: r.amount / r.qty }));
   const filt = rows.filter(r => r.item.toLowerCase().includes(q.toLowerCase()) || r.unit.toLowerCase().includes(q.toLowerCase()));
+  /* The three cards at the top are the three biggest lines we have priced —
+     not a fixed trio, because which items matter changes with what we buy. */
+  const headline = [...rows].sort((a, b) => b.amount - a.amount).slice(0, 3)
+    .map(r => [`Per ${r.unit}`, fmtUnit(r.per), `${r.item}${r.note ? ` · ${r.note}` : ""}`]);
   return (
     <div>
       <div style={{ display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}><Eyebrow>Cost intelligence</Eyebrow><Pill tone="gold">down to the napkin</Pill></div>
       <h1 style={{ font: `400 25px ${serif}`, margin: "6px 0 6px" }}>Every rupee, per unit.</h1>
       <p style={{ color: C.stone, fontSize: 13, marginBottom: 18, maxWidth: 570, lineHeight: 1.5 }}>The engine breaks each bill into line items and divides by quantity — so you know the true landed cost of one bag, one sq ft… one napkin.</p>
       <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr" : "repeat(3,1fr)", gap: 14, marginBottom: 18 }}>
-        {[["Per napkin", "₹0.82", "5,000 nos · canteen"], ["Per cement bag", "₹390", "≈ ₹8.7 / kg"], ["Per sq ft tile", "₹350", "800×800 vitrified"]].map(([l, v, s]) => (
+        {headline.map(([l, v, s]) => (
           <Card key={l} pad={16}><div style={{ font: `600 10px ${sans}`, textTransform: "uppercase", letterSpacing: "0.08em", color: C.stone }}>{l}</div><div style={{ font: `400 30px ${serif}`, color: C.ink, margin: "4px 0 2px" }}>{v}</div><div style={{ font: `12px ${sans}`, color: C.stone }}>{s}</div></Card>
         ))}
       </div>
@@ -6509,7 +6262,7 @@ function CostIQView() {
             <div style={{ textAlign: "right" }}><div style={{ font: `400 20px ${serif}`, color: C.ink }}>{fmtUnit(r.per)}</div><div style={{ font: `11px ${sans}`, color: C.stone }}>per {r.unit}</div></div>
           </div>
         ))}
-        {filt.length === 0 && <div style={{ color: C.stone, font: `13px ${sans}`, padding: "10px 0" }}>No line item matches — but once it's on a bill, the engine prices it per unit.</div>}
+        {filt.length === 0 && <div style={{ color: C.stone, font: `13px ${sans}`, padding: "10px 0", lineHeight: 1.6 }}>{UNIT_ITEMS.length === 0 ? "No bills have been filed yet. File one and every line on it appears here, priced per unit." : "No line item matches — but once it's on a bill, the engine prices it per unit."}</div>}
       </Card>
     </div>
   );
@@ -6630,7 +6383,7 @@ function RaisePR({ prefill, onClose, userKey = "store" }) {
           <div><label style={lbl}>When do you want it?</label><select value={when} onChange={e => setWhen(e.target.value)} style={sel}>{["Today", "In 2 days", "This week", "Next week", "Just stock"].map(w => <option key={w}>{w}</option>)}</select></div>
         </div>
         <label style={{ ...lbl, marginTop: 14 }}>Who asked for it? <span style={{ textTransform: "none", letterSpacing: 0, color: C.stone, fontWeight: 400 }}>· optional</span></label>
-        <input value={by} onChange={e => setBy(e.target.value)} placeholder="e.g. K. Iyer (Site Engineer)" style={{ ...inp, margin: "6px 0 16px" }} />
+        <input value={by} onChange={e => setBy(e.target.value)} placeholder="Their name and role" style={{ ...inp, margin: "6px 0 16px" }} />
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
           <GoldButton onClick={submit}>Send to purchase · {filled.length || items.length} item{(filled.length || items.length) > 1 ? "s" : ""}</GoldButton>
           <GoldButton ghost onClick={onClose}>Cancel</GoldButton>
@@ -6742,7 +6495,7 @@ function ReceiveShipment({ onClose }) {
   const [rows, setRows] = useState([]);
   const [where, setWhere] = useState("Grand · Yard");
   const cell = { ...inp, margin: 0, padding: "10px 12px", fontSize: 14, boxSizing: "border-box" };
-  /* EDIT 14 of 20: the second half used the POS constant, so scanning found a
+  /* EDIT 17 of 23: the second half used the POS constant, so scanning found a
      stale copy of a purchase order rather than the live one. Both halves come
      from the server now. */
   const pool = [...gatepasses.map(g => ({ po: g.po, vendor: g.vendor, items: g.items, total: g.total, src: "gate pass" })),
@@ -6793,11 +6546,11 @@ function ReceiveShipment({ onClose }) {
         <div style={{ font: `12px ${sans}`, color: C.stone, marginBottom: 14 }}>Scan the gate pass, or type anything you can see — PO number, invoice number, vendor name, even the material. We'll find it in the records.</div>
 
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
-          <input value={q} onChange={e => setQ(e.target.value)} onKeyDown={e => e.key === "Enter" && find()} placeholder="PO-4468 / INV-2231 / UltraTech / cement" style={{ ...cell, flex: 1, minWidth: 200 }} />
+          <input value={q} onChange={e => setQ(e.target.value)} onKeyDown={e => e.key === "Enter" && find()} placeholder="A PO number, an invoice number, a vendor or an item" style={{ ...cell, flex: 1, minWidth: 200 }} />
           <GoldButton onClick={find}>Find it</GoldButton>
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
-          <button onClick={() => { setQ("PO-4468"); }} style={{ ...softBtn, display: "inline-flex", alignItems: "center", gap: 6, font: `600 11px ${sans}` }}><ScanLine size={13} /> Scan the gate pass</button>
+          <button onClick={() => { setQ(""); toast("Point the scanner at the gate pass QR", "gold"); }} style={{ ...softBtn, display: "inline-flex", alignItems: "center", gap: 6, font: `600 11px ${sans}` }}><ScanLine size={13} /> Scan the gate pass</button>
           <span style={{ font: `11px ${sans}`, color: C.stone, alignSelf: "center" }}>Camera scanning comes with the backend.</span>
         </div>
 
@@ -6843,10 +6596,7 @@ function ReceiveShipment({ onClose }) {
 }
 
 /* ===== SITE LIMITS — what a project may hold, and who can break the rule ===== */
-const CAPS_SEED = [
-  { item: "OPC 53 cement", proj: "Marbella Grand", max: 2000, unit: "bags", why: "Yard shed holds no more; bags cake in the monsoon." },
-  { item: "TMT 550D steel", proj: "Marbella Grand", max: 25, unit: "T", why: "Steel bay capacity." },
-];
+const CAPS_SEED = [];
 const ADMIN_PIN = "2417";
 function capFor(caps, item, proj) {
   const norm = (x) => String(x || "").toLowerCase().replace(/[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
@@ -6949,16 +6699,9 @@ function SiteLimits({ userKey = "admin" }) {
   );
 }
 /* ===== what the market has — suggested when someone names a thing to buy ===== */
-const MARKET = {
-  tap: [["Jaquar Continental bib tap 15 mm", "Jaquar", 610, "chrome, 10-yr warranty"], ["Cera Fountain bib cock", "Cera", 480, "chrome"], ["Local brass bib tap", "Local", 240, "heavier body, no warranty"]],
-  cement: [["UltraTech OPC 53 · 50 kg", "UltraTech", 390, "ISI, moisture-sealed"], ["ACC Gold OPC 53", "ACC", 384, "ISI"], ["Ambuja Plus", "Ambuja", 378, "ISI"]],
-  steel: [["TMT Fe 550D · 12 mm", "Jindal Panther", 65000, "per tonne, mill test certificate"], ["TMT Fe 550D · 12 mm", "SAIL", 66400, "per tonne"], ["TMT Fe 550D", "Local re-roller", 58000, "no mill certificate"]],
-  tile: [["Vitrified 800×800 glossy", "Kajaria", 200, "per sq ft"], ["Vitrified 800×800", "Somany", 186, "per sq ft"], ["Vitrified 800×800", "Chinese import", 148, "per sq ft, thinner body"]],
-  paint: [["Apex Ultima exterior", "Asian Paints", 285, "per litre"], ["WeatherCoat", "Berger", 262, "per litre"]],
-  pipe: [["CPVC 25 mm SDR-11", "Astral", 96, "per metre"], ["CPVC 25 mm", "Supreme", 88, "per metre"]],
-  glove: [["Cut-resistant glove", "Karam", 145, "per pair"], ["Cotton drill glove", "Local", 42, "per pair"]],
-  oil: [["15W40 diesel engine oil", "Castrol", 420, "per litre"], ["15W40", "Servo", 388, "per litre"]],
-};
+/* Comparison rates, filled in as Purchase records what the market actually
+   quoted us. Empty means we have nothing to compare against yet. */
+const MARKET = {};
 function marketFor(name) {
   const s = String(name || "").toLowerCase();
   const key = Object.keys(MARKET).find(k => s.includes(k))
@@ -7428,46 +7171,14 @@ const ORG_SEED = {
 const P_TYPES = ["Staff", "Site", "Labour", "Security"];
 const typeTone = (t) => t === "Labour" ? "amber" : t === "Security" ? "stone" : t === "Site" ? "gold" : "green";
 
-const PEOPLE_SEED = [
-  { id: "MB-ADM-0001", name: "Nitish Walia", designation: "Chairman", dept: "Admin", type: "Staff", phone: "+91 98140 00001", email: "nitish@marbellagroup.in", joined: "02 Jan 2019", status: "active", perf: 100, growth: "Founder — sets the standard.", notes: [] },
-  { id: "MB-HR-0001", name: "Simran Kaur", designation: "HR Head", dept: "HR", type: "Staff", phone: "+91 98140 00021", email: "simran@marbellagroup.in", joined: "10 Feb 2021", status: "active", perf: 96, growth: "Runs the people function end-to-end.", notes: [] },
-  { id: "MB-PUR-0012", name: "R. Khanna", designation: "Purchase Manager", dept: "Purchase", type: "Staff", phone: "+91 98140 00012", email: "khanna@marbellagroup.in", joined: "14 Mar 2020", status: "active", perf: 94, growth: "Ready for a Sr. Manager conversation next review.", notes: [{ when: "2 weeks ago", text: "Negotiated 6% off steel — flag for appreciation letter." }] },
-  { id: "MB-STR-0004", name: "S. Verma", designation: "Store Manager", dept: "Store", type: "Staff", phone: "+91 98140 00040", email: "verma@marbellagroup.in", joined: "05 Jun 2020", status: "active", perf: 88, growth: "Solid. Needs delegation coaching.", notes: [] },
-  { id: "MB-ACC-0002", name: "P. Nair", designation: "Accounts Head", dept: "Accounts", type: "Staff", phone: "+91 98140 00002", email: "nair@marbellagroup.in", joined: "20 Aug 2019", status: "active", perf: 97, growth: "Dependable. Backbone of reconciliation.", notes: [] },
-  { id: "MB-MNT-0006", name: "M. Chauhan", designation: "Maintenance Lead", dept: "Maintenance", type: "Staff", phone: "+91 98140 00060", email: "chauhan@marbellagroup.in", joined: "11 Jan 2021", status: "active", perf: 82, growth: "Strong on-site; paperwork lags.", notes: [] },
-  { id: "MB-PUR-0018", name: "A. Sethi", designation: "Purchase Assistant", dept: "Purchase", type: "Staff", phone: "+91 98140 00018", email: "sethi@marbellagroup.in", joined: "03 Sep 2023", status: "active", perf: 71, growth: "Quality dipped this quarter — watch & support.", notes: [{ when: "1 week ago", text: "Two invoices mismatched. Scheduled a sit-down." }] },
-  { id: "MB-STR-0009", name: "D. Rana", designation: "Store Assistant", dept: "Store", type: "Staff", phone: "+91 98140 00090", email: "rana@marbellagroup.in", joined: "18 Nov 2023", status: "active", perf: 63, growth: "New-ish. Improving month on month.", notes: [] },
-  { id: "MB-SIT-0021", name: "K. Iyer", designation: "Site Engineer", dept: "Site Engineering", type: "Site", phone: "+91 98140 00210", email: "iyer@marbellagroup.in", joined: "12 Apr 2022", status: "active", perf: 90, growth: "Promotable to Sr. Site Engineer.", notes: [] },
-  { id: "MB-SIT-0044", name: "Ramesh Yadav", designation: "Site Supervisor", dept: "Site Engineering", type: "Site", phone: "+91 98140 00440", email: "", joined: "07 Jul 2022", status: "active", perf: 85, growth: "Reliable on Twin Towers.", notes: [] },
-  { id: "MB-SIT-0052", name: "Priya Sharma", designation: "QA / QC Engineer", dept: "QA / QC", type: "Site", phone: "+91 98140 00520", email: "priya@marbellagroup.in", joined: "22 Feb 2023", status: "active", perf: 91, growth: "Sharp eye. Give her a mentee.", notes: [] },
-  { id: "MB-STR-0014", name: "Naveen Kumar", designation: "Store Keeper", dept: "Store", type: "Staff", phone: "+91 98140 00140", email: "", joined: "09 May 2023", status: "active", perf: 78, growth: "Steady.", notes: [] },
-  { id: "MB-SEC-0007", name: "Gurpreet Singh", designation: "Security Guard", dept: "Security", type: "Security", phone: "+91 98140 00070", email: "", joined: "15 Oct 2022", status: "active", perf: 80, growth: "Punctual, alert.", notes: [] },
-  { id: "MB-SEC-0012", name: "Manoj Kumar", designation: "Gate Security", dept: "Security", type: "Security", phone: "+91 98140 00120", email: "", joined: "01 Dec 2023", status: "active", perf: 74, growth: "New. On probation review.", notes: [] },
-  { id: "MB-LAB-0102", name: "Bhola Prasad", designation: "Mason", dept: "Labour", type: "Labour", phone: "+91 98140 01020", email: "", joined: "03 Mar 2024", status: "active", perf: 86, growth: "Skilled mason — retain.", notes: [] },
-  { id: "MB-LAB-0118", name: "Suresh Kumar", designation: "Bar-bender", dept: "Labour", type: "Labour", phone: "+91 98140 01180", email: "", joined: "03 Mar 2024", status: "active", perf: 82, growth: "Good output.", notes: [] },
-  { id: "MB-LAB-0131", name: "Lakhan Singh", designation: "Helper", dept: "Labour", type: "Labour", phone: "+91 98140 01310", email: "", joined: "19 Apr 2024", status: "active", perf: 70, growth: "Learning fast.", notes: [] },
-  { id: "MB-PUR-0009", name: "Vikram Malhotra", designation: "Purchase Executive", dept: "Purchase", type: "Staff", phone: "+91 98140 00009", email: "", joined: "06 Jun 2021", status: "exited", exitedOn: "12 Mar 2025", perf: 0, growth: "Left the group. Access revoked.", notes: [{ when: "12 Mar 2025", text: "Exit processed. Card deactivated — any card he shares now must read 'not with Marbella'." }] },
-  { id: "MB-LAB-0087", name: "Ram Avtar", designation: "Helper", dept: "Labour", type: "Labour", phone: "", email: "", joined: "10 Jan 2024", status: "exited", exitedOn: "28 Feb 2025", perf: 0, growth: "Season ended.", notes: [] },
-];
+const PEOPLE_SEED = [];
 
-const HRLOG_SEED = [
-  { when: "today · 09:12", text: "Issued Experience Letter — R. Khanna" },
-  { when: "today · 08:40", text: "Posted announcement · Safety refresher Friday" },
-  { when: "yesterday", text: "Enrolled Lakhan Singh — issued MB-LAB-0131" },
-  { when: "2 days ago", text: "Approved leave — Priya Sharma (3 days)" },
-];
-const HRTASKS_SEED = [
-  { id: "T1", done: false, text: "Print ID cards for the 3 new labour hires", who: "" },
-  { id: "T2", done: false, text: "Probation review — Manoj Kumar (Gate Security)", who: "Manoj Kumar" },
-  { id: "T3", done: true, text: "Issue appreciation letter — R. Khanna", who: "R. Khanna" },
-];
-const HRANN_SEED = [
-  { when: "today", title: "Safety refresher — Friday 4 PM", text: "All site staff & labour to attend the toolbox talk at Twin Towers site office.", audience: "Site & Labour" },
-  { when: "3 days ago", title: "Salary credited", text: "March salaries have been credited. Payslips are on your profile.", audience: "Everyone" },
-];
+const HRLOG_SEED = [];
+const HRTASKS_SEED = [];
+const HRANN_SEED = [];
 
 const fmtToday = () => new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
-/* EDIT 15 of 20: eight buttons said "Sending to printer…" and did nothing at all
+/* EDIT 18 of 23: eight buttons said "Sending to printer…" and did nothing at all
    — no dialog, no document, nothing reaching a printer. This is what a browser
    actually has. If the print dialog is blocked (some kiosk browsers do), it
    says so rather than pretending. */
@@ -7479,7 +7190,7 @@ function printThis() {
   }
 }
 
-/* EDIT 16 of 20: "Calling…" toasts now actually dial. On a site phone this opens
+/* EDIT 19 of 23: "Calling…" toasts now actually dial. On a site phone this opens
    the dialler; on a desktop it hands off to whatever handles tel: links, and
    if nothing does, the number is shown so it can be dialled by hand. */
 function callNumber(number, who) {
@@ -7566,7 +7277,7 @@ function CardPrintDoc({ p, onClose }) {
       <div style={{ padding: 14, font: `10px ${sans}`, color: C.inkSoft, lineHeight: 1.6 }}>
         <div style={{ font: `600 10px ${sans}`, letterSpacing: "0.14em", color: C.goldDeep, textTransform: "uppercase", marginBottom: 6 }}>Employee Identity Card</div>
         <div>This card certifies the holder is an employee of Marbella Group. It remains the property of the Company and must be surrendered on exit.</div>
-        <div style={{ marginTop: 6 }}>If found, return to: <b>SCO 2417-18, Sector 22-C, Chandigarh</b> · +91 98140 00021</div>
+        <div style={{ marginTop: 6 }}>If found, return to: <b>Marbella Group</b> — the registered office address printed on the card.</div>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}>
           <div style={{ background: C.paper, padding: 4, borderRadius: 6, lineHeight: 0 }}><QR value={verifyUrl(p)} size={40} /></div>
           <div style={{ font: `9px ${mono}`, color: C.stone }}>Scan to verify · {VERIFY_HOST}<br />Issued {p.joined} · ID {p.id}</div>
@@ -7934,7 +7645,10 @@ const LETTER_TEMPLATES = [
 ];
 
 function LetterForm({ tmpl, person, onBack }) {
-  const mob = useIsMobile(); const { people, logHR, activeFirm } = useProc();
+  const mob = useIsMobile(); const { people, logHR, activeFirm, me } = useProc();
+  /* A letter goes out over the name of whoever issued it. If the session has no
+     name on it, it goes out over the company's — never a made-up HR head. */
+  const hrSignature = (me && me.name) ? `${me.name}\n${me.title || "HR"} · Marbella Group` : "For Marbella Group";
   const seed = {}; tmpl.fields.forEach(([k, , , def]) => seed[k] = def || "");
   const [v, setV] = useState(seed); const [issued, setIssued] = useState(false);
   const set = (k, val) => setV(s => ({ ...s, [k]: val }));
@@ -7964,11 +7678,11 @@ function LetterForm({ tmpl, person, onBack }) {
                 <div style={{ marginLeft: "auto", textAlign: "right", font: `10px ${sans}`, color: C.stone, lineHeight: 1.6, maxWidth: 300 }}>{activeFirm.firm}<br />{activeFirm.addr}<br />GSTIN {activeFirm.gstin} · RERA {activeFirm.rera}<br />marbellagroup.in</div>
               </div>
               <div style={{ font: `13px/1.7 ${sans}`, color: C.ink, whiteSpace: "pre-wrap", marginTop: 16, minHeight: 220 }}>{body}</div>
-              <SignBlock user={USERS.hr} firm={activeFirm} />
+              <SignBlock user={{ ...USERS.hr, ...(me ? { name: me.name, role: me.title || USERS.hr.role } : {}) }} firm={activeFirm} />
             </div>
           </Card>
           <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
-            <GoldButton onClick={() => { downloadFile(`${tmpl.name.replace(/\s+/g, "-")}${v.name ? "-" + v.name.replace(/\s+/g, "-") : ""}.txt`, `MARBELLA GROUP\n${activeFirm.firm}\n${activeFirm.addr}\nGSTIN ${activeFirm.gstin} · RERA ${activeFirm.rera}\n\n${body}\n\nSimran Kaur\nHR Head · Marbella Group`); toast("Letter downloaded", "green"); }}><span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Download size={14} /> Download</span></GoldButton>
+            <GoldButton onClick={() => { downloadFile(`${tmpl.name.replace(/\s+/g, "-")}${v.name ? "-" + v.name.replace(/\s+/g, "-") : ""}.txt`, `MARBELLA GROUP\n${activeFirm.firm}\n${activeFirm.addr}\nGSTIN ${activeFirm.gstin} · RERA ${activeFirm.rera}\n\n${body}\n\n${hrSignature}`); toast("Letter downloaded", "green"); }}><span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Download size={14} /> Download</span></GoldButton>
             <GoldButton ghost onClick={() => { setIssued(true); logHR(`Issued ${tmpl.name}${v.name ? " — " + v.name : ""}`); toast("Marked as issued — logged", "gold"); }}>{issued ? "Issued ✓" : "Mark as issued"}</GoldButton>
           </div>
         </div>
@@ -8331,7 +8045,7 @@ function LiveStrength() {
   const byDept = {};
   onNow.forEach(p => { byDept[p.dept] = (byDept[p.dept] || 0) + 1; });
   const pct = active.length ? Math.round((onNow.length / active.length) * 100) : 0;
-  /* EDIT 17 of 20: this list opened with an invented shift change, made by an
+  /* EDIT 20 of 23: this list opened with an invented shift change, made by an
      invented person, for an invented guard. It starts empty — a shift change
      only exists once somebody makes one. */
   const [changes, setChanges] = useState([
@@ -8386,7 +8100,7 @@ function LiveStrength() {
 function HRCommandView({ go = () => {} }) {
   const mob = useIsMobile();
   const { people, hrLog, hrTasks, addHrTask, toggleHrTask, hrAnn, addAnn,
-    contacts = {}, companies = [], projects = [], cardLog = [], ledger = [], chainVerified, chainFault } = useProc();
+    contacts = {}, companies = [], projects = [], cardLog = [], ledger = [], chainVerified, chainFault, me } = useProc();
   const [enrol, setEnrol] = useState(false); const [showLetters, setShowLetters] = useState(false);
   const [nt, setNt] = useState("");
   const [ann, setAnn] = useState({ title: "", text: "", audience: "Everyone" });
@@ -8400,7 +8114,7 @@ function HRCommandView({ go = () => {} }) {
       <div style={{ display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}>
         <Eyebrow>HR desk</Eyebrow><Pill tone="gold"><Lock size={10} style={{ marginRight: 4, verticalAlign: "-1px" }} />Private · you &amp; the Chairman</Pill>
       </div>
-      <h1 style={{ font: `400 27px ${serif}`, margin: "6px 0 16px" }}>Good day, Simran.</h1>
+      <h1 style={{ font: `400 27px ${serif}`, margin: "6px 0 16px" }}>Good day{me && me.name ? `, ${String(me.name).split(" ")[0]}` : ""}.</h1>
       <LiveStrength />
 
       <div style={{ background: `linear-gradient(150deg, #2A4C7C, ${C.inkDeep})`, borderRadius: 18, padding: mob ? 18 : "24px 28px", color: "#E8ECF4", marginBottom: 18, position: "relative", overflow: "hidden" }}>
@@ -8559,18 +8273,7 @@ const ATT_PERIOD = ["28 Jul", "29 Jul", "30 Jul", "31 Jul", "01 Aug"];
 const rec = (date, i, o) => ({ date, in: i, out: o });
 const ab = (date) => ({ date, in: null, out: null });
 
-const ATT_SEED = {
-  "MB-PUR-0012": [rec("28 Jul", "09:28", "18:40"), rec("29 Jul", "09:31", "18:36"), rec("30 Jul", "09:26", "18:52"), rec("31 Jul", "09:33", "18:44"), rec("01 Aug", "09:22", "18:39")],
-  "MB-PUR-0018": [rec("28 Jul", "09:52", "18:31"), rec("29 Jul", "10:14", "18:33"), rec("30 Jul", "09:41", null), rec("31 Jul", "09:58", "18:20"), rec("01 Aug", "10:06", "18:29")],
-  "MB-STR-0004": [rec("28 Jul", "09:24", "18:38"), rec("29 Jul", "09:29", "18:41"), rec("30 Jul", "09:27", "18:35"), rec("31 Jul", "09:30", "18:44"), rec("01 Aug", "09:25", "18:37")],
-  "MB-STR-0009": [rec("28 Jul", "09:47", "18:22"), ab("29 Jul"), rec("30 Jul", "09:55", "18:18"), rec("31 Jul", "10:02", "18:25"), rec("01 Aug", "09:44", "18:30")],
-  "MB-SIT-0021": [rec("28 Jul", "08:58", "19:10"), rec("29 Jul", "09:02", "19:04"), rec("30 Jul", "08:55", "19:22"), rec("31 Jul", "09:05", "19:00"), rec("01 Aug", "08:52", "19:12")],
-  "MB-MNT-0006": [rec("28 Jul", "09:40", "18:33"), rec("29 Jul", "09:51", "18:28"), rec("30 Jul", "09:38", "18:41"), rec("31 Jul", "09:47", null), rec("01 Aug", "09:44", "18:36")],
-  "MB-SIT-0052": [rec("28 Jul", "09:20", "18:48"), rec("29 Jul", "09:18", "18:52"), rec("30 Jul", "09:24", "18:46"), rec("31 Jul", "09:21", "18:50"), rec("01 Aug", "09:19", "18:49")],
-  "MB-ACC-0002": [rec("28 Jul", "09:15", "18:42"), rec("29 Jul", "09:17", "18:40"), rec("30 Jul", "09:12", "18:47"), rec("31 Jul", "09:19", "18:39"), rec("01 Aug", "09:14", "18:44")],
-  "MB-LAB-0102": [rec("28 Jul", "08:32", "17:35"), rec("29 Jul", "08:29", "17:40"), rec("30 Jul", "08:35", "17:33"), rec("31 Jul", "08:31", "17:38"), rec("01 Aug", "08:28", "17:41")],
-  "MB-SEC-0007": [rec("28 Jul", "07:58", "20:05"), rec("29 Jul", "08:01", "20:02"), rec("30 Jul", "07:55", "20:08"), rec("31 Jul", "08:03", "20:00"), rec("01 Aug", "07:52", "20:10")],
-};
+const ATT_SEED = {};
 
 const toMin = (t) => { if (!t) return null; const [h, m] = t.split(":").map(Number); return h * 60 + (m || 0); };
 const hhmm = (mins) => `${Math.floor(mins / 60)}h ${String(mins % 60).padStart(2, "0")}m`;
@@ -8651,10 +8354,23 @@ function normalizeRows(rows, headers, map, people) {
 }
 
 const ATT_SOURCES = ["Hikvision", "HID", "ZKTeco", "ESSL", "Jio", "Matrix", "Other"];
-const SAMPLE_EXPORTS = {
-  Hikvision: `Person ID,Name,Date,Check In,Check Out\nMB-PUR-0012,R. Khanna,02 Aug,09:24,18:41\nMB-PUR-0018,A. Sethi,02 Aug,10:11,18:26\nMB-STR-0004,S. Verma,02 Aug,09:27,18:39\nMB-SIT-0021,K. Iyer,02 Aug,08:56,19:08`,
-  ZKTeco: `工号,姓名,日期,上班,下班\nMB-ACC-0002,P. Nair,02 Aug,09:13,18:45\nMB-STR-0009,D. Rana,02 Aug,09:49,18:28\nMB-MNT-0006,M. Chauhan,02 Aug,09:46,\nMB-SIT-0052,Priya Sharma,02 Aug,09:20,18:50`,
-  ESSL: `EmpCode,Employee,Att Date,In Time,Out Time\nMB-LAB-0102,Bhola Prasad,02 Aug,08:30,17:39\nMB-SEC-0007,Gurpreet Singh,02 Aug,07:57,20:04`,
+/* What each machine's export looks like, so HR recognises the file when they see
+   it. Built from our own people, two rows each — never invented employees, since
+   a made-up ID pasted into the importer by mistake would create a made-up person. */
+const sampleExports = (people) => {
+  const p = (people || []).slice(0, 4);
+  const row = (i, f) => (p[i] ? f(p[i]) : "");
+  return {
+    Hikvision: ["Person ID,Name,Date,Check In,Check Out",
+      row(0, x => `${x.id},${x.name},02 Aug,09:24,18:41`),
+      row(1, x => `${x.id},${x.name},02 Aug,10:11,18:26`)].filter(Boolean).join("\n"),
+    ZKTeco: ["\u5de5\u53f7,\u59d3\u540d,\u65e5\u671f,\u4e0a\u73ed,\u4e0b\u73ed",
+      row(2, x => `${x.id},${x.name},02 Aug,09:13,18:45`),
+      row(3, x => `${x.id},${x.name},02 Aug,09:49,18:28`)].filter(Boolean).join("\n"),
+    ESSL: ["EmpCode,Employee,Att Date,In Time,Out Time",
+      row(0, x => `${x.id},${x.name},02 Aug,08:30,17:39`),
+      row(1, x => `${x.id},${x.name},02 Aug,07:57,20:04`)].filter(Boolean).join("\n"),
+  };
 };
 
 function AttendanceImport({ onClose }) {
@@ -8666,7 +8382,7 @@ function AttendanceImport({ onClose }) {
   useEffect(() => { if (parsed) setMap(autoMap(parsed.headers)); }, [raw]);
   const preview = useMemo(() => (parsed && map) ? normalizeRows(parsed.rows, parsed.headers, map, people) : [], [parsed, map, people]);
   const setM = (k, v) => setMap(m => ({ ...m, [k]: parseInt(v, 10) }));
-  const loadSample = () => setRaw(SAMPLE_EXPORTS[source] || SAMPLE_EXPORTS.Hikvision);
+  const loadSample = () => { const ex = sampleExports(people); setRaw(ex[source] || ex.Hikvision); };
   const onFile = (e) => { const f = e.target.files && e.target.files[0]; if (!f) return; const r = new FileReader(); r.onload = () => setRaw(r.result); r.readAsText(f); };
   const doImport = () => { const good = preview.filter(r => r.id && r.date); if (!good.length) { toast("Map the columns first", "amber"); return; } importAtt(good, source); toast(`Imported ${good.length} rows — reflected on the dashboard`, "green"); onClose(); };
   const FIELDS = [["id", "Employee ID"], ["name", "Name"], ["date", "Date"], ["in", "Check-in"], ["out", "Check-out"]];
@@ -8761,10 +8477,7 @@ function AttendanceView() {
 }
 
 /* ---------- Incentive packages ---------- */
-const PKG_SEED = [
-  { id: "PK-2001", name: "Quarter Star — Purchase", amount: 10000, threshold: 8, scale: 10, dept: "Purchase", period: "Q2 FY26", how: "Score 8+/10 for the quarter across performance, attendance and tasks. The top scorer takes the bonus.", status: "live" },
-  { id: "PK-2002", name: "Perfect Attendance — Site", amount: 5000, threshold: 8, scale: 10, dept: "Site Engineering", period: "Q2 FY26", how: "Clean attendance and 8+/10 through the quarter.", status: "proposed" },
-];
+const PKG_SEED = [];
 
 function PackageCreate({ onClose }) {
   const mob = useIsMobile(); const { addPackage } = useProc();
@@ -9169,15 +8882,7 @@ const relDay = (dateStr) => { const diff = Math.round((asDate(dateStr) - asDate(
 const niceDate = (dateStr) => { const d = asDate(dateStr); return `${WD[d.getDay()]} ${d.getDate()} ${MONTHS[d.getMonth()].slice(0, 3)}`; };
 const t12 = (t) => { if (!t) return ""; let [h, m] = t.split(":").map(Number); const ap = h >= 12 ? "PM" : "AM"; h = h % 12 || 12; return `${h}:${String(m).padStart(2, "0")} ${ap}`; };
 
-const CAL_SEED = [
-  { id: "EV1", title: "Monthly all-hands", date: "2026-08-05", time: "11:00", kind: "meeting", priority: "priority", audience: { type: "all" }, by: "Nitish Walia", note: "Numbers and what's next across all five sites.", where: "Head office" },
-  { id: "EV2", title: "Site safety walk — Marbella Grand", date: "2026-08-03", time: "08:30", kind: "task", priority: "urgent", audience: { type: "dept", dept: "Maintenance" }, by: "M. Chauhan" },
-  { id: "EV3", title: "Cement delivery expected — Twin Towers", date: "2026-08-02", time: "14:00", kind: "reminder", priority: "priority", audience: { type: "dept", dept: "Store" }, by: "S. Verma" },
-  { id: "EV4", title: "Vendor payment review", date: "2026-08-04", time: "16:00", kind: "meeting", priority: "priority", audience: { type: "dept", dept: "Accounts" }, by: "P. Nair" },
-  { id: "EV5", title: "Call Ambuja rep on rate revision", date: "2026-08-02", time: "12:30", kind: "reminder", priority: "urgent", audience: { type: "person", personId: "MB-PUR-0012" }, by: "R. Khanna" },
-  { id: "EV6", title: "Marbella Manifest kickoff", date: "2026-08-08", time: "10:00", kind: "meeting", priority: "priority", audience: { type: "all" }, by: "Nitish Walia", where: "Manifest site" },
-  { id: "EV7", title: "Submit GST working", date: "2026-08-09", time: "17:00", kind: "task", priority: "low", audience: { type: "dept", dept: "Accounts" }, by: "P. Nair" },
-];
+const CAL_SEED = [];
 
 function useVisibleEvents(userKey) {
   const { events, people } = useProc();
@@ -9447,27 +9152,31 @@ function ConnectionsView() {
    Real enforcement belongs on the server that talks to the printer, and that is a backend job.  */
 
 const OFFICES = [
-  { id: "hq",    name: "Head Office · Sector 22-C",   short: "Head Office", tint: "#224A85" },
-  { id: "grand", name: "Marbella Grand · Site Office", short: "Grand",       tint: "#3E7C55" },
-  { id: "twin",  name: "Twin Towers · Site Office",    short: "Twin Towers", tint: "#8A6224" },
-  { id: "curo",  name: "Curo One · Site Office",       short: "Curo One",    tint: "#7B4B8A" },
-  { id: "royce", name: "Royce · Site Office",          short: "Royce",       tint: "#B0503C" },
+  { id: "grand",       name: "Marbella Grand · Site Office", short: "Grand",        tint: "#3E7C55" },
+  { id: "newmarbella", name: "New Marbella · Site Office",   short: "New Marbella", tint: "#224A85" },
+  { id: "twin",        name: "Twin Tower · Site Office",     short: "Twin Tower",   tint: "#8A6224" },
+  { id: "royce",       name: "Marbella Royce · Site Office", short: "Royce",        tint: "#B0503C" },
 ];
 const officeById = (id) => OFFICES.find(o => o.id === id) || OFFICES[0];
 
 /* zones a card can open — printed on the back, and the reason a lost card matters */
-const ZONES = ["Main gate", "Site office", "Store & yard", "Accounts room", "Server room", "Basement plant"];
+const ZONES = ["Main gate", "Site office", "Sales office", "Store & yard", "Accounts room", "Server room", "Basement plant", "Club house", "Tower floors"];
+/* Which zones a card opens, per department. This mirrors the same table in
+   @marbella/shared, which is what the server enforces — the copy here only
+   decides what gets printed on the back of the card. */
 const ZONES_BY_DEPT = {
-  Admin: ["Main gate", "Site office", "Store & yard", "Accounts room", "Server room", "Basement plant"],
-  HR: ["Main gate", "Site office", "Accounts room"],
-  Accounts: ["Main gate", "Site office", "Accounts room"],
-  Purchase: ["Main gate", "Site office", "Store & yard"],
-  Store: ["Main gate", "Site office", "Store & yard"],
-  Maintenance: ["Main gate", "Site office", "Basement plant"],
-  Security: ["Main gate", "Site office", "Store & yard", "Basement plant"],
-  "Site Engineering": ["Main gate", "Site office", "Store & yard"],
-  "QA / QC": ["Main gate", "Site office", "Store & yard"],
-  Labour: ["Main gate"],
+  Admin:        ["Main gate", "Site office", "Store & yard", "Accounts room", "Server room", "Club house"],
+  HR:           ["Main gate", "Site office", "Accounts room"],
+  Accounts:     ["Main gate", "Site office", "Accounts room"],
+  IT:           ["Main gate", "Site office", "Accounts room", "Server room"],
+  Sales:        ["Main gate", "Site office", "Sales office", "Club house"],
+  CRM:          ["Main gate", "Site office", "Sales office", "Club house"],
+  Marketing:    ["Main gate", "Site office", "Sales office", "Club house"],
+  Purchase:     ["Main gate", "Site office", "Store & yard"],
+  Project:      ["Main gate", "Site office", "Store & yard", "Tower floors"],
+  Maintenance:  ["Main gate", "Site office", "Basement plant", "Club house", "Tower floors"],
+  Pantry:       ["Main gate", "Site office", "Club house"],
+  Horticulture: ["Main gate", "Site office"],
 };
 const zonesFor = (p) => ZONES_BY_DEPT[p.dept] || ["Main gate"];
 
@@ -9491,25 +9200,26 @@ const UNDERTAKINGS = [
   "I understand a further replacement may be charged to me.",
 ];
 
-const CARD_LOG_SEED = [
-  { id: "CD-1041", pid: "MB-SEC-0007", name: "Gurpreet Singh",  ver: 2, reason: "damaged", at: "18 Jul 2026 · 10:12", by: "Simran Kaur", recv: "Simran Kaur", note: "Edge delaminated after monsoon. Old card destroyed in front of holder.", killed: "CD-0902" },
-  { id: "CD-1038", pid: "MB-PUR-0018", name: "A. Sethi",      ver: 2, reason: "lost",    at: "02 Jul 2026 · 16:40", by: "Simran Kaur", recv: "—", note: "Left in a shared auto between Sector 22 and site. Retraced route, not found. Manager R. Khanna informed same evening.", killed: "CD-0781", zonesKilled: true },
-  { id: "CD-1035", pid: "MB-STR-0009", name: "D. Rana",       ver: 1, reason: "first",   at: "21 Jun 2026 · 09:05", by: "Simran Kaur", recv: "—", note: "New joiner." },
-  { id: "CD-1030", pid: "MB-MNT-0006", name: "M. Chauhan",    ver: 1, reason: "first",   at: "11 Jun 2026 · 11:30", by: "Simran Kaur", recv: "—", note: "New joiner." },
-];
+const CARD_LOG_SEED = [];
 
-/* each manager sets the shape of their own team's day; HR records it here */
+/* Each department's working day. The twelve departments are the company's own,
+   and the hours are the shift the majority of that department is actually on
+   according to the employee records — not a number somebody guessed. `setBy`
+   stays as the department, because the manager who owns it is a person, and the
+   people are on file; HR fills the name in when they confirm it. */
 const DEPT_RULES_SEED = {
-  Purchase:           { in: "09:30", out: "18:30", hours: 8, days: "Mon–Sat", grace: 15, setBy: "R. Khanna",   note: "Half day Saturday from 2pm." },
-  Store:              { in: "08:00", out: "18:00", hours: 9, days: "Mon–Sat", grace: 10, setBy: "S. Verma",    note: "Store opens before site starts." },
-  Maintenance:        { in: "07:00", out: "16:00", hours: 8, days: "Mon–Sat", grace: 10, setBy: "M. Chauhan",  note: "Early start for plant checks." },
-  Accounts:           { in: "10:00", out: "19:00", hours: 8, days: "Mon–Fri", grace: 15, setBy: "P. Nair",     note: "" },
-  "Site Engineering": { in: "07:30", out: "17:30", hours: 9, days: "Mon–Sat", grace: 10, setBy: "K. Iyer",     note: "Pour days run long — overtime logged separately." },
-  Security:           { in: "06:00", out: "14:00", hours: 8, days: "All days", grace: 5, setBy: "Simran Kaur", note: "Three shifts. This is Shift A." },
-  HR:                 { in: "09:30", out: "18:30", hours: 8, days: "Mon–Sat", grace: 15, setBy: "Simran Kaur", note: "" },
-  Admin:              { in: "10:00", out: "19:00", hours: 8, days: "Mon–Fri", grace: 30, setBy: "Nitish Walia", note: "" },
-  "QA / QC":          { in: "08:30", out: "17:30", hours: 8, days: "Mon–Sat", grace: 10, setBy: "T. Fernandes", note: "" },
-  Labour:             { in: "08:00", out: "17:00", hours: 8, days: "Mon–Sat", grace: 0,  setBy: "Sharma Contractors", note: "Muster taken at gate, not biometric." },
+  Sales:        { in: "10:30", out: "18:30", hours: 8, days: "Mon–Sat", grace: 15, setBy: "Sales",        note: "" },
+  CRM:          { in: "10:30", out: "18:30", hours: 8, days: "Mon–Sat", grace: 15, setBy: "CRM",          note: "" },
+  Accounts:     { in: "10:30", out: "18:30", hours: 8, days: "Mon–Sat", grace: 15, setBy: "Accounts",     note: "" },
+  IT:           { in: "10:30", out: "18:30", hours: 8, days: "Mon–Sat", grace: 15, setBy: "IT",           note: "" },
+  Admin:        { in: "10:30", out: "18:30", hours: 8, days: "Mon–Sat", grace: 15, setBy: "Admin",        note: "" },
+  Pantry:       { in: "10:30", out: "18:30", hours: 8, days: "Mon–Sat", grace: 15, setBy: "Pantry",       note: "" },
+  HR:           { in: "10:15", out: "18:30", hours: 8, days: "Mon–Sat", grace: 15, setBy: "HR",           note: "" },
+  Marketing:    { in: "10:30", out: "18:30", hours: 8, days: "Mon–Sat", grace: 15, setBy: "Marketing",    note: "" },
+  Project:      { in: "09:30", out: "18:30", hours: 9, days: "Mon–Sat", grace: 15, setBy: "Project",      note: "Site postings start earlier than head office." },
+  Purchase:     { in: "10:30", out: "18:30", hours: 8, days: "Mon–Sat", grace: 15, setBy: "Purchase",     note: "" },
+  Maintenance:  { in: "09:00", out: "18:30", hours: 9, days: "Mon–Sat", grace: 15, setBy: "Maintenance",  note: "" },
+  Horticulture: { in: "08:30", out: "18:30", hours: 9, days: "Mon–Sat", grace: 15, setBy: "Horticulture", note: "Earliest start — watering before the day heats up." },
 };
 
 const nowStamp = () => {
@@ -9602,10 +9312,10 @@ function AuthGate({ label = "Authorise", pass, setPass, onOk, disabled, hint }) 
 /* ---------- fast path: the old card came back ---------- */
 function DamagedSwap({ p, ver, onClose, onIssue }) {
   const mob = useIsMobile();
-  const { people } = useProc();
+  const { people, me } = useProc();
   const [reason, setReason] = useState("damaged");
   const [got, setGot] = useState(false);
-  const [who, setWho] = useState("Simran Kaur");
+  const [who, setWho] = useState((me && me.name) || "");
   const [pass, setPass] = useState("");
   const staff = people.filter(x => x.dept === "HR" || x.dept === "Admin").map(x => x.name);
   const ready = got && who;
@@ -9723,7 +9433,7 @@ function ReprintFlow({ p, ver, onClose, onIssue }) {
             </div>
 
             <Field label="Who did they tell, and when?" hint="Reporting manager, security in-charge, anyone else."
-              value={told} onChange={setTold} placeholder="R. Khanna, same evening by phone" />
+              value={told} onChange={setTold} placeholder="Their reporting manager, same evening by phone" />
 
             {reason === "stolen" && (
               <Field label="Police complaint / FIR number" hint="A stolen company access card should be reported. Enter the reference."
@@ -10254,7 +9964,7 @@ const fingerprint = (payload, prev) => {
 };
 const ledgerPayload = (e) => [e.at, e.who, e.kind, e.subject, e.detail].join("\u0001");
 /* rebuild the chain from the bottom up and report the first entry whose seal no longer fits */
-/* EDIT 18 of 20: the server seals the ledger with real SHA-256, computed where a
+/* EDIT 21 of 23: the server seals the ledger with real SHA-256, computed where a
    browser cannot reach it. The `fingerprint()` above is this file's old 64-bit
    FNV pair, so re-deriving the seals here disagreed with every entry and a
    perfectly valid ledger reported itself as tampered. A false alarm on a
@@ -10283,22 +9993,10 @@ function verifyLedger(entries, cryptoOk, fault) {
   return { ok: true, count: asc.length, head: prev };
 }
 
-const LEDGER_SEED = (() => {
-  const rows = [
-    { at: "10 Feb 2021 · 09:00", who: "Nitish Walia", kind: "join",   subject: "MB-HR-0001",  detail: "Simran Kaur joined as HR Head." },
-    { at: "14 Mar 2020 · 09:00", who: "Nitish Walia", kind: "join",   subject: "MB-PUR-0012", detail: "R. Khanna joined as Purchase Manager." },
-    { at: "18 Jul 2026 · 10:12", who: "Simran Kaur",  kind: "card",   subject: "MB-SEC-0007", detail: "Card v2 issued — damaged replacement." },
-    { at: "02 Jul 2026 · 16:40", who: "Simran Kaur",  kind: "card",   subject: "MB-PUR-0018", detail: "Card v2 issued — previous card lost." },
-    { at: "01 Aug 2026 · 11:20", who: "Simran Kaur",  kind: "policy", subject: "Store",       detail: "Working hours set 08:00–18:00 by S. Verma." },
-  ];
-  let prev = "GENESIS";
-  const sealed = rows.map((r, i) => {
-    const seal = fingerprint(ledgerPayload(r), prev);
-    const out = { ...r, id: "LG-" + (2400 + i), seal, prev };
-    prev = seal; return out;
-  });
-  return sealed.reverse();
-})();
+/* The ledger opens empty and seals its first entry the moment something real
+   happens. Seeding it with invented history would defeat the point of a chain
+   whose whole value is that every link can be traced back to a genuine act. */
+const LEDGER_SEED = [];
 
 /* ---------- validation that actually validates ---------- */
 const luhnOK = (s) => {
@@ -10318,35 +10016,22 @@ const COMPANY_DOMAINS = ["marbellagroup.in", "marbella.in"];
 const isCompanyEmail = (s) => COMPANY_DOMAINS.some(d => String(s).toLowerCase().trim().endsWith("@" + d));
 
 /* ---------- salary ---------- */
-const SAL_SEED = {
-  "MB-ADM-0001": { basic: 0, hra: 0, special: 0, pf: 0, pt: 0, note: "Director — drawings, not payroll" },
-  "MB-HR-0001":  { basic: 42000, hra: 21000, special: 12000, pf: 1800, pt: 200, note: "" },
-  "MB-PUR-0012": { basic: 48000, hra: 24000, special: 15000, pf: 1800, pt: 200, note: "" },
-  "MB-STR-0004": { basic: 36000, hra: 18000, special: 9000,  pf: 1800, pt: 200, note: "" },
-  "MB-ACC-0002": { basic: 45000, hra: 22500, special: 13000, pf: 1800, pt: 200, note: "" },
-  "MB-MNT-0006": { basic: 32000, hra: 16000, special: 7000,  pf: 1800, pt: 200, note: "" },
-  "MB-SEC-0007": { basic: 16000, hra: 6400,  special: 2600,  pf: 1800, pt: 200, note: "Shift allowance paid separately" },
-};
+/* What each person is paid. This is deliberately empty in the file: salary is
+   the one field that must never be guessed, and the screens already say "not on
+   file" rather than showing a number nobody entered. It is loaded from the
+   server, where it sits in its own table so it can be withheld wholesale. */
+const SAL_SEED = {};
 const gross = (s) => s ? (s.basic || 0) + (s.hra || 0) + (s.special || 0) : 0;
 const net = (s) => s ? gross(s) - (s.pf || 0) - (s.pt || 0) : 0;
 
 /* ---------- devices ---------- */
-const DEVICE_SEED = [
-  { id: "DV-201", pid: "MB-PUR-0012", type: "Phone",   model: "Samsung M14",     imei: "352094081234566", sim: "+91 98140 00012", issued: "14 Mar 2020" },
-  { id: "DV-202", pid: "MB-STR-0004", type: "Phone",   model: "Redmi 12",        imei: "354876101234560", sim: "+91 98140 00040", issued: "05 Jun 2020" },
-  { id: "DV-203", pid: "MB-STR-0004", type: "Scanner", model: "Zebra TC21",      imei: "351756051234567", sim: "—",               issued: "12 Jan 2024" },
-  { id: "DV-204", pid: "MB-SEC-0007", type: "Phone",   model: "Nokia C12",       imei: "353012111234561", sim: "+91 98140 00071", issued: "15 Oct 2022" },
-  { id: "DV-205", pid: "MB-ACC-0002", type: "Laptop",  model: "Lenovo ThinkPad", imei: "—",               sim: "—",               issued: "20 Aug 2019" },
-];
+const DEVICE_SEED = [];
 const DEVICE_TYPES = ["Phone", "Laptop", "Tablet", "Scanner", "Radio", "Vehicle tracker"];
 
 /* ---------- personal contact (never the company address — see note in the UI) ---------- */
-const CONTACT_SEED = {
-  "MB-HR-0001":  { phone: "9814000021", email: "simran.kaur88@gmail.com",  vPhone: true,  vEmail: true },
-  "MB-PUR-0012": { phone: "9814000012", email: "rkhanna.pers@gmail.com",   vPhone: true,  vEmail: false },
-  "MB-STR-0004": { phone: "9814000040", email: "verma.s@yahoo.in",         vPhone: false, vEmail: false },
-  "MB-SEC-0007": { phone: "9814000071", email: "",                          vPhone: false, vEmail: false },
-};
+/* Personal phone and personal email — the only way to reach somebody after their
+   company account is closed. Empty here for the same reason as the salaries. */
+const CONTACT_SEED = {};
 
 /* ---------- leave policy sits with the department, alongside its hours ---------- */
 const LEAVE_SEED = {
@@ -10379,12 +10064,10 @@ const IMP_FIELDS = [
   { k: "sim",    label: "SIM number",       req: false, aliases: ["sim", "sim no", "sim number", "company number", "official number"] },
 ];
 
-const SAMPLE_CSV = `Employee Name,Designation,Department,Site,DOJ,Personal Mobile,Personal Email,Basic,HRA,Conveyance,IMEI,Official Number
-Harpreet Kaur,Club House Manager,Admin,Marbella Grand,12/03/2024,9814012345,harpreet.k91@gmail.com,34000,17000,8000,353012111234561,9814000091
-Vikram Thakur,Security Guard,Security,Twin Towers,05/08/2023,9815023456,,15000,6000,2500,352094081234566,
-Neha Bansal,Fitness Trainer,Admin,Marbella Grand,22/01/2025,9876034567,neha.trains@gmail.com,28000,14000,6000,354123098765433,
-Ramesh Lal,Security Guard,Security,Curo One,17/11/2022,9814045678,,15000,6000,2500,354876101234560,9814000092
-Sunita Devi,House Keeping Supervisor,Admin,Marbella Grand,03/06/2024,9815056789,sunita.d@rediffmail.com,19000,9500,3500,356987123456780,`;
+/* The sheet HR is asked to fill in. It carries the header row and nothing else:
+   the point is to show which columns the importer reads, and a sample row of
+   invented employees is exactly the thing that ends up imported by accident. */
+const SAMPLE_CSV = `Employee Name,Designation,Department,Site,DOJ,Personal Mobile,Personal Email,Basic,HRA,Conveyance,IMEI,Official Number`;
 
 function parseSheet(text) {
   const lines = String(text).replace(/\r/g, "").split("\n").filter(l => l.trim());
@@ -10456,7 +10139,7 @@ function BulkImportView() {
   const good = checked.filter(c => !c.errs.length);
   const bad = checked.filter(c => c.errs.length);
 
-  /* EDIT 19 of 20: `await`. The server assigns the employee IDs, resolves the
+  /* EDIT 22 of 23: `await`. The server assigns the employee IDs, resolves the
      employer from the posting and normalises the dates, so the count shown is
      what actually LANDED — rows it held back are counted as skipped. */
   const commit = async () => {
@@ -10867,7 +10550,7 @@ function ExitRunner({ ex, p, onClose }) {
 
           {isCurrent && view === "handover" && (
             <>
-              <Field label="Handing over to" hint="One named person. Not 'the team'." value={f.to || ""} onChange={v => set("to", v)} placeholder="e.g. A. Sethi (MB-PUR-0018)" />
+              <Field label="Handing over to" hint="One named person. Not 'the team'." value={f.to || ""} onChange={v => set("to", v)} placeholder="Their name and employee ID" />
               <Field label="What's being handed over" area hint="Files, keys, running jobs, passwords for shared tools, anything half-finished."
                 value={f.what || ""} onChange={v => set("what", v)} placeholder="Open POs 4471 and 4468, vendor files A–M, store keys, the RMC rate file." />
               <button onClick={() => set("signed", !f.signed)} style={{ width: "100%", textAlign: "left", cursor: "pointer",
@@ -11154,10 +10837,9 @@ function ExitsView() {
 
    A project is a place. A company is the legal entity that signs the contract, pays the
    salary, files the PF and whose letterhead the relieving letter is printed on. They are
-   NOT the same. Marbella Grand and Twin Towers are both built by Delhi Punjab Real Estates
-   LLP; Curo One and Royce by D.R. Developers & Colonisers. So a storeman posted to Grand is
-   employed by the LLP, not by "Grand". Get that wrong and the F&F, the PF challan and the
-   experience letter all name the wrong employer.
+   NOT the same. Each project is built by its own legal entity, so somebody
+   posted to a site is employed by that entity, not by the site. Get it wrong and
+   the F&F, the PF challan and the experience letter all name the wrong employer.
 
    Scope: pick "Marbella Group" and every listed project is in view. Pick one and HR sees
    only that one. Companies own projects; projects have their own GSTIN and RERA.
@@ -11209,38 +10891,30 @@ const RERA_STATUS = {
 };
 
 /* the legal entities. Projects hang off these; people are employed by these. */
+/* The four legal entities that actually sign, pay and appear on the letterhead.
+   GSTIN, PAN and registered address are left blank on purpose: they were not in
+   the data we were given, and the screens show a blank one in red so somebody
+   fills it in rather than trusting a number nobody checked. */
 const COMPANY_SEED = [
-  { id: "dpre",  name: "Delhi Punjab Real Estates LLP",  gstin: "03AAEFD4921K1Z9", pan: "AAEFD4921K", kind: "LLP",
-    addr: "SCO 2417-18, Sector 22-C, Chandigarh 160022" },
-  { id: "drdc",  name: "D.R. Developers & Colonisers",   gstin: "03AAKFD3356N1ZB", pan: "AAKFD3356N", kind: "Partnership",
-    addr: "SCO 2417-18, Sector 22-C, Chandigarh 160022" },
-  { id: "desraj", name: "Des Raj Real Estates Pvt. Ltd.", gstin: "03AABCD7890P1ZR", pan: "AABCD7890P", kind: "Private Limited",
-    addr: "SCO 2417-18, Sector 22-C, Chandigarh 160022" },
-  { id: "srg",   name: "SRG Developers and Promoters",   gstin: "", pan: "", kind: "Partnership",
-    addr: "SCO 2417-18, Sector 22-C, Chandigarh 160022" },
+  { id: "srg",     name: "SRG Developers & Promoters",              gstin: "", pan: "", kind: "Partnership",      addr: "" },
+  { id: "newmarb", name: "New Marbella Developers And Promoters LLP", gstin: "", pan: "", kind: "LLP",            addr: "" },
+  { id: "srgmarb", name: "SRG Marbella Developers And Promoters LLP", gstin: "", pan: "", kind: "LLP",            addr: "" },
+  { id: "garg",    name: "Garg Builders And Promoters LLP",         gstin: "", pan: "", kind: "LLP",              addr: "" },
 ];
 
+/* The four projects, each against the entity that owns it. RERA numbers are
+   blank for the same reason as the GSTINs above. */
 const PROJECT_SEED = [
-  { id: "grand",    name: "Marbella Grand",     short: "Grand",       company: "dpre",   reraStatus: "received", rera: "PBRERA-SAS79-PR0421", stage: "building",
-    addr: "GHS 3, Sector 82-A, IT City Road, Sector 82, S.A.S. Nagar, Punjab 140306" },
-  { id: "twin",     name: "Twin Towers",        short: "Twin Towers", company: "dpre",   reraStatus: "received", rera: "PBRERA-SAS79-PR0512", stage: "building",
-    addr: "1st LOT, Main Road Sector 2, Madhya Marg, DLF Mullanpur, New Chandigarh, Punjab 140901" },
-  { id: "curo",     name: "Marbella Curo One",  short: "Curo One",    company: "drdc",   reraStatus: "received", rera: "PBRERA-SAS79-PR0338", stage: "building",
-    addr: "1st LOT, Main Road Sector 2, Madhya Marg, DLF Mullanpur, New Chandigarh, Punjab 140901" },
-  { id: "royce",    name: "Marbella Royce",     short: "Royce",       company: "drdc",   reraStatus: "received", rera: "PBRERA-SAS79-PR0445", stage: "building",
-    addr: "Site No. 7, Block C, Sector 83-A, IT City Road, S.A.S. Nagar, Punjab 140306" },
-  { id: "manifest", name: "Marbella Manifest",  short: "Manifest",    company: "desraj", reraStatus: "applied",  rera: "", stage: "pre",
-    addr: "SCO 2417-18, Sector 22-C, Chandigarh 160022" },
+  { id: "grand",       name: "Marbella Grand", short: "Grand",       company: "srg",     reraStatus: "notyet", rera: "", stage: "building", addr: "" },
+  { id: "newmarbella", name: "New Marbella",   short: "New Marbella", company: "newmarb", reraStatus: "notyet", rera: "", stage: "building", addr: "" },
+  { id: "twin",        name: "Twin Tower",     short: "Twin Tower",  company: "srgmarb", reraStatus: "notyet", rera: "", stage: "building", addr: "" },
+  { id: "royce",       name: "Marbella Royce", short: "Royce",       company: "garg",    reraStatus: "notyet", rera: "", stage: "building", addr: "" },
 ];
 
-/* who works where, and — separately — who employs them */
-const EMPLOYER_SEED = {
-  "MB-ADM-0001": "dpre", "MB-HR-0001": "dpre", "MB-PUR-0012": "dpre", "MB-STR-0004": "dpre",
-  "MB-ACC-0002": "dpre", "MB-MNT-0006": "dpre", "MB-PUR-0018": "dpre", "MB-STR-0009": "dpre",
-  "MB-SIT-0021": "dpre", "MB-SIT-0044": "dpre", "MB-SIT-0052": "drdc", "MB-STR-0014": "dpre",
-  "MB-SEC-0007": "srg",  "MB-SEC-0012": "srg",  "MB-PUR-0009": "dpre",
-  "MB-LAB-0087": "srg",  "MB-LAB-0102": "srg",  "MB-LAB-0118": "srg", "MB-LAB-0131": "drdc",
-};
+/* Who employs whom. Every person on file carries their own employer, so this
+   override map is empty — it exists for the rare case where the record is wrong
+   and somebody needs to correct it without touching the import. */
+const EMPLOYER_SEED = {};
 
 /* ---------- a field that tells you what's wrong while you type ---------- */
 function CheckedField({ label, hint, value, onChange, placeholder, check, mono: useMono }) {
@@ -11288,8 +10962,8 @@ function ProjectEditor({ existing, onClose }) {
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr" : "2fr 1fr", gap: 12 }}>
-          <Field label="Project name" hint="As it's advertised." value={f.name} onChange={v => set("name", v)} placeholder="e.g. Marbella Manifest" />
-          <Field label="Short name" hint="For the switcher." value={f.short} onChange={v => set("short", v)} placeholder="Manifest" />
+          <Field label="Project name" hint="As it's advertised." value={f.name} onChange={v => set("name", v)} placeholder="As it is advertised" />
+          <Field label="Short name" hint="For the switcher." value={f.short} onChange={v => set("short", v)} placeholder="For the switcher" />
         </div>
 
         <label style={lbl}>Company that owns it</label>
@@ -11371,7 +11045,7 @@ function CompanyEditor({ existing, onClose }) {
             PAN is read straight out of the GSTIN: <b style={{ color: C.ink, fontFamily: mono }}>{g.pan}</b>
           </div>
         ) : null}
-        <Field label="Registered address" area value={f.addr} onChange={v => set("addr", v)} placeholder="SCO 2417-18, Sector 22-C, Chandigarh 160022" />
+        <Field label="Registered address" area value={f.addr} onChange={v => set("addr", v)} placeholder="Registered office, as it appears on the GST certificate" />
         <GoldButton onClick={save}>{existing ? "Save changes" : "Add this company"}</GoldButton>
       </div>
     </Overlay>
@@ -11516,99 +11190,11 @@ function ScopeBar() {
    200 people, a letter desk that knows who it's writing to, and a job-description
    suggester. Everything HR touches is counted so you can see what she actually uses.   */
 
-/* ---------- 200 people, generated but plausible ---------- */
-const FIRST_M = ["Amrit","Baldev","Charanjit","Davinder","Gurpreet","Harjeet","Inderjit","Jaswinder","Kuldeep","Lakhvir","Manpreet","Narinder","Onkar","Paramjit","Rajinder","Sukhwinder","Tarlochan","Varinder","Yadwinder","Ashok","Bhupinder","Chetan","Dinesh","Gagandeep","Hardeep","Jagdish","Karan","Mohan","Naveen","Pankaj","Rakesh","Sandeep","Tarun","Vikram","Yogesh","Amit","Bharat","Deepak","Gurmeet","Hemant","Jatinder","Kamal","Mukesh","Nitin","Prem","Ravi","Sunil","Umesh","Vinod","Ramesh"];
-const FIRST_F = ["Amandeep","Baljit","Charanjeet","Daljit","Gurmeet","Harpreet","Inderpreet","Jaspreet","Kamaljit","Lakhwinder","Manjit","Navjot","Parminder","Rajwinder","Simran","Sukhjit","Tejinder","Veerpal","Anita","Bhavna","Chetna","Divya","Geeta","Heena","Jyoti","Kavita","Meena","Neha","Pooja","Radha","Sunita","Usha","Vandana","Anjali","Bindu","Deepika","Gurleen","Kiran","Mamta","Nisha","Priya","Ritu","Shalini","Tanvi"];
-const SURN = ["Singh","Kaur","Sharma","Verma","Gupta","Chauhan","Yadav","Kumar","Rana","Thakur","Bansal","Goyal","Mehta","Malhotra","Sethi","Nair","Iyer","Bhatia","Sidhu","Gill","Dhillon","Grewal","Sandhu","Brar","Sekhon","Walia","Khanna","Kapoor","Chopra","Arora","Saini","Joshi","Tiwari","Mishra","Pandey","Prasad","Devi","Lal","Ram","Das"];
-
-const ROLES = {
-  "Site Engineering": [["Site Engineer",6],["Site Supervisor",8],["Junior Engineer",5],["Surveyor",3],["Project Engineer",3],["Site Manager",2]],
-  "Security":         [["Gate Security",14],["Security Supervisor",3],["Club House Guard",6],["Night Guard",5],["Security In-charge",1]],
-  "Labour":           [["Bar-bender",8],["Mason",9],["Carpenter",7],["Helper",8],["Painter",4],["Plumber Helper",4],["Electrician Helper",4]],
-  "Store":            [["Store Assistant",7],["Store Keeper",4],["Store Supervisor",2],["Material Checker",3]],
-  "Purchase":         [["Purchase Assistant",4],["Purchase Executive",3],["Buyer",2]],
-  "Accounts":         [["Accounts Assistant",4],["Accountant",3],["Billing Executive",2]],
-  "Maintenance":      [["Maintenance Technician",5],["Electrician",4],["Plumber",3],["AC Technician",2],["Lift Technician",1]],
-  "QA / QC":          [["QA / QC Engineer",3],["Lab Technician",2],["Quality Inspector",2]],
-  "HR":               [["HR Executive",2],["HR Assistant",2],["Payroll Executive",1]],
-  "Admin":            [["Club House Manager",2],["Fitness Trainer",3],["House Keeping Supervisor",3],["Receptionist",3],["Front Office Executive",2],["Office Assistant",3],["Driver",4]],
-};
-const OFFICE_IDS = ["hq","grand","twin","curo","royce"];
-
-function buildRoster() {
-  let seed = 20260829;
-  const rnd = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
-  const pick = (a) => a[Math.floor(rnd() * a.length)];
-  const M = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-  const dstr = (y, m, d) => `${String(d).padStart(2,"0")} ${M[m]} ${y}`;
-  const out = []; const used = new Set(); const counters = {};
-  Object.entries(ROLES).forEach(([dept, roles]) => {
-    roles.forEach(([role, n]) => {
-      for (let i = 0; i < n; i++) {
-        const female = rnd() > 0.68;
-        let name, guard = 0;
-        do { name = `${pick(female ? FIRST_F : FIRST_M)} ${pick(SURN)}`; guard++; } while (used.has(name) && guard < 40);
-        used.add(name);
-        const code = DEPT_CODES[dept] || "GEN";
-        counters[code] = (counters[code] || 200) + 1;
-        const id = `MB-${code}-${String(counters[code]).padStart(4, "0")}`;
-        const jy = 2019 + Math.floor(rnd() * 7), jm = Math.floor(rnd() * 12), jd = 1 + Math.floor(rnd() * 28);
-        const by = 1972 + Math.floor(rnd() * 34), bm = Math.floor(rnd() * 12), bd = 1 + Math.floor(rnd() * 28);
-        const office = dept === "HR" || dept === "Purchase" || dept === "Accounts"
-          ? (rnd() > 0.35 ? "hq" : pick(OFFICE_IDS))
-          : pick(OFFICE_IDS.slice(1));
-        const employer = office === "curo" || office === "royce" ? "drdc"
-          : (dept === "Security" || dept === "Labour") ? "srg" : "dpre";
-        const base = { "Site Engineering": 34000, Security: 16000, Labour: 14000, Store: 22000, Purchase: 30000,
-          Accounts: 30000, Maintenance: 26000, "QA / QC": 32000, HR: 28000, Admin: 24000 }[dept] || 22000;
-        const bump = 1 + Math.floor(rnd() * 5) * 0.12;
-        out.push({
-          id, name, designation: role, dept, type: dept === "Labour" ? "Labour" : dept === "Security" ? "Security" : "Staff",
-          phone: "", email: "", joined: dstr(jy, jm, jd), dob: dstr(by, bm, bd),
-          status: "active", perf: 62 + Math.floor(rnd() * 36), growth: "", notes: [],
-          office, employer, photo: null,
-          _basic: Math.round(base * bump / 1000) * 1000,
-          _phone: "9" + String(800000000 + Math.floor(rnd() * 99999999)).slice(0, 9),
-        });
-      }
-    });
-  });
-  /* --- give the roster a real shape: three ranks, and labour under the site supervisors --- */
-  const HEADS = { Purchase: "MB-PUR-0012", Store: "MB-STR-0004", Accounts: "MB-ACC-0002",
-    Maintenance: "MB-MNT-0006", HR: "MB-HR-0001", "Site Engineering": "MB-SIT-0021", Admin: "MB-ADM-0001" };
-  const rankOf = (d) => {
-    const t = d.toLowerCase();
-    if (/manager|head|in-charge|incharge/.test(t)) return 3;
-    if (/supervisor|senior|project engineer|accountant|store keeper|executive|inspector/.test(t)) return 2;
-    if (/engineer|technician|electrician|plumber(?! helper)|surveyor|buyer|receptionist|trainer/.test(t)) return 2;
-    return 1;
-  };
-  out.forEach(p => { p._rank = rankOf(p.designation); });
-  const pool = (dept, rank, office) => {
-    const same = out.filter(x => x.dept === dept && x._rank === rank && x.office === office);
-    return same.length ? same : out.filter(x => x.dept === dept && x._rank === rank);
-  };
-  out.forEach((p, i) => {
-    const head = HEADS[p.dept];
-    /* labour is run by whoever supervises that site, not by a labour department */
-    if (p.dept === "Labour") {
-      const sup = pool("Site Engineering", 2, p.office);
-      p.reportsTo = sup.length ? sup[i % sup.length].id : (head || "MB-SIT-0021");
-      return;
-    }
-    if (p._rank === 3) { p.reportsTo = head || "MB-ADM-0001"; return; }
-    if (p._rank === 2) {
-      const mgr = pool(p.dept, 3, p.office).filter(x => x.id !== p.id);
-      p.reportsTo = mgr.length ? mgr[i % mgr.length].id : (head || "MB-ADM-0001");
-      return;
-    }
-    const up = pool(p.dept, 2, p.office).filter(x => x.id !== p.id);
-    const up3 = pool(p.dept, 3, p.office).filter(x => x.id !== p.id);
-    p.reportsTo = up.length ? up[i % up.length].id : up3.length ? up3[i % up3.length].id : (head || "MB-ADM-0001");
-  });
-  out.forEach(p => { delete p._rank; });
-  return out;
-}
+/* There used to be a generator here that invented two hundred people — names
+   drawn from a word list, salaries from a base-times-random, IDs in their own
+   MB-XXX-02NN range. It existed to make the screens look busy before there was
+   any real data. The company's own 126 employees are loaded now, so the
+   generator is gone: every person on every screen is somebody who works here. */
 
 /* ---------- email: say WHAT is wrong, not just "invalid" ---------- */
 const TYPO_DOMAINS = { "gmial.com":"gmail.com","gmai.com":"gmail.com","gmail.co":"gmail.com","gmail.con":"gmail.com","gnail.com":"gmail.com","yahoo.co":"yahoo.co.in","yahho.com":"yahoo.com","hotmial.com":"hotmail.com","hotmail.co":"hotmail.com","outlok.com":"outlook.com","rediffmail.co":"rediffmail.com","redifmail.com":"rediffmail.com" };
@@ -11664,7 +11250,7 @@ Work like this doesn't go unnoticed. Thank you for the care you put in.
 With appreciation,
 {{hrName}}
 {{hrTitle}} · {{company}}`,
-    fields: [["what","What they did","negotiating 6% off the steel rate"],["detail","In a little more detail","You held the line over three calls and saved the Twin Towers slab cycle nearly ₹4 lakh. The vendor still wants to work with us, which is the harder half."]] },
+    fields: [["what","What they did","negotiating 6% off the steel rate"],["detail","In a little more detail","You held the line over three calls and saved us a meaningful sum on the rate. The vendor still wants to work with us, which is the harder half."]] },
 
   { id: "spot", cat: "recognition", channel: "email", name: "Spot award",
     when: "A small cash or gift reward, on the spot.",
@@ -11754,7 +11340,7 @@ For {{company}}
 
 {{hrName}}
 {{hrTitle}}`,
-    fields: [["period","Period","01 Sep 2026 to 30 Nov 2026"],["gap","Where they're falling short","Goods-in entries have been posted late on 14 of the last 30 working days, and three GRNs were raised against the wrong PO."],["target","What good looks like","All goods-in entries posted the same working day. Zero mismatched GRNs. Weekly stock reconciliation submitted every Friday by 5pm."],["support","What we'll do to help","Refresher on the store module with S. Verma. A second checker on high-value inward for the first month."],["review","Review date","30 Nov 2026"]] },
+    fields: [["period","Period","01 Sep 2026 to 30 Nov 2026"],["gap","Where they're falling short","Goods-in entries have been posted late on 14 of the last 30 working days, and three GRNs were raised against the wrong PO."],["target","What good looks like","All goods-in entries posted the same working day. Zero mismatched GRNs. Weekly stock reconciliation submitted every Friday by 5pm."],["support","What we'll do to help","A refresher on the store module with the department head. A second checker on high-value inward for the first month."],["review","Review date","30 Nov 2026"]] },
 
   { id: "pipclose", cat: "performance", channel: "letter", name: "PIP — closed successfully",
     when: "They met the standard. Close it properly and say so.",
@@ -11818,7 +11404,7 @@ For {{company}}
 
 {{hrName}}
 {{hrTitle}}`,
-    fields: [["allegation","The allegation","material was removed from the Grand yard on 14 August without a gate pass"],["detail","The detail","The gate register shows an exit at 19:40 recorded against your ID. No issue note or gate pass exists for that movement."],["days","Days to reply","3"]] },
+    fields: [["allegation","The allegation","material was removed from the yard on 14 August without a gate pass"],["detail","The detail","The gate register shows an exit at 19:40 recorded against your ID. No issue note or gate pass exists for that movement."],["days","Days to reply","3"]] },
 
   { id: "finalwarn", cat: "discipline", channel: "letter", name: "Final warning",
     when: "It has happened again after a written warning.",
@@ -11917,7 +11503,7 @@ For {{company}}
 {{hrName}}
 {{hrTitle}}
 {{today}}`,
-    fields: [["lwd","Served until","30 Sep 2026"],["responsibilities","What they were responsible for","day-to-day store operations at Marbella Grand, goods-in verification and monthly stock reconciliation"],["conduct","Conduct","good"]] },
+    fields: [["lwd","Served until","30 Sep 2026"],["responsibilities","What they were responsible for","day-to-day store operations, goods-in verification and monthly stock reconciliation"],["conduct","Conduct","good"]] },
 
   { id: "salrev", cat: "employment", channel: "letter", name: "Salary revision",
     when: "A raise, and the reason for it.",
@@ -11936,7 +11522,7 @@ For {{company}}
 
 {{hrName}}
 {{hrTitle}}`,
-    fields: [["effective","Effective from","01 Oct 2026"],["newsal","Revised gross","₹78,000 per month"],["reason","Why","This reflects your performance over the last review period and the additional responsibility you have taken on at Twin Towers."]] },
+    fields: [["effective","Effective from","01 Oct 2026"],["newsal","Revised gross","₹78,000 per month"],["reason","Why","This reflects your performance over the last review period and the additional responsibility you have taken on."]] },
 
   { id: "promote", cat: "employment", channel: "letter", name: "Promotion",
     when: "New title, new responsibility.",
@@ -11955,7 +11541,7 @@ For {{company}}
 
 {{hrName}}
 {{hrTitle}}`,
-    fields: [["newrole","New designation","Senior Purchase Manager"],["effective","Effective from","01 Oct 2026"],["newmanager","Now reporting to","Nitish Walia, Chairman"],["reason","Why","Over six years you have taken the purchase function from paper files to a clean, auditable process, and held vendor rates through a difficult year."]] },
+    fields: [["newrole","New designation","Senior Purchase Manager"],["effective","Effective from","01 Oct 2026"],["newmanager","Now reporting to","the Chairman"],["reason","Why","Over six years you have taken the purchase function from paper files to a clean, auditable process, and held vendor rates through a difficult year."]] },
 
   { id: "transfer", cat: "employment", channel: "letter", name: "Transfer / posting",
     when: "Moving them to another site or company.",
@@ -11972,7 +11558,7 @@ For {{company}}
 
 {{hrName}}
 {{hrTitle}}`,
-    fields: [["fromsite","From","Marbella Grand"],["tosite","To","Twin Towers"],["effective","Effective from","01 Oct 2026"],["reportto","Report to","K. Iyer, Site Engineer"],["reason","Why","The Twin Towers slab cycle needs an experienced hand through the next two quarters."]] },
+    fields: [["fromsite","From","Marbella Grand"],["tosite","To","Twin Tower"],["effective","Effective from","01 Oct 2026"],["reportto","Report to","the Site Engineer"],["reason","Why","The slab cycle there needs an experienced hand through the next two quarters."]] },
 
   { id: "noc", cat: "certificate", channel: "letter", name: "No objection certificate",
     when: "For a passport, a visa, a loan or a bank.",
@@ -12160,7 +11746,7 @@ function Letterhead({ company, project, body, subject, channel }) {
 /* ---------- the desk ---------- */
 function CorrespondenceView() {
   const mob = useIsMobile();
-  const { people, companies, projects, salaries, contacts, track, logDoc, docLog } = useProc();
+  const { people, companies, projects, salaries, contacts, track, logDoc, docLog, me } = useProc();
   const [q, setQ] = useState("");
   const [pid, setPid] = useState(null);
   const [tplId, setTplId] = useState(null);
@@ -12183,7 +11769,7 @@ function CorrespondenceView() {
     name: p.name, first: p.name.split(" ")[0], id: p.id, designation: p.designation, dept: p.dept,
     company: co ? co.name : "", joined: p.joined, tenure: ten.text, years: String(ten.years),
     manager: boss ? `${boss.name} (${boss.designation})` : "your reporting manager",
-    today: prettyToday(), hrName: "Simran Kaur", hrTitle: "HR Head", project: proj ? proj.name : "",
+    today: prettyToday(), hrName: (me && me.name) || "", hrTitle: (me && me.title) || "HR", project: proj ? proj.name : "",
   } : {};
   const all = { ...base, ...vals };
   const mergedBody = tpl ? (bodyEdit !== null ? bodyEdit : mergeText(tpl.body, all)) : "";
@@ -12942,11 +12528,11 @@ export default function App() {
   const [usage, setUsage] = useState({});
   const [docLog, setDocLog] = useState([]);
   const [jds, setJds] = useState({});
-  const [people, setPeople] = useState(() => [...PEOPLE_SEED, ...buildRoster()].map((p, i) => ({
+  const [people, setPeople] = useState(() => PEOPLE_SEED.map((p) => ({
     shift: { ...DEFAULT_SHIFT },
     office: p.office || ORG_SEED[p.id]?.office || "hq",
     reportsTo: p.reportsTo !== undefined ? p.reportsTo : (p.id in ORG_SEED ? ORG_SEED[p.id].boss : "MB-ADM-0001"),
-    employer: p.employer || EMPLOYER_SEED[p.id] || "dpre",
+    employer: p.employer || EMPLOYER_SEED[p.id] || COMPANY_SEED[0].id,
     ...p,
   })));
   const [cardLog, setCardLog] = useState(CARD_LOG_SEED);
@@ -13120,7 +12706,7 @@ export default function App() {
     <ThemeCtx.Provider value={{ themeKey, setThemeKey }}>
     <ProcCtx.Provider value={proc}>
       <div key={themeKey} style={{ background: C.paper, minHeight: "100vh", transition: "background .25s ease" }}>
-      {/* EDIT 20 of 20: `onLogin` used to be handed a desk key, because the button
+      {/* EDIT 23 of 23: `onLogin` used to be handed a desk key, because the button
           passed one in ("admin"). It now passes what the person actually typed,
           so this — the no-server build — has to resolve the Employee ID itself.
           Without this the shell is handed "MB-ADM-0001" as a desk and renders

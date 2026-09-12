@@ -12,6 +12,7 @@
  */
 import type { SessionUser } from '@marbella/shared';
 import { PREVIEW_WORLD } from './data.js';
+import { currentDesk } from './desk.js';
 
 export class ApiError extends Error {
   readonly status: number;
@@ -31,10 +32,10 @@ export class ApiError extends Error {
 
 // /bootstrap does not carry userKey — that comes back from the login response,
 // which this file is standing in for. Without it the shell has no desk.
-const ME: SessionUser = {
-  ...(PREVIEW_WORLD as { me: SessionUser }).me,
-  userKey: 'hr',
-} as SessionUser;
+// The desk comes from the banner switcher. In the product this is the server's
+// decision and the browser cannot touch it; see preview/desk.ts.
+const me = (): SessionUser =>
+  ({ ...(PREVIEW_WORLD as { me: SessionUser }).me, userKey: currentDesk() }) as SessionUser;
 
 let token: string | null = 'preview';
 export const setAccessToken = (t: string | null): void => {
@@ -49,7 +50,7 @@ const REFUSAL =
 
 export async function request<T>(path: string): Promise<T> {
   if (path.startsWith('/bootstrap')) return PREVIEW_WORLD as unknown as T;
-  if (path.startsWith('/auth/me')) return ME as unknown as T;
+  if (path.startsWith('/auth/me')) return me() as unknown as T;
   throw new ApiError(503, 'PREVIEW', REFUSAL);
 }
 
@@ -78,7 +79,7 @@ export async function login(identifier: string): Promise<SessionUser> {
       'No such Employee ID in this preview. Try MB-HR-0001, or any ID from the People screen.',
     );
   }
-  return { ...ME, id: person.id, name: person.name } as SessionUser;
+  return { ...me(), id: person.id, name: person.name } as SessionUser;
 }
 
 export async function logout(): Promise<void> {}

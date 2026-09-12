@@ -260,7 +260,7 @@ the same as looking at it. Both need `npm run dev` up first.
 | [`docs/API.md`](docs/API.md)                                                               | Every endpoint, with examples                                                                         |
 | [`docs/SECURITY.md`](docs/SECURITY.md)                                                     | What is protected, how, and what still is not                                                         |
 | [`docs/FRONTEND-INTEGRATION.md`](docs/FRONTEND-INTEGRATION.md)                             | The `ProcCtx` contract and how to extend it                                                           |
-| [`apps/web/src/legacy/PATCHES-PROCUREMENT.md`](apps/web/src/legacy/PATCHES-PROCUREMENT.md) | **The ten edits to `MarbellaProcurementOS.jsx`** — what each replaced and why                         |
+| [`apps/web/src/legacy/PATCHES-PROCUREMENT.md`](apps/web/src/legacy/PATCHES-PROCUREMENT.md) | **Every edit to `MarbellaProcurementOS.jsx`** — what each replaced and why                            |
 | [`apps/web/src/legacy/PATCHES.md`](apps/web/src/legacy/PATCHES.md)                         | The seven edits to `MarbellaHR.jsx`, which Procurement OS absorbed                                    |
 
 Live API reference at **`/docs`** once the server is running.

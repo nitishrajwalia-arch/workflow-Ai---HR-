@@ -7,7 +7,7 @@
  *   Shell                the UI, essentially unmodified
  *
  * The desk a person sees comes from `user.userKey`, which the SERVER decides.
- * See src/legacy/PATCHES-PROCUREMENT.md for the eight edits to the UI file and
+ * See src/legacy/PATCHES-PROCUREMENT.md for the edits to the UI file and
  * why each one exists.
  */
 

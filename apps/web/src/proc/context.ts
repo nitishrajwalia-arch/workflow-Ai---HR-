@@ -2,7 +2,7 @@
  * The context object the whole UI reads from.
  *
  * This is deliberately its own tiny module rather than living inside
- * ProcProvider, because `legacy/MarbellaHR.jsx` imports it too. Both halves must
+ * ProcProvider, because the legacy UI file imports it too. Both halves must
  * get the SAME context object — two `createContext()` calls produce two
  * unrelated contexts, and the symptom is a `useProc()` that quietly returns
  * null and a screen that renders blank with no error.

@@ -20,6 +20,7 @@ import { useState } from 'react';
 // The REAL application. vite.config.demo.ts swaps lib/api for a fixed payload,
 // so this is the product with the network removed — not a separate mock of it.
 import App from './App.js';
+import { DESKS, chooseDesk, currentDesk } from './preview/desk.js';
 
 const KEY = 'marbella.demoNotice';
 
@@ -94,7 +95,6 @@ const smallTag: React.CSSProperties = {
 };
 
 const closeBtn: React.CSSProperties = {
-  marginLeft: 'auto',
   flex: 'none',
   background: 'none',
   border: '1px solid rgba(255,255,255,.3)',
@@ -106,6 +106,47 @@ const closeBtn: React.CSSProperties = {
   padding: '6px 11px',
   cursor: 'pointer',
 };
+
+const deskBtn = (on: boolean): React.CSSProperties => ({
+  background: on ? '#C7A162' : 'transparent',
+  border: `1px solid ${on ? '#C7A162' : 'rgba(255,255,255,.32)'}`,
+  color: on ? '#16233B' : SAND,
+  font: `600 11px/1 ${sans}`,
+  letterSpacing: '.04em',
+  padding: '7px 12px',
+  borderRadius: '20px',
+  cursor: on ? 'default' : 'pointer',
+  whiteSpace: 'nowrap',
+});
+
+function DeskSwitcher() {
+  const now = currentDesk();
+  return (
+    <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+      <span
+        style={{
+          opacity: 0.7,
+          font: `600 10px ${sans}`,
+          letterSpacing: '.14em',
+          textTransform: 'uppercase',
+        }}
+      >
+        Viewing as
+      </span>
+      {DESKS.map((d) => (
+        <button
+          key={d.key}
+          type="button"
+          style={deskBtn(d.key === now)}
+          onClick={() => d.key !== now && chooseDesk(d.key)}
+          title={d.who}
+        >
+          {d.label}
+        </button>
+      ))}
+    </span>
+  );
+}
 
 export default function Standalone() {
   const [open, setOpen] = useState(remembered);
@@ -128,14 +169,25 @@ export default function Standalone() {
               mobiles, salaries and residents' names are <strong>absent from this build</strong>,
               not hidden in it.
             </span>
-            <button
-              type="button"
-              style={closeBtn}
-              onClick={() => set(false)}
-              aria-label="Hide this notice"
+            <span
+              style={{
+                marginLeft: 'auto',
+                display: 'inline-flex',
+                gap: 10,
+                alignItems: 'center',
+                flexWrap: 'wrap',
+              }}
             >
-              Close ✕
-            </button>
+              <DeskSwitcher />
+              <button
+                type="button"
+                style={closeBtn}
+                onClick={() => set(false)}
+                aria-label="Hide this notice"
+              >
+                Close ✕
+              </button>
+            </span>
           </div>
         ) : (
           <button
@@ -154,6 +206,11 @@ export default function Standalone() {
             </span>
             <span style={{ marginLeft: 'auto', opacity: 0.75 }}>what this means ⌄</span>
           </button>
+        )}
+        {!open && (
+          <div style={{ ...shutRow, cursor: 'default', paddingTop: 0, paddingBottom: 7 }}>
+            <DeskSwitcher />
+          </div>
         )}
       </div>
       <App />
