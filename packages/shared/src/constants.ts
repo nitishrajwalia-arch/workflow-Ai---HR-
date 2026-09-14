@@ -79,6 +79,32 @@ export function ageFromDisplayDate(
   return age >= 14 && age <= 80 ? age : null;
 }
 
+/**
+ * What somebody wrote in a Gender column, turned into one of our four values.
+ *
+ * Anything unrecognised comes back null — "not asked yet" — rather than being
+ * forced into the nearest bucket, because once it is stored a wrong guess is
+ * indistinguishable from a real answer.
+ */
+export function readGender(raw: string | null | undefined): Gender | null {
+  const v = (raw ?? '').trim().toLowerCase();
+  if (!v) return null;
+  if (['f', 'female', 'woman', 'women', 'महिला'].includes(v)) return 'female';
+  if (['m', 'male', 'man', 'men', 'पुरुष'].includes(v)) return 'male';
+  if (['o', 'other', 'others', 'nb', 'non-binary', 'transgender'].includes(v)) return 'other';
+  if (
+    [
+      'prefer not to say',
+      'prefers not to say',
+      'undisclosed',
+      'not disclosed',
+      'declined',
+    ].includes(v)
+  )
+    return 'undisclosed';
+  return null;
+}
+
 /** Which band an age falls in, or null when there is no usable age. */
 export function ageBandOf(age: number | null): string | null {
   if (age == null) return null;

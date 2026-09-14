@@ -10281,6 +10281,30 @@ const IMP_FIELDS = [
    invented employees is exactly the thing that ends up imported by accident. */
 const SAMPLE_CSV = `Employee Name,Designation,Department,Site,DOJ,Date of Birth,Gender,Personal Mobile,Personal Email,Basic,HRA,Conveyance,IMEI,Official Number`;
 
+/* The same screen does a second job: filling in the blanks on people who are
+   ALREADY on the roster. Adding them again would be refused as duplicates, and
+   a hundred-odd records opened one at a time is a day nobody has. Employee ID is
+   the only column that must be there — it is what each row is matched on. A
+   BLANK CELL LEAVES THAT FIELD ALONE, so a sheet of nothing but emails cannot
+   wipe the phone numbers somebody else collected. */
+const UPD_FIELDS = [
+  { k: "id",        label: "Employee ID",     req: true,  aliases: ["id", "employee id", "emp id", "code", "empcode", "employee code", "emp no"] },
+  { k: "gender",    label: "Gender",          req: false, aliases: ["gender", "sex", "m/f", "male/female"] },
+  { k: "dob",       label: "Date of birth",   req: false, aliases: ["dob", "date of birth", "birth date", "birthday", "born"] },
+  { k: "email",     label: "Personal email",  req: false, aliases: ["email", "personal email", "e-mail", "mail", "email id"] },
+  { k: "phone",     label: "Personal mobile", req: false, aliases: ["mobile", "phone", "personal mobile", "contact", "cell", "personal number", "mobile no"] },
+  { k: "reportsTo", label: "Reports to (ID)", req: false, aliases: ["reports to", "reporting to", "manager", "manager id", "reports to id", "supervisor"] },
+  { k: "imei",      label: "Device IMEI",     req: false, aliases: ["imei", "imei no", "device imei", "handset imei"] },
+  { k: "sim",       label: "SIM number",      req: false, aliases: ["sim", "sim no", "sim number", "company number", "official number"] },
+  { k: "basic",     label: "Basic pay",       req: false, aliases: ["basic", "basic pay", "basic salary"] },
+  { k: "hra",       label: "HRA",             req: false, aliases: ["hra", "house rent", "house rent allowance"] },
+  { k: "special",   label: "Other allowances", req: false, aliases: ["special", "special allowance", "other", "allowance", "allowances", "conveyance"] },
+];
+const UPDATE_SAMPLE_CSV = `Employee ID,Gender,Personal Email,Reports To`;
+const GENDER_WORDS = { f: 1, female: 1, woman: 1, women: 1, m: 1, male: 1, man: 1, men: 1,
+  o: 1, other: 1, others: 1, "non-binary": 1, nb: 1, transgender: 1,
+  "prefer not to say": 1, "prefers not to say": 1, undisclosed: 1, "not disclosed": 1, declined: 1 };
+
 function parseSheet(text) {
   const lines = String(text).replace(/\r/g, "").split("\n").filter(l => l.trim());
   if (!lines.length) return { head: [], rows: [] };
@@ -10297,11 +10321,11 @@ function parseSheet(text) {
   const rows = lines.slice(1).map(split);
   return { head, rows };
 }
-const guessMap = (head) => {
+const guessMap = (head, fields = IMP_FIELDS) => {
   const m = {};
   head.forEach((h, i) => {
     const s = h.toLowerCase().replace(/[^a-z ]/g, "").trim();
-    const f = IMP_FIELDS.find(f => f.aliases.some(a => s === a || s.includes(a)));
+    const f = fields.find(f => f.aliases.some(a => s === a || s.includes(a)));
     if (f && m[f.k] === undefined) m[f.k] = i;
   });
   return m;
@@ -10318,7 +10342,10 @@ const normDate = (s) => {
 
 function BulkImportView() {
   const mob = useIsMobile();
-  const { people, bulkAddPeople, offices } = useProc();
+  const { people, bulkAddPeople, bulkUpdatePeople, offices } = useProc();
+  /* "add" brings new joiners in; "fill" completes people already on the roster. */
+  const [mode, setMode] = useState("add");
+  const FIELDS = mode === "add" ? IMP_FIELDS : UPD_FIELDS;
   const [raw, setRaw] = useState("");
   const [step, setStep] = useState(1);
   const [head, setHead] = useState([]);
@@ -10329,24 +10356,43 @@ function BulkImportView() {
   const read = (text) => {
     const { head, rows } = parseSheet(text);
     if (!head.length) { toast("Nothing to read in that", "amber"); return; }
-    setHead(head); setRows(rows); setMap(guessMap(head)); setStep(2);
+    setHead(head); setRows(rows); setMap(guessMap(head, FIELDS)); setStep(2);
   };
   const val = (r, k) => (map[k] === undefined ? "" : (r[map[k]] || "").trim());
 
   const checked = useMemo(() => rows.map((r, i) => {
-    const rec = {}; IMP_FIELDS.forEach(f => { rec[f.k] = val(r, f.k); });
+    const rec = {}; FIELDS.forEach(f => { rec[f.k] = val(r, f.k); });
     const errs = [], warns = [];
-    IMP_FIELDS.filter(f => f.req).forEach(f => { if (!rec[f.k]) errs.push(`${f.label} is blank`); });
+    FIELDS.filter(f => f.req).forEach(f => { if (!rec[f.k]) errs.push(`${f.label} is blank`); });
     if (rec.phone && !phoneOK(rec.phone)) errs.push("Mobile isn't a valid 10-digit Indian number");
     if (rec.email && !emailOK(rec.email)) errs.push("Email isn't a valid address");
     if (rec.email && isCompanyEmail(rec.email)) errs.push("That's a company address — this field is for their personal email");
     if (rec.imei && !luhnOK(rec.imei)) errs.push("IMEI fails its check digit");
-    if (!rec.email) warns.push("No personal email — they can't be reached after exit");
-    if (rec.id && people.some(p => p.id === rec.id)) errs.push(`${rec.id} already exists on the roster`);
-    const dupe = rows.findIndex((o, j) => j < i && (o[map.phone] || "").trim() && (o[map.phone] || "").trim() === rec.phone);
-    if (dupe >= 0) errs.push(`Same mobile as row ${dupe + 2}`);
+
+    if (mode === "add") {
+      if (!rec.email) warns.push("No personal email — they can't be reached after exit");
+      if (rec.id && people.some(p => p.id === rec.id)) errs.push(`${rec.id} already exists on the roster`);
+    } else {
+      /* Filling gaps: the ID has to belong to somebody, the gender has to be a
+         word we can place rather than a guess, and a row that names no field at
+         all is a wasted round-trip rather than an error. */
+      if (rec.id && !people.some(p => p.id === rec.id)) errs.push(`Nobody on the roster has the ID ${rec.id}`);
+      if (rec.gender && !GENDER_WORDS[rec.gender.toLowerCase()])
+        errs.push(`"${rec.gender}" isn't something I can place — use Female, Male, Other, or Prefers not to say`);
+      if (rec.reportsTo && rec.reportsTo === rec.id) errs.push("Somebody cannot report to themselves");
+      if (rec.reportsTo && !people.some(p => p.id === rec.reportsTo))
+        errs.push(`Nobody on the roster has the ID ${rec.reportsTo}, so they cannot be the manager`);
+      const twice = rows.findIndex((o, j) => j < i && (o[map.id] || "").trim() === rec.id);
+      if (rec.id && twice >= 0) errs.push(`${rec.id} appears again on row ${twice + 2}`);
+      if (!FIELDS.some(f => !f.req && rec[f.k])) warns.push("Nothing filled in on this row — it will be skipped");
+    }
+
+    if (mode === "add") {
+      const dupe = rows.findIndex((o, j) => j < i && (o[map.phone] || "").trim() && (o[map.phone] || "").trim() === rec.phone);
+      if (dupe >= 0) errs.push(`Same mobile as row ${dupe + 2}`);
+    }
     return { i, rec, errs, warns };
-  }), [rows, map, people]);
+  }), [rows, map, people, mode]);
 
   const good = checked.filter(c => !c.errs.length);
   const bad = checked.filter(c => c.errs.length);
@@ -10355,8 +10401,9 @@ function BulkImportView() {
      employer from the posting and normalises the dates, so the count shown is
      what actually LANDED — rows it held back are counted as skipped. */
   const commit = async () => {
-    const made = await bulkAddPeople(good.map(c => c.rec));
-    setDone({ n: made.length, skipped: bad.length + (good.length - made.length) });
+    const rows = good.map(c => c.rec);
+    const made = mode === "add" ? await bulkAddPeople(rows) : await bulkUpdatePeople(rows);
+    setDone({ n: made.length, skipped: bad.length + (good.length - made.length), mode });
     setStep(4);
   };
 
@@ -10365,11 +10412,37 @@ function BulkImportView() {
       <div style={{ display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}>
         <Eyebrow>Bulk intake</Eyebrow><Pill tone="gold">HR only</Pill>
       </div>
-      <h1 style={{ font: `400 25px ${serif}`, margin: "6px 0 5px" }}>Bring an existing list in.</h1>
-      <p style={{ font: `13px ${sans}`, color: C.inkSoft, maxWidth: 660, margin: "0 0 18px", lineHeight: 1.55 }}>
+      <h1 style={{ font: `400 25px ${serif}`, margin: "6px 0 5px" }}>
+        {mode === "add" ? "Bring an existing list in." : "Fill in what's missing."}
+      </h1>
+      <p style={{ font: `13px ${sans}`, color: C.inkSoft, maxWidth: 660, margin: "0 0 14px", lineHeight: 1.55 }}>
         Paste a sheet or drop a CSV. The columns get matched for you — you check the matching, then the rows are
         validated one by one. Anything that fails is held back with a reason, not quietly dropped.
       </p>
+
+      <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
+        {[["add", "Add new people", "Nobody on the roster yet"],
+          ["fill", "Fill in blanks", "People already on the roster"]].map(([k, l, sub]) => (
+          <button key={k} onClick={() => { setMode(k); setStep(1); setRaw(""); setHead([]); setRows([]); setMap({}); setDone(null); }}
+            style={{ cursor: "pointer", textAlign: "left", borderRadius: 11, padding: "10px 14px",
+              border: `1.5px solid ${mode === k ? C.gold : C.line}`, background: mode === k ? C.goldTint : "#fff" }}>
+            <div style={{ font: `600 13px ${sans}`, color: mode === k ? C.goldDeep : C.ink }}>{l}</div>
+            <div style={{ font: `11px ${sans}`, color: C.stone, marginTop: 2 }}>{sub}</div>
+          </button>
+        ))}
+      </div>
+
+      {mode === "fill" && (
+        <div style={{ background: C.goldTint, border: `1px solid ${C.goldSoft}`, borderRadius: 11, padding: "11px 14px", marginBottom: 16, font: `12px ${sans}`, color: C.inkSoft, lineHeight: 1.6, display: "flex", gap: 8 }}>
+          <Info size={14} color={C.goldDeep} style={{ flexShrink: 0, marginTop: 2 }} />
+          <span>
+            Employee ID is the only column you must have — it is what each row is matched on. Bring whichever
+            other columns you have collected; <b style={{ color: C.ink }}>an empty cell leaves that field alone</b>,
+            so a sheet of nothing but emails will not wipe the phone numbers. Designation, department, posting and
+            employer are deliberately not on this list: a promotion or a transfer is recorded on its own, with a reason.
+          </span>
+        </div>
+      )}
 
       <div style={{ display: "flex", gap: 8, marginBottom: 18, flexWrap: "wrap" }}>
         {["Paste the sheet", "Match the columns", "Check the rows", "Done"].map((s, i) => {
@@ -10397,7 +10470,18 @@ function BulkImportView() {
             <GoldButton onClick={() => read(raw)}>
               <span style={{ display: "inline-flex", alignItems: "center", gap: 7 }}><Upload size={15} /> Read this sheet</span>
             </GoldButton>
-            <GoldButton ghost small onClick={() => { setRaw(SAMPLE_CSV); toast("Sample loaded — press Read", "gold"); }}>Use a sample</GoldButton>
+            <GoldButton ghost small onClick={() => { setRaw(mode === "add" ? SAMPLE_CSV : UPDATE_SAMPLE_CSV); toast("Sample loaded — press Read", "gold"); }}>Use a sample</GoldButton>
+            {mode === "fill" && (
+              <GoldButton ghost small onClick={() => {
+                /* The whole roster, ID and name, with the columns to fill left
+                   blank. She types into it and pastes it straight back. */
+                const head = "Employee ID,Name,Gender,Personal Email,Reports To";
+                const body = people.filter(p => (p.status || "active") === "active")
+                  .map(p => `${p.id},${String(p.name).replace(/,/g, " ")},,,`).join("\n");
+                setRaw(`${head}\n${body}`);
+                toast(`${people.length} people laid out — fill the blank columns`, "gold");
+              }}>Start from the roster</GoldButton>
+            )}
           </div>
           <div style={{ display: "flex", alignItems: "flex-start", gap: 7, marginTop: 14, font: `12px ${sans}`, color: C.stone, lineHeight: 1.55 }}>
             <Info size={14} color={C.goldDeep} style={{ flexShrink: 0, marginTop: 1 }} />
@@ -10414,7 +10498,7 @@ function BulkImportView() {
             <span style={{ marginLeft: "auto", font: `12px ${sans}`, color: C.stone }}>{rows.length} rows</span>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr" : "1fr 1fr", gap: 10 }}>
-            {IMP_FIELDS.map(f => (
+            {FIELDS.map(f => (
               <div key={f.k} style={{ display: "flex", alignItems: "center", gap: 9, background: C.paper, borderRadius: 9, padding: "9px 11px" }}>
                 <span style={{ flex: 1, minWidth: 0 }}>
                   <span style={{ display: "block", font: `600 12px ${sans}`, color: C.ink }}>{f.label}{f.req && <span style={{ color: C.red }}> *</span>}</span>
@@ -10431,7 +10515,7 @@ function BulkImportView() {
           <div style={{ display: "flex", gap: 8, marginTop: 16, flexWrap: "wrap" }}>
             <button onClick={() => setStep(1)} style={softBtn}>Back</button>
             <GoldButton onClick={() => {
-              const miss = IMP_FIELDS.filter(f => f.req && map[f.k] === undefined);
+              const miss = FIELDS.filter(f => f.req && map[f.k] === undefined);
               if (miss.length) { toast(`Still need: ${miss.map(m => m.label).join(", ")}`, "amber"); return; }
               setStep(3);
             }}>Check the rows</GoldButton>
@@ -12837,7 +12921,7 @@ export default function App() {
       setLedger(l => {
         let out = [...l];
         made.forEach(m => {
-          const e = { id: "LG-" + (2600 + out.length), at: nowStamp(), who: "Simran Kaur", kind: "join", subject: m.id, detail: `${m.name} imported as ${m.designation}.` };
+          const e = { id: "LG-" + (2600 + out.length), at: nowStamp(), who: desk(userKey).role || "HR", kind: "join", subject: m.id, detail: `${m.name} imported as ${m.designation}.` };
           const prev = out.length ? out[0].seal : "GENESIS";
           out = [{ ...e, prev, seal: fingerprint(ledgerPayload(e), prev) }, ...out];
         });
@@ -12845,6 +12929,29 @@ export default function App() {
       });
       setHrLog(l => [{ when: "just now", text: `Bulk import \u2014 ${made.length} people added` }, ...l]);
       return made;
+    },
+    /* Fill in blanks on people already here. A blank cell leaves that field
+       alone — see the note on UPD_FIELDS for why that matters. */
+    bulkUpdatePeople: (recs) => {
+      const touched = [];
+      recs.forEach(r => {
+        const p = people.find(x => x.id === r.id);
+        if (!p) return;
+        const patch = {};
+        if (r.gender) patch.gender = String(r.gender).toLowerCase().startsWith("f") ? "female"
+          : String(r.gender).toLowerCase().startsWith("m") ? "male"
+          : String(r.gender).toLowerCase().startsWith("o") ? "other" : "undisclosed";
+        if (r.dob) patch.dob = normDate(r.dob);
+        if (r.reportsTo) patch.reportsTo = r.reportsTo;
+        if (Object.keys(patch).length) setPeople(x => x.map(y => y.id === r.id ? { ...y, ...patch } : y));
+        if (r.phone || r.email) setContacts(c => ({ ...c, [r.id]: { ...(c[r.id] || { vPhone: false, vEmail: false }),
+          ...(r.phone ? { phone: r.phone } : {}), ...(r.email ? { email: r.email } : {}) } }));
+        if (r.basic || r.hra || r.special) setSalaries(s2 => ({ ...s2, [r.id]: { pf: 1800, pt: 200, note: "imported", ...(s2[r.id] || {}),
+          ...(r.basic ? { basic: +r.basic || 0 } : {}), ...(r.hra ? { hra: +r.hra || 0 } : {}), ...(r.special ? { special: +r.special || 0 } : {}) } }));
+        touched.push({ id: r.id, name: p.name });
+      });
+      setHrLog(l => [{ when: "just now", text: `Filled in ${touched.length} record${touched.length === 1 ? "" : "s"} from a sheet` }, ...l]);
+      return touched;
     },
     openExit: (p) => {
       const id = "EX-" + (700 + exits.length);

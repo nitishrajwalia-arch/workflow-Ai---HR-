@@ -835,6 +835,24 @@ export function ProcurementProvider({ children, toast }: Props) {
         await load();
         return r.accepted;
       },
+      /**
+       * Fill in blanks on people already on the roster. The server matches on
+       * the employee ID and leaves any field whose cell was blank alone, so a
+       * sheet collected one column at a time never undoes an earlier one.
+       */
+      bulkUpdatePeople: async (recs: any[]) => {
+        const r = await server(() =>
+          api.post<any>('/imports/people/update', { rows: recs, commit: true }),
+        );
+        if (!r) return [];
+        if (r.rejected?.length)
+          toast(
+            `${r.accepted.length} updated. ${r.rejected.length} held back — see the list.`,
+            'amber',
+          );
+        await load();
+        return r.accepted;
+      },
       openExit: async (p: any) => {
         const r = await server(
           () => api.post<any>('/exits', { pid: p.id, reason: 'Resigned' }),

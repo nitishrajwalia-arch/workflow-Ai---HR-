@@ -14,8 +14,8 @@
  * refused one: nobody can tell which half.
  */
 
-import { emailCheck, imeiCheck, normDate, phoneCheck, schemas } from '@marbella/shared';
-import type { ImportRow } from '@marbella/shared';
+import { emailCheck, imeiCheck, normDate, phoneCheck, readGender, schemas } from '@marbella/shared';
+import type { ImportRow, ImportUpdateRow } from '@marbella/shared';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import { bothForms } from '../lib/dates.js';
@@ -78,27 +78,6 @@ export const importsRoutes: FastifyPluginAsyncZod = async (app) => {
           offices.find((o) => o.name.toLowerCase().includes(needle));
         return hit?.id ?? null;
       };
-
-      /**
-       * What somebody wrote in a Gender column, turned into one of our four
-       * values. Anything we do not recognise comes back null — "not asked yet"
-       * — rather than being forced into the nearest bucket, because a wrong
-       * guess here is indistinguishable from a real answer once it is stored.
-       */
-      function readGender(
-        raw: string | undefined,
-      ): 'female' | 'male' | 'other' | 'undisclosed' | null {
-        const v = (raw ?? '').trim().toLowerCase();
-        if (!v) return null;
-        if (['f', 'female', 'woman', 'women', 'महिला'].includes(v)) return 'female';
-        if (['m', 'male', 'man', 'men', 'पुरुष'].includes(v)) return 'male';
-        if (['o', 'other', 'others', 'nb', 'non-binary', 'transgender'].includes(v)) return 'other';
-        if (
-          ['prefer not to say', 'undisclosed', 'not disclosed', 'declined', 'na', 'n/a'].includes(v)
-        )
-          return 'undisclosed';
-        return null;
-      }
 
       function prepare(r: ImportRow, officeId: string, id: string) {
         const joined = bothForms(r.joined);
@@ -289,6 +268,285 @@ export const importsRoutes: FastifyPluginAsyncZod = async (app) => {
     },
   );
 
+  /**
+   * Update people who are ALREADY on the roster, from a sheet.
+   *
+   * The importer above only creates. That is right for new joiners and wrong for
+   * the job HR actually has first: a hundred-odd records already loaded from the
+   * company's own files, each missing the handful of things nobody wrote down —
+   * a personal email, a gender, who somebody reports to. Re-importing them would
+   * be refused as duplicates, and doing it by hand is a hundred-odd screens.
+   *
+   * Matched on the employee ID, which is the only required column. A BLANK CELL
+   * LEAVES THE FIELD ALONE rather than clearing it, so a sheet filled in one
+   * column at a time never wipes the columns somebody else filled in.
+   *
+   * What it will NOT change: designation, department, posting or employer. Those
+   * are promotions and transfers. They belong on their own routes, with a reason
+   * recorded, not in a spreadsheet paste.
+   */
+  app.post(
+    '/imports/people/update',
+    {
+      preHandler: app.requireRole('HR'),
+      schema: {
+        tags: ['imports'],
+        summary: 'Fill in missing fields on people already on the roster',
+        body: schemas.bulkUpdateBody,
+        response: { 200: z.any() },
+      },
+    },
+    async (req) => {
+      const me = requireUser(req);
+      const { rows, commit } = req.body;
+
+      const ids = rows.map((r) => r.id);
+      const existing = await db.person.findMany({
+        where: { id: { in: ids } },
+        select: {
+          id: true,
+          name: true,
+          joined: true,
+          dob: true,
+          gender: true,
+          reportsToId: true,
+          contact: { select: { phone: true, email: true } },
+          salary: { select: { basic: true, hra: true, special: true } },
+        },
+      });
+      const known = new Map(existing.map((p) => [p.id, p]));
+
+      const rejected: Rejection[] = [];
+      const staged: Array<{ row: number; id: string; name: string; source: ImportUpdateRow }> = [];
+      const seen = new Set<string>();
+
+      rows.forEach((r, i) => {
+        const rowNo = i + 1;
+        const who = known.get(r.id);
+        const label = who?.name ?? r.id;
+        const reject = (field: string, reason: string) =>
+          rejected.push({ row: rowNo, name: label, reason, field });
+
+        if (!who) {
+          return reject('id', `Nobody on the roster has the ID ${r.id}.`);
+        }
+        if (seen.has(r.id)) {
+          return reject('id', `${r.id} appears more than once in this sheet.`);
+        }
+        seen.add(r.id);
+
+        if (r.dob?.trim()) {
+          const d = normDate(r.dob);
+          if (!/^\d{2} [A-Z][a-z]{2} \d{4}$/.test(d)) {
+            return reject('dob', `"${r.dob}" is not a date I can read. Try 15/08/1995.`);
+          }
+        }
+        if (r.gender?.trim() && !readGender(r.gender)) {
+          return reject(
+            'gender',
+            `"${r.gender}" is not something I can place. Use Female, Male, Other, or Prefers not to say.`,
+          );
+        }
+        if (r.reportsTo?.trim()) {
+          if (r.reportsTo.trim() === r.id) {
+            return reject('reportsTo', 'Somebody cannot report to themselves.');
+          }
+          if (!known.has(r.reportsTo.trim())) {
+            // The manager may be outside this sheet, so check the roster too.
+            // Resolved below; flagged here only if it is not an employee ID.
+            if (!/^MB-[A-Z]{2,3}-\d{4}$/.test(r.reportsTo.trim())) {
+              return reject('reportsTo', `"${r.reportsTo}" is not an employee ID.`);
+            }
+          }
+        }
+        if (r.phone?.trim()) {
+          const p = phoneCheck(r.phone);
+          if (p.level === 'error') return reject('phone', p.msg ?? 'Bad mobile number.');
+        }
+        if (r.email?.trim()) {
+          const e = emailCheck(r.email, { mustBePersonal: true });
+          if (e.level === 'error') return reject('email', e.msg ?? 'Bad email.');
+        }
+        if (r.imei?.trim()) {
+          const m = imeiCheck(r.imei);
+          if (m.level === 'error') return reject('imei', m.msg ?? 'Bad IMEI.');
+        }
+
+        staged.push({ row: rowNo, id: r.id, name: who.name, source: r });
+      });
+
+      // Managers named in the sheet but not listed in it have to exist too.
+      const bosses = [
+        ...new Set(
+          staged.map((s) => s.source.reportsTo?.trim()).filter((b): b is string => Boolean(b)),
+        ),
+      ].filter((b) => !known.has(b));
+      if (bosses.length) {
+        const found = new Set(
+          (await db.person.findMany({ where: { id: { in: bosses } }, select: { id: true } })).map(
+            (p) => p.id,
+          ),
+        );
+        for (let i = staged.length - 1; i >= 0; i -= 1) {
+          const boss = staged[i]!.source.reportsTo?.trim();
+          if (boss && !known.has(boss) && !found.has(boss)) {
+            rejected.push({
+              row: staged[i]!.row,
+              name: staged[i]!.name,
+              reason: `Nobody on the roster has the ID ${boss}, so they cannot be the manager.`,
+              field: 'reportsTo',
+            });
+            staged.splice(i, 1);
+          }
+        }
+      }
+
+      /**
+       * Which fields this row actually CHANGES.
+       *
+       * A cell repeating what is already on file is not a change, and saying so
+       * matters: the collection sheet is pre-filled with what we hold, and HR
+       * uploads it more than once as they gather more. Counting a repeat as a
+       * change would seal a ledger entry on every re-upload, and a ledger full
+       * of entries that record nothing is a ledger nobody reads.
+       */
+      const touched = (r: ImportUpdateRow) => {
+        const was = known.get(r.id);
+        const given = (v: unknown) => (v == null ? '' : String(v).trim());
+        const unchanged: Partial<Record<string, () => boolean>> = {
+          dob: () => normDate(given(r.dob)) === (was?.dob ?? ''),
+          gender: () => readGender(given(r.gender)) === (was?.gender ?? null),
+          reportsTo: () => given(r.reportsTo) === (was?.reportsToId ?? ''),
+          phone: () => given(r.phone) === (was?.contact?.phone ?? ''),
+          email: () => given(r.email) === (was?.contact?.email ?? ''),
+          basic: () => Number(given(r.basic)) === (was?.salary?.basic ?? 0),
+          hra: () => Number(given(r.hra)) === (was?.salary?.hra ?? 0),
+          special: () => Number(given(r.special)) === (was?.salary?.special ?? 0),
+        };
+        return (
+          [
+            'dob',
+            'gender',
+            'reportsTo',
+            'phone',
+            'email',
+            'imei',
+            'sim',
+            'basic',
+            'hra',
+            'special',
+          ] as const
+        ).filter((k) => given(r[k]) !== '' && !(unchanged[k]?.() ?? false));
+      };
+
+      // A row that only repeats what we already hold is dropped here, not
+      // written — so uploading the same sheet twice is a no-op the second time.
+      const preview = staged
+        .map((s) => ({ row: s.row, id: s.id, name: s.name, fields: touched(s.source) }))
+        .filter((p) => p.fields.length > 0);
+      const changing = new Set(preview.map((p) => p.id));
+      const toWrite = staged.filter((s) => changing.has(s.id));
+      const unchangedCount = staged.length - toWrite.length;
+
+      if (!commit) {
+        return { accepted: preview, rejected, committed: false, unchanged: unchangedCount };
+      }
+
+      await db.$transaction(async (tx) => {
+        for (const s of toWrite) {
+          const r = s.source;
+          const person: Record<string, unknown> = {};
+          if (r.dob?.trim()) {
+            const d = bothForms(r.dob);
+            if (d.on) {
+              person.dob = d.display;
+              person.dobOn = d.on;
+            }
+          }
+          if (r.gender?.trim()) person.gender = readGender(r.gender);
+          if (r.reportsTo?.trim()) person.reportsToId = r.reportsTo.trim();
+          if (Object.keys(person).length) {
+            await tx.person.update({ where: { id: s.id }, data: person });
+          }
+
+          if (r.phone?.trim() || r.email?.trim()) {
+            // Upsert, and only over the columns this row actually carries, so a
+            // sheet of emails does not blank out the phone numbers on file.
+            const current = await tx.contact.findUnique({ where: { personId: s.id } });
+            const phone = r.phone?.trim() || current?.phone || '';
+            const email = r.email?.trim() || current?.email || '';
+            await tx.contact.upsert({
+              where: { personId: s.id },
+              create: { personId: s.id, phone, email },
+              update: { phone, email },
+            });
+          }
+
+          const money = [r.basic, r.hra, r.special].some(
+            (v) => v != null && String(v).trim() !== '',
+          );
+          if (money) {
+            const current = await tx.salary.findUnique({ where: { personId: s.id } });
+            const pick = (v: unknown, was: number) =>
+              v != null && String(v).trim() !== '' ? Number(v) || 0 : was;
+            const data = {
+              basic: pick(r.basic, current?.basic ?? 0),
+              hra: pick(r.hra, current?.hra ?? 0),
+              special: pick(r.special, current?.special ?? 0),
+            };
+            await tx.salary.upsert({
+              where: { personId: s.id },
+              create: { personId: s.id, ...data, pf: 1800, pt: 200, note: 'imported' },
+              update: data,
+            });
+          }
+
+          if (r.imei?.trim()) {
+            const already = await tx.device.findFirst({
+              where: { personId: s.id, imei: r.imei.trim() },
+            });
+            if (!already) {
+              await tx.device.create({
+                data: {
+                  personId: s.id,
+                  type: 'Phone',
+                  model: 'imported',
+                  imei: r.imei.trim(),
+                  sim: r.sim?.trim() || '—',
+                  issued: known.get(s.id)?.joined ?? '',
+                },
+              });
+            }
+          }
+        }
+
+        if (toWrite.length) {
+          await appendInTx(
+            tx,
+            toWrite.map((s) => ({
+              kind: 'import' as const,
+              subject: s.id,
+              detail: `${s.name} — ${touched(s.source).join(', ')} filled in from a sheet.`,
+              who: me.name,
+            })),
+          );
+        }
+
+        await tx.usageCounter.upsert({
+          where: { key: 'import:update' },
+          create: { key: 'import:update', count: 1 },
+          update: { count: { increment: 1 } },
+        });
+      });
+
+      req.log.info(
+        { updated: toWrite.length, rejected: rejected.length, unchanged: unchangedCount },
+        'bulk update committed',
+      );
+      return { accepted: preview, rejected, committed: true, unchanged: unchangedCount };
+    },
+  );
+
   app.get(
     '/imports/fields',
     {
@@ -341,6 +599,18 @@ const IMPORT_FIELDS = [
     label: 'Date of joining',
     required: true,
     aliases: ['doj', 'date of joining', 'joining date', 'joined', 'start date', 'date joined'],
+  },
+  {
+    key: 'dob',
+    label: 'Date of birth',
+    required: false,
+    aliases: ['dob', 'date of birth', 'birth date', 'birthday', 'born'],
+  },
+  {
+    key: 'gender',
+    label: 'Gender',
+    required: false,
+    aliases: ['gender', 'sex', 'm/f', 'male/female'],
   },
   {
     key: 'phone',

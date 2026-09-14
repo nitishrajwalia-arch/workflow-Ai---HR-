@@ -134,3 +134,133 @@ describe('committing', () => {
     expect(res.statusCode).toBe(401);
   });
 });
+
+describe('updating people already on the roster', () => {
+  const update = (rows: unknown[], commit = false) =>
+    app.inject({
+      method: 'POST',
+      url: '/api/v1/imports/people/update',
+      headers: auth(token),
+      payload: { rows, commit },
+    });
+
+  it('matches on the employee ID and says which fields a row will touch', async () => {
+    const res = await update([{ id: 'MB-HR-0001', gender: 'Female', email: 'her@gmail.com' }]);
+    expect(res.statusCode).toBe(200);
+    const body = res.json<{
+      accepted: Array<{ id: string; fields: string[] }>;
+      committed: boolean;
+    }>();
+    expect(body.committed).toBe(false);
+    expect(body.accepted[0]!.id).toBe('MB-HR-0001');
+    expect(body.accepted[0]!.fields).toEqual(['gender', 'email']);
+  });
+
+  it('holds back a row for somebody who is not on the roster', async () => {
+    const body = (await update([{ id: 'MB-PUR-9999', gender: 'F' }])).json<{
+      accepted: unknown[];
+      rejected: Array<{ field: string }>;
+    }>();
+    expect(body.accepted).toHaveLength(0);
+    expect(body.rejected[0]!.field).toBe('id');
+  });
+
+  it('holds back a gender it cannot place rather than guessing at it', async () => {
+    const body = (await update([{ id: 'MB-HR-0001', gender: 'probably a woman' }])).json<{
+      accepted: unknown[];
+      rejected: Array<{ field: string }>;
+    }>();
+    expect(body.accepted).toHaveLength(0);
+    expect(body.rejected[0]!.field).toBe('gender');
+  });
+
+  it('holds back the same person listed twice in one sheet', async () => {
+    const body = (
+      await update([
+        { id: 'MB-HR-0001', gender: 'F' },
+        { id: 'MB-HR-0001', gender: 'M' },
+      ])
+    ).json<{ accepted: unknown[]; rejected: Array<{ field: string }> }>();
+    expect(body.accepted).toHaveLength(1);
+    expect(body.rejected[0]!.field).toBe('id');
+  });
+
+  it('refuses a manager nobody has, so a typo cannot orphan somebody', async () => {
+    const body = (await update([{ id: 'MB-HR-0001', reportsTo: 'MB-ADM-0009' }])).json<{
+      accepted: unknown[];
+      rejected: Array<{ field: string }>;
+    }>();
+    expect(body.accepted).toHaveLength(0);
+    expect(body.rejected[0]!.field).toBe('reportsTo');
+  });
+
+  it('leaves a field alone when its cell is blank, instead of clearing it', async () => {
+    const before = await db.person.findUniqueOrThrow({ where: { id: 'MB-ADM-0002' } });
+    try {
+      await update([{ id: 'MB-ADM-0002', gender: 'Male', email: 'him@gmail.com' }], true);
+      // A second sheet carrying ONLY the gender column must not wipe the email.
+      await update([{ id: 'MB-ADM-0002', gender: 'Prefers not to say' }], true);
+
+      const after = await db.person.findUniqueOrThrow({
+        where: { id: 'MB-ADM-0002' },
+        include: { contact: true },
+      });
+      expect(after.gender).toBe('undisclosed');
+      expect(after.contact?.email).toBe('him@gmail.com');
+    } finally {
+      await db.contact.deleteMany({ where: { personId: 'MB-ADM-0002', email: 'him@gmail.com' } });
+      await db.person.update({
+        where: { id: 'MB-ADM-0002' },
+        data: { gender: before.gender },
+      });
+    }
+  });
+
+  it('seals a ledger entry naming what was filled in', async () => {
+    const before = await db.ledgerEntry.count();
+    try {
+      await update([{ id: 'MB-ADM-0002', gender: 'Other' }], true);
+      expect(await db.ledgerEntry.count()).toBe(before + 1);
+      const last = await db.ledgerEntry.findFirst({ orderBy: { seq: 'desc' } });
+      expect(last?.subject).toBe('MB-ADM-0002');
+      expect(last?.detail).toContain('gender');
+    } finally {
+      await db.person.update({ where: { id: 'MB-ADM-0002' }, data: { gender: null } });
+    }
+  });
+
+  it('treats a row that repeats what we already hold as no change at all', async () => {
+    const before = await db.person.findUniqueOrThrow({
+      where: { id: 'MB-ADM-0002' },
+      include: { contact: true },
+    });
+    try {
+      await update([{ id: 'MB-ADM-0002', gender: 'Male' }], true);
+      const entries = await db.ledgerEntry.count();
+
+      // The collection sheet comes back pre-filled, so the same value arrives
+      // again on the next upload. It must not be written, logged, or counted.
+      const again = (await update([{ id: 'MB-ADM-0002', gender: 'Male' }], true)).json<{
+        accepted: unknown[];
+        unchanged: number;
+      }>();
+      expect(again.accepted).toHaveLength(0);
+      expect(again.unchanged).toBe(1);
+      expect(await db.ledgerEntry.count()).toBe(entries);
+    } finally {
+      await db.person.update({
+        where: { id: 'MB-ADM-0002' },
+        data: { gender: before.gender },
+      });
+    }
+  });
+
+  it('is closed to anyone who is not signed in', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/imports/people/update',
+      payload: { rows: [{ id: 'MB-HR-0001', gender: 'F' }], commit: true },
+    });
+    expect(res.statusCode).toBe(401);
+  });
+});

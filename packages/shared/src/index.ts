@@ -36,6 +36,7 @@ export type {
   LogDocBody,
   SaveJdBody,
   ImportRow,
+  ImportUpdateRow,
   BulkImportBody,
   BulkImportResult,
   ErrorBody,

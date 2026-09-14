@@ -379,6 +379,44 @@ export const importRow = z.object({
   special: z.union([z.string(), z.number()]).optional(),
 });
 
+/**
+ * A row of a sheet that UPDATES somebody already on the roster.
+ *
+ * The employee ID is the only required field: it is what the row is matched on,
+ * and a row that cannot be matched is held back rather than creating a new
+ * person under a slightly different spelling of the same name.
+ *
+ * Everything else is optional, and a BLANK CELL MEANS "leave it alone" — not
+ * "clear it". Somebody filling in the gender column for forty people should not
+ * wipe the phone numbers of the other eighty-six by leaving those cells empty.
+ */
+export const importUpdateRow = z.object({
+  id: employeeId,
+  dob: z.string().trim().max(40).optional(),
+  gender: z.string().trim().max(40).optional(),
+  reportsTo: z.string().trim().max(20).optional(),
+  /**
+   * Generous on length on purpose. Real sheets carry "9876543210/9812345678"
+   * in one cell, and a tight limit here rejects the WHOLE upload at the schema
+   * boundary with no row named — the one failure mode this importer exists to
+   * avoid. Let the row through and let phoneCheck reject it by itself, with a
+   * reason attached to the person it belongs to.
+   */
+  phone: z.string().trim().max(60).optional(),
+  email: z.string().trim().max(255).optional(),
+  imei: z.string().trim().max(20).optional(),
+  sim: z.string().trim().max(40).optional(),
+  basic: z.union([z.string(), z.number()]).optional(),
+  hra: z.union([z.string(), z.number()]).optional(),
+  special: z.union([z.string(), z.number()]).optional(),
+});
+
+export const bulkUpdateBody = z.object({
+  rows: z.array(importUpdateRow).min(1).max(2000),
+  /** false = validate only and report, change nothing. */
+  commit: z.boolean().default(false),
+});
+
 export const bulkImportBody = z.object({
   rows: z.array(importRow).min(1).max(2000),
   /** false = validate only and report, change nothing. The UI previews first. */
@@ -447,6 +485,7 @@ export type LeavePolicyBody = z.infer<typeof leavePolicyBody>;
 export type LogDocBody = z.infer<typeof logDocBody>;
 export type SaveJdBody = z.infer<typeof saveJdBody>;
 export type ImportRow = z.infer<typeof importRow>;
+export type ImportUpdateRow = z.infer<typeof importUpdateRow>;
 export type BulkImportBody = z.infer<typeof bulkImportBody>;
 export type BulkImportResult = z.infer<typeof bulkImportResult>;
 export type ErrorBody = z.infer<typeof errorBody>;
