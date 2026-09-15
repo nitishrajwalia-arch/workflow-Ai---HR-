@@ -159,9 +159,22 @@ export const personCore = z.object({
 
 export const createPersonBody = personCore.partial({ id: true, status: true, perf: true });
 
-/** Everything a person record can be patched with. Identity is never patched here. */
+/**
+ * Everything a person record can be patched with. Identity is never patched
+ * here, and neither is STATUS.
+ *
+ * Status is omitted for two reasons. The first is design: leaving, and being
+ * confirmed as staff, each have their own route because each has to record who
+ * decided and on what basis — a silent field on a general-purpose edit cannot.
+ *
+ * The second is that Zod's `.partial()` does NOT strip a `.default()`. While
+ * `status` was in here carrying `.default('active')`, every PATCH that never
+ * mentioned status still parsed to `status: 'active'` — so correcting the
+ * spelling of a former employee's designation quietly brought them back onto
+ * the payroll. Dropping the field removes the trap along with the feature.
+ */
 export const updatePersonBody = personCore
-  .omit({ id: true })
+  .omit({ id: true, status: true })
   .partial()
   .refine((v) => Object.keys(v).length > 0, 'Nothing to change.');
 

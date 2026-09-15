@@ -164,8 +164,13 @@ model Office {
 
 // ------------------------------------------------------------------ people
 
+/// `pending` = has an employee ID, is not yet staff. See the note in
+/// @marbella/shared: the ID is reserved the moment somebody is first mentioned,
+/// but everything that counts staff filters on `active`, so a record nobody has
+/// confirmed cannot drift into the headcount.
 enum PersonStatus {
   active
+  pending
   exited
 }
 

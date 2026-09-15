@@ -853,6 +853,17 @@ export function ProcurementProvider({ children, toast }: Props) {
         await load();
         return r.accepted;
       },
+      /**
+       * Turn a pending record into staff. The server decides: it refuses a
+       * record that is still mostly blank and names what is missing, so the
+       * message it sends back is shown rather than replaced with our own.
+       */
+      activatePerson: async (id: string, basis: string) => {
+        const r = await server(() => api.post<any>(`/people/${id}/activate`, { basis }));
+        if (!r) return false;
+        await load();
+        return true;
+      },
       openExit: async (p: any) => {
         const r = await server(
           () => api.post<any>('/exits', { pid: p.id, reason: 'Resigned' }),

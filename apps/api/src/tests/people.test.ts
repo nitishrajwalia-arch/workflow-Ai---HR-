@@ -205,6 +205,94 @@ describe('changing who employs someone', () => {
   });
 });
 
+describe('pending people', () => {
+  const SUBJECT = 'MB-ADM-0004';
+
+  const makePending = () =>
+    db.person.update({
+      where: { id: SUBJECT },
+      data: { status: 'pending', designation: 'Not recorded', joined: '' },
+    });
+
+  const activate = (basis = 'Confirmed by their department head.') =>
+    app.inject({
+      method: 'POST',
+      url: `/api/v1/people/${SUBJECT}/activate`,
+      headers: auth(token),
+      payload: { basis },
+    });
+
+  it('refuses to make somebody staff on a name alone, and says what is missing', async () => {
+    const was = await db.person.findUniqueOrThrow({ where: { id: SUBJECT } });
+    try {
+      await makePending();
+      const res = await activate();
+      expect(res.statusCode).toBe(422);
+      const body = res.json<{ error: { message: string; details: Array<{ path: string }> } }>();
+      expect(body.error.details.map((d) => d.path).sort()).toEqual(['designation', 'joined']);
+      // Still pending — a refusal must not half-apply.
+      const after = await db.person.findUniqueOrThrow({ where: { id: SUBJECT } });
+      expect(after.status).toBe('pending');
+    } finally {
+      await db.person.update({ where: { id: SUBJECT }, data: was });
+    }
+  });
+
+  it('activates once the record is filled in, and seals why', async () => {
+    const was = await db.person.findUniqueOrThrow({ where: { id: SUBJECT } });
+    try {
+      await makePending();
+      await db.person.update({
+        where: { id: SUBJECT },
+        data: { designation: 'Rider', joined: '01 Apr 2023' },
+      });
+      const res = await activate('Confirmed by the site engineer.');
+      expect(res.statusCode).toBe(200);
+      expect(res.json<{ status: string }>().status).toBe('active');
+
+      const last = await db.ledgerEntry.findFirst({ orderBy: { seq: 'desc' } });
+      expect(last?.subject).toBe(SUBJECT);
+      expect(last?.detail).toContain('Confirmed by the site engineer.');
+    } finally {
+      await db.person.update({ where: { id: SUBJECT }, data: was });
+    }
+  });
+
+  it('will not activate somebody who is already staff', async () => {
+    const res = await activate();
+    expect(res.statusCode).toBe(409);
+  });
+
+  /**
+   * The regression that prompted the dedicated route. Zod's `.partial()` does
+   * not strip a `.default()`, so while `status` sat in the patch body carrying
+   * `.default('active')`, ANY edit that never mentioned status still parsed to
+   * `status: 'active'` — quietly putting a former employee back on the payroll.
+   */
+  it('does not change status as a side effect of an ordinary edit', async () => {
+    const was = await db.person.findUniqueOrThrow({ where: { id: SUBJECT } });
+    try {
+      await db.person.update({
+        where: { id: SUBJECT },
+        data: { status: 'exited', exitedOn: '01 Sep 2026' },
+      });
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/api/v1/people/${SUBJECT}`,
+        headers: auth(token),
+        payload: { designation: 'Senior Rider' },
+      });
+      expect(res.statusCode).toBe(200);
+      expect(res.json<{ status: string; designation: string }>()).toMatchObject({
+        designation: 'Senior Rider',
+        status: 'exited',
+      });
+    } finally {
+      await db.person.update({ where: { id: SUBJECT }, data: was });
+    }
+  });
+});
+
 describe('the org endpoint', () => {
   it('walks the manager chain up to the department head', async () => {
     const res = await app.inject({

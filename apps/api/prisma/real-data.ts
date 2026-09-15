@@ -14240,3 +14240,48 @@ export const REAL_UNITS = [
     id: 'H-2204',
   },
 ];
+
+/**
+ * People the company's own files mention, who are NOT on the master employee
+ * list — so nobody can say for certain whether they still work here.
+ *
+ * They get an employee ID immediately, because the ID has to be reserved the
+ * moment somebody is first mentioned or it risks being handed to a second
+ * person later. The record stays `pending` until HR confirms them: everything
+ * that counts staff filters on `active`, so neither of these two shows up in a
+ * headcount, an org chart, attendance or payroll until somebody says so.
+ *
+ * `evidence` is where each was found. It is the whole reason the record exists,
+ * so it is stored rather than left in a covering note somebody will lose.
+ */
+export const REAL_PENDING = [
+  {
+    id: 'MB-PRJ-0062',
+    name: 'Prem Ranjan',
+    designation: '',
+    dept: 'Project',
+    type: 'Site',
+    joined: '',
+    dob: '',
+    office: 'grand',
+    employer: 'srg',
+    evidence:
+      'Employee KYC Details sheet only, with Aadhaar, PAN and a current address on file. ' +
+      'Absent from the master Employee Details list.',
+  },
+  {
+    id: 'MB-PRJ-0063',
+    name: 'Ravinder Singh',
+    designation: '',
+    dept: 'Project',
+    type: 'Site',
+    joined: '',
+    dob: '',
+    office: 'grand',
+    employer: 'srg',
+    evidence:
+      'Department Wise Timings, Companies Wise Employee Salary, Department Wise List and the ' +
+      'Asset List — which records a device issued to him. Absent from the master Employee ' +
+      'Details list.',
+  },
+] as const;

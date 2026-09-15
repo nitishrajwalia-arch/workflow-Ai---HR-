@@ -11,11 +11,11 @@
  * into the ledger. Changing their office is an ordinary edit.
  */
 
-import { schemas } from '@marbella/shared';
+import { ACTIVATION_REQUIRES, schemas } from '@marbella/shared';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import { bothForms, nowStamp } from '../lib/dates.js';
-import { badRequest, notFound } from '../lib/errors.js';
+import { badRequest, conflict, notFound, unprocessable } from '../lib/errors.js';
 import { nextEmployeeId } from '../lib/ids.js';
 import { requireUser } from '../plugins/auth.js';
 import { appendInTx } from '../services/ledger.js';
@@ -198,7 +198,6 @@ export const peopleRoutes: FastifyPluginAsyncZod = async (app) => {
             ...(joined ? { joined: joined.display, joinedOn: joined.on } : {}),
             ...(dob ? { dob: dob.display, dobOn: dob.on } : {}),
             ...(b.gender !== undefined ? { gender: b.gender } : {}),
-            ...(b.status !== undefined ? { status: b.status } : {}),
             ...(b.exitedOn !== undefined ? { exitedOn: b.exitedOn } : {}),
             ...(b.perf !== undefined ? { perf: b.perf } : {}),
             ...(b.growth !== undefined ? { growth: b.growth } : {}),
@@ -231,9 +230,6 @@ export const peopleRoutes: FastifyPluginAsyncZod = async (app) => {
           b.office && b.office !== existing.officeId
             ? `posting ${existing.officeId} to ${b.office}`
             : null,
-          b.status && b.status !== existing.status
-            ? `status ${existing.status} to ${b.status}`
-            : null,
         ].filter(Boolean);
 
         if (notable.length) {
@@ -247,6 +243,97 @@ export const peopleRoutes: FastifyPluginAsyncZod = async (app) => {
         return person;
       });
 
+      return serialisePerson(updated);
+    },
+  );
+
+  /**
+   * Turn a pending record into a member of staff.
+   *
+   * A pending record is somebody the company's files mention who was never on
+   * the master employee list — they hold an employee ID, reserved so it can
+   * never be handed to anybody else, but they are in no headcount, no org
+   * chart, no payroll run.
+   *
+   * Activating is the moment somebody takes responsibility for saying "yes,
+   * this person works here". So it refuses a record that is still mostly
+   * blank, and it names exactly what is missing rather than saying no: the
+   * point is to stop a name becoming an employee by accident, not to make HR
+   * guess what the form wants.
+   */
+  app.post(
+    '/people/:id/activate',
+    {
+      preHandler: app.requireRole('HR'),
+      schema: {
+        tags: ['people'],
+        summary: 'Confirm a pending person as staff',
+        params: z.object({ id: schemas.employeeId }),
+        body: z.object({
+          /** Who confirmed it, and on what basis. Goes into the ledger verbatim. */
+          basis: z.string().trim().min(4).max(500),
+        }),
+        response: {
+          200: z.any(),
+          404: schemas.errorBody,
+          409: schemas.errorBody,
+          // The 422 names each missing field in `details`, so HR is told what to
+          // go and fill in rather than just being refused.
+          422: schemas.errorBody,
+        },
+      },
+    },
+    async (req) => {
+      const me = requireUser(req);
+      const { id } = req.params;
+
+      const person = await db.person.findUnique({ where: { id }, include: personInclude });
+      if (!person) throw notFound(`Employee ${id}`);
+      if (person.status !== 'pending') {
+        throw conflict(
+          `${person.name} is already ${person.status}. Only a pending record can be activated.`,
+        );
+      }
+
+      // "Not recorded" is what the seed writes into a designation nobody knows,
+      // so it counts as blank here — otherwise it would sail through the check
+      // it exists to fail.
+      const blank = (v: unknown) =>
+        v == null || String(v).trim() === '' || String(v).trim() === 'Not recorded';
+      const missing = ACTIVATION_REQUIRES.filter((f) =>
+        blank(
+          f === 'office'
+            ? person.officeId
+            : f === 'employer'
+              ? person.employerId
+              : (person as Record<string, unknown>)[f],
+        ),
+      );
+      if (missing.length) {
+        throw unprocessable(
+          `${person.name} cannot be made staff yet — ${missing.join(', ')} still ${
+            missing.length === 1 ? 'needs' : 'need'
+          } filling in on their record.`,
+          missing.map((f) => ({ path: f, message: 'Required before activating.' })),
+        );
+      }
+
+      const updated = await db.$transaction(async (tx) => {
+        const row = await tx.person.update({
+          where: { id },
+          data: { status: 'active' },
+          include: personInclude,
+        });
+        await appendInTx(tx, {
+          kind: 'join',
+          subject: id,
+          detail: `${person.name} confirmed as staff. ${req.body.basis}`,
+          who: me.name,
+        });
+        return row;
+      });
+
+      req.log.info({ id, by: me.name }, 'pending person activated');
       return serialisePerson(updated);
     },
   );

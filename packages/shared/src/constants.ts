@@ -29,8 +29,31 @@ export const DEPARTMENTS = Object.keys(DEPT_CODES) as Department[];
 export const EMPLOYEE_TYPES = ['Staff', 'Site', 'Security', 'Labour'] as const;
 export type EmployeeType = (typeof EMPLOYEE_TYPES)[number];
 
-export const PERSON_STATUSES = ['active', 'exited'] as const;
+/**
+ * Where a person stands with the company.
+ *
+ * `pending` is a record that HAS AN EMPLOYEE ID but is not yet a member of
+ * staff. It exists for the case the company's own files threw up: somebody who
+ * appears on the timings sheet and has a laptop issued to them, but is not on
+ * the master employee list, so nobody can say for certain whether they still
+ * work here.
+ *
+ * Giving them an ID immediately and holding the record pending is deliberate.
+ * The ID is the thing that must never be reused or renumbered, so it is
+ * reserved the moment the person is first mentioned. Everything that counts
+ * staff — headcount, the org chart, attendance, payroll, letters — filters on
+ * `active`, so a pending record cannot quietly become a person nobody hired.
+ */
+export const PERSON_STATUSES = ['active', 'pending', 'exited'] as const;
 export type PersonStatus = (typeof PERSON_STATUSES)[number];
+
+/**
+ * What a pending record needs before it can be activated.
+ *
+ * Deliberately short. The point is to stop somebody being made a live employee
+ * on nothing but a name — not to demand a complete file before HR can act.
+ */
+export const ACTIVATION_REQUIRES = ['designation', 'dept', 'joined', 'office', 'employer'] as const;
 
 /**
  * Gender, as the person themselves states it.

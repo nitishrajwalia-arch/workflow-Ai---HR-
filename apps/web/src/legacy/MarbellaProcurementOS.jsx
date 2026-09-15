@@ -7223,7 +7223,12 @@ function IdCardDigital({ p, compact }) {
         <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 12 }}>
           <img src={CREST} alt="" style={{ height: 30 }} />
           <div><div style={{ font: `600 10px ${sans}`, letterSpacing: "0.2em" }}>MARBELLA GROUP</div><div style={{ font: `600 8px ${sans}`, letterSpacing: "0.28em", color: C.gold, marginTop: 2 }}>EMBRACE THE LUXE!</div></div>
-          <span style={{ marginLeft: "auto" }}><Pill tone={active ? "green" : "red"}>{active ? "ACTIVE" : "NOT WITH MARBELLA"}</Pill></span>
+          {/* A pending record is not a leaver. Printing "NOT WITH MARBELLA" on
+              somebody nobody has confirmed either way says something we do not
+              know, and on a card that gets shown at a gate. */}
+          <span style={{ marginLeft: "auto" }}><Pill tone={active ? "green" : p.status === "pending" ? "amber" : "red"}>
+            {active ? "ACTIVE" : p.status === "pending" ? "NOT YET CONFIRMED" : "NOT WITH MARBELLA"}
+          </Pill></span>
         </div>
         <div style={{ display: "flex", gap: 14, alignItems: "center" }}>
           <div style={{ width: 52, height: 52, borderRadius: 12, background: C.gold, display: "grid", placeItems: "center", color: C.inkDeep, font: `700 22px ${serif}`, flexShrink: 0 }}>{p.name[0]}</div>
@@ -7803,7 +7808,7 @@ function FullProfile({ p, onClose }) {
               <Row k="Joined on" v={p.joined} />
               <Row k="With us" v={s.years >= 1 ? `${s.years} year${s.years > 1 ? "s" : ""}` : "Under a year"} />
               <Row k="Department" v={`${p.dept} · ${p.type}`} />
-              <Row k="Status" v={p.status === "active" ? "Active" : p.status} tone={p.status === "active" ? C.green : C.stone} />
+              <Row k="Status" v={p.status === "active" ? "Active" : p.status === "pending" ? "Pending — not yet staff" : "Exited"} tone={p.status === "active" ? C.green : p.status === "pending" ? C.amber : C.stone} />
               <Row k="Identity verified" v={s.verified ? "Verified — OTP on mobile & email" : "Pending verification"} tone={s.verified ? C.green : C.amber} />
               <Row k="PAN" v={s.pan || "on file"} />
               <Row k="Aadhaar" v={s.aadhaar ? "on file" : "on file"} />
@@ -7937,8 +7942,118 @@ function OnRecordCard({ p }) {
   );
 }
 
+/* ============================== PENDING RECORDS ==============================
+   Somebody the company's files mention who was never on the master employee
+   list. They hold an employee ID — reserved the moment they were first named,
+   so it can never be handed to anyone else — but they are in no headcount, no
+   org chart, no payroll run until a person says "yes, they work here".
+
+   The banner exists because a record nobody can see is a record nobody
+   resolves. It sits above the roster until the last one is dealt with, and then
+   it disappears on its own.                                                  */
+function PendingBanner({ onOpen }) {
+  const { people = [] } = useProc();
+  const pending = people.filter((p) => p.status === "pending");
+  if (!pending.length) return null;
+  return (
+    <Card pad={16} style={{ marginBottom: 14, borderColor: C.amber, background: C.amberSoft }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+        <TriangleAlert size={15} color={C.amber} />
+        <Eyebrow color="#6E4E12">
+          {pending.length} record{pending.length > 1 ? "s" : ""} waiting to be confirmed
+        </Eyebrow>
+      </div>
+      <div style={{ font: `12px ${sans}`, color: "#6E4E12", lineHeight: 1.6, marginBottom: 10 }}>
+        These people appear in the company's own files but were never on the master employee list,
+        so nobody can say for certain whether they still work here. Each holds an employee ID and is
+        counted in nothing. Open the record, fill in what is missing, and confirm them — or leave
+        them exactly as they are until somebody knows.
+      </div>
+      {pending.map((p, i) => (
+        <button key={p.id} onClick={() => onOpen(p)}
+          style={{ cursor: "pointer", width: "100%", textAlign: "left", border: "none", background: "transparent",
+            borderTop: i ? `1px solid ${C.amber}33` : "none", padding: "9px 0", display: "flex", alignItems: "center", gap: 10 }}>
+          <span style={{ flex: 1, minWidth: 0 }}>
+            <span style={{ display: "block", font: `600 13px ${sans}`, color: C.ink }}>{p.name}</span>
+            <span style={{ display: "block", font: `11px ${sans}`, color: "#6E4E12", marginTop: 2 }}>
+              {p.dept} · <span style={{ fontFamily: mono }}>{p.id}</span>
+            </span>
+          </span>
+          <ChevronRight size={16} color={C.amber} />
+        </button>
+      ))}
+    </Card>
+  );
+}
+
+/* What a record still needs before anyone can be made staff. Mirrors the list
+   the server enforces — the server is the authority; this is so HR is told
+   before they press the button rather than after. */
+const ACTIVATION_NEEDS = [
+  ["designation", "Designation"],
+  ["dept", "Department"],
+  ["joined", "Date of joining"],
+  ["office", "Where they are posted"],
+  ["employer", "Who employs them"],
+];
+
+function ConfirmStaff({ p, onClose }) {
+  const mob = useIsMobile();
+  const { activatePerson } = useProc();
+  const [basis, setBasis] = useState("");
+  const blank = (v) => !v || !String(v).trim() || String(v).trim() === "Not recorded";
+  const missing = ACTIVATION_NEEDS.filter(([k]) => blank(p[k]));
+  return (
+    <Overlay onClose={onClose} width={520}>
+      <div style={{ padding: mob ? 16 : 22 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+          <ShieldCheck size={18} color={C.gold} /><Eyebrow>Confirm as staff</Eyebrow>
+          <button onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
+        </div>
+        <h2 style={{ font: `400 21px ${serif}`, margin: "4px 0 6px" }}>{p.name}</h2>
+        <div style={{ font: `12px ${mono}`, color: C.stone, marginBottom: 14 }}>{p.id} · {p.dept}</div>
+
+        {p.growth && (
+          <div style={{ background: C.paper, borderRadius: 10, padding: "11px 13px", font: `12px ${sans}`, color: C.inkSoft, lineHeight: 1.6, marginBottom: 14 }}>
+            <b style={{ color: C.ink }}>Where this record came from</b><br />{p.growth}
+          </div>
+        )}
+
+        {missing.length > 0 ? (
+          <div style={{ background: C.amberSoft, border: `1px solid ${C.amber}`, borderRadius: 10, padding: "12px 14px", font: `13px ${sans}`, color: "#6E4E12", lineHeight: 1.6 }}>
+            <b>Not yet.</b> {missing.length === 1 ? "One thing is" : `${missing.length} things are`} still
+            missing from this record: {missing.map(([, l]) => l.toLowerCase()).join(", ")}. Fill those in
+            first — making somebody staff on a half-empty record is how a name ends up on a payroll.
+          </div>
+        ) : (
+          <>
+            <label style={lbl}>On what basis?</label>
+            <div style={{ font: `11px ${sans}`, color: C.stone, marginTop: 3 }}>
+              Who told you, and how they knew. This is sealed into the ledger word for word.
+            </div>
+            <textarea value={basis} onChange={e => setBasis(e.target.value)} rows={3}
+              placeholder="e.g. Confirmed by the site engineer — he is on the Grand site daily and the laptop issued to him is still with him."
+              style={{ ...inp, margin: "7px 0 4px", resize: "vertical" }} />
+            <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
+              <GoldButton onClick={async () => {
+                if (basis.trim().length < 4) return toast("Say who confirmed it", "amber");
+                const ok = await activatePerson(p.id, basis.trim());
+                if (ok) { toast(`${p.name} is now on the roster`, "green"); onClose(); }
+              }}>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Check size={14} /> Confirm as staff</span>
+              </GoldButton>
+              <button onClick={onClose} style={softBtn}>Not yet</button>
+            </div>
+          </>
+        )}
+      </div>
+    </Overlay>
+  );
+}
+
 function PersonProfile({ p, onClose }) {
   const [full, setFull] = useState(false);
+  const [confirming, setConfirming] = useState(false);
   const mob = useIsMobile(); const { updatePerson, addNote, addHrTask, activeFirm } = useProc();
   const [growth, setGrowth] = useState(p.growth || "");
   const [note, setNote] = useState(""); const [task, setTask] = useState("");
@@ -7953,9 +8068,27 @@ function PersonProfile({ p, onClose }) {
             <div style={{ font: `400 20px ${serif}`, lineHeight: 1.1 }}>{p.name}</div>
             <div style={{ font: `12px ${sans}`, color: C.stone }}>{p.designation} · {p.dept} · <span style={{ fontFamily: mono }}>{p.id}</span></div>
           </div>
-          <Pill tone={active ? "green" : "red"}>{active ? "Active" : `Exited ${p.exitedOn || ""}`}</Pill>
+          {p.status === "pending"
+            ? <Pill tone="amber">Pending — not yet staff</Pill>
+            : <Pill tone={active ? "green" : "red"}>{active ? "Active" : `Exited ${p.exitedOn || ""}`}</Pill>}
           <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
         </div>
+
+        {p.status === "pending" && (
+          <Card pad={14} style={{ marginBottom: 14, borderColor: C.amber, background: C.amberSoft }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 9, flexWrap: "wrap" }}>
+              <TriangleAlert size={15} color={C.amber} />
+              <span style={{ flex: 1, minWidth: 180, font: `12px ${sans}`, color: "#6E4E12", lineHeight: 1.55 }}>
+                This record holds an employee ID but counts in nothing — no headcount, no org chart,
+                no payroll — until somebody confirms {p.name.split(" ")[0]} works here.
+              </span>
+              <GoldButton small onClick={() => setConfirming(true)}>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><ShieldCheck size={13} /> Confirm as staff</span>
+              </GoldButton>
+            </div>
+          </Card>
+        )}
+        {confirming && <ConfirmStaff p={p} onClose={() => setConfirming(false)} />}
 
         {letters ? <LettersView presetPerson={p} /> : (
           <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr" : "1fr 1fr", gap: 16 }}>
@@ -8050,15 +8183,17 @@ function PeopleRosterView() {
           <Search size={15} color={C.stone} /><input value={q} onChange={e => setQ(e.target.value)} placeholder="Search name, ID or role…" style={{ border: "none", outline: "none", font: `13px ${sans}`, width: "100%", color: C.ink }} />
         </div>
         <select value={type} onChange={e => setType(e.target.value)} style={{ ...sel, margin: 0, width: "auto" }}><option>All</option>{P_TYPES.map(t => <option key={t}>{t}</option>)}</select>
-        <select value={status} onChange={e => setStatus(e.target.value)} style={{ ...sel, margin: 0, width: "auto" }}><option value="active">Active</option><option value="exited">Exited</option><option value="All">All</option></select>
+        <select value={status} onChange={e => setStatus(e.target.value)} style={{ ...sel, margin: 0, width: "auto" }}><option value="active">Active</option><option value="pending">Pending</option><option value="exited">Exited</option><option value="All">All</option></select>
       </div>
+      <PendingBanner onOpen={setSel} />
       <Card pad={0}>
         {rows.map((p, i) => (
           <button key={p.id} onClick={() => setSel(p)} style={{ cursor: "pointer", width: "100%", textAlign: "left", border: "none", background: "#fff", borderTop: i ? `1px solid ${C.lineSoft}` : "none", padding: "12px 16px", display: "flex", alignItems: "center", gap: 12 }} onMouseEnter={e => e.currentTarget.style.background = C.paper} onMouseLeave={e => e.currentTarget.style.background = "#fff"}>
             <div style={{ width: 34, height: 34, borderRadius: 9, background: p.status === "active" ? C.ink : C.stone, color: "#fff", display: "grid", placeItems: "center", font: `700 14px ${serif}`, flexShrink: 0 }}>{p.name[0]}</div>
             <div style={{ flex: 1, minWidth: 0 }}><div style={{ font: `600 13px ${sans}`, color: C.ink }}>{p.name}</div><div style={{ font: `12px ${sans}`, color: C.stone, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.designation} · <span style={{ fontFamily: mono }}>{p.id}</span></div></div>
             <Pill tone={typeTone(p.type)}>{p.type}</Pill>
-            {p.status !== "active" && <Pill tone="red">Exited</Pill>}
+            {p.status === "pending" && <Pill tone="amber">Pending</Pill>}
+            {p.status === "exited" && <Pill tone="red">Exited</Pill>}
             <ChevronRight size={16} color={C.stone} />
           </button>
         ))}

@@ -14,7 +14,13 @@ import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '@prisma/client';
 import { DEPT_CODES } from '@marbella/shared';
 import { hashPassword } from '../src/lib/password.js';
-import { REAL_COMPANIES, REAL_PEOPLE, REAL_PROJECTS, REAL_UNITS } from './real-data.js';
+import {
+  REAL_COMPANIES,
+  REAL_PENDING,
+  REAL_PEOPLE,
+  REAL_PROJECTS,
+  REAL_UNITS,
+} from './real-data.js';
 import { LEAVE_POLICY, DEPT_HOURS } from './real-policy.js';
 
 // Same as the server: load .env from apps/api if it is there. Node 22 has this
@@ -127,6 +133,30 @@ async function main() {
   }
   const noManager = REAL_PEOPLE.length - placed;
   console.log(`  people      ${REAL_PEOPLE.length}  (${noManager} with no manager recorded)`);
+
+  // Mentioned in the company's files but not on the master list. They get an ID
+  // now and stay out of every count until somebody confirms them — see the note
+  // on REAL_PENDING.
+  for (const p of REAL_PENDING) {
+    const data = {
+      name: p.name,
+      designation: p.designation || 'Not recorded',
+      dept: p.dept,
+      type: p.type,
+      joined: p.joined || '',
+      dob: p.dob || null,
+      status: 'pending' as const,
+      growth: p.evidence,
+      officeId: p.office,
+      employerId: p.employer,
+    };
+    await prisma.person.upsert({
+      where: { id: p.id },
+      create: { id: p.id, ...data },
+      update: data,
+    });
+  }
+  console.log(`  pending     ${REAL_PENDING.length}  (an ID reserved, not counted as staff)`);
 
   /* --------------------------------------------- contact, KYC and assets  */
 
