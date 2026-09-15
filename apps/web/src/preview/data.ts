@@ -2788,6 +2788,39 @@ export const PREVIEW_WORLD = {
   cardLog: [],
   ledger: [
     {
+      id: 'cmu246kbu00038f7dq6tut3tx',
+      seq: 13,
+      at: '15 Sep 2026 · 03:30',
+      who: 'Pooja Dahiya',
+      kind: 'import',
+      subject: 'MB-ACC-0003',
+      detail: 'Rajkumar — email filled in from a sheet.',
+      prev: '1F5E3BD7376CB447E9A7C610939298D599901B8E2C6EED72E616E280B5B32B1D',
+      seal: '9159AD63A3F839A43D91B66AC847045635BD3A5AD6ADBE048427758A4EF05C28',
+    },
+    {
+      id: 'cmu246kbt00028f7dtqsvr9bc',
+      seq: 12,
+      at: '15 Sep 2026 · 03:30',
+      who: 'Pooja Dahiya',
+      kind: 'import',
+      subject: 'MB-ACC-0002',
+      detail: 'Parveen Dahiya — gender filled in from a sheet.',
+      prev: '619D6B1F0059AC67AA878C2E6BB6698B416501E14644DB6A28A44D5088E7CC2B',
+      seal: '1F5E3BD7376CB447E9A7C610939298D599901B8E2C6EED72E616E280B5B32B1D',
+    },
+    {
+      id: 'cmu246kbr00018f7dyarv00xh',
+      seq: 11,
+      at: '15 Sep 2026 · 03:30',
+      who: 'Pooja Dahiya',
+      kind: 'import',
+      subject: 'MB-ACC-0001',
+      detail: 'Sonu Jangdha — gender, email filled in from a sheet.',
+      prev: '613BAD06D027DFFE4A823A9AFCDB42F4440A6A86EEE9D8D4B106DFAA1DF00DDF',
+      seal: '619D6B1F0059AC67AA878C2E6BB6698B416501E14644DB6A28A44D5088E7CC2B',
+    },
+    {
       id: 'cmu19uful0005uc7dwlxdcs0w',
       seq: 10,
       at: '14 Sep 2026 · 13:21',
@@ -3381,6 +3414,7 @@ export const PREVIEW_WORLD = {
     'MB-MNT-0019': { phone: '+91 ..... 2341', email: '' },
     'MB-MNT-0020': { phone: '+91 ..... 8004', email: '' },
     'MB-HRT-0002': { phone: '+91 ..... 4619', email: '' },
+    'MB-ACC-0001': { phone: '', email: '' },
     'MB-ACC-0003': { phone: '+91 ..... 8633', email: '' },
   },
   leavePolicy: {
@@ -3672,7 +3706,7 @@ export const PREVIEW_WORLD = {
     },
   ],
   exits: [],
-  usage: { 'import:run': 1, 'import:update': 4 },
+  usage: { 'import:run': 1, 'import:update': 6 },
   docLog: [],
   jds: {},
   offices: [
@@ -3687,7 +3721,7 @@ export const PREVIEW_WORLD = {
     { id: 'twin', name: 'Twin Tower — Site Office', short: 'Twin Tower', tint: '#224A85' },
   ],
   hrLog: [],
-  ledgerHealth: { ok: true, count: 10 },
+  ledgerHealth: { ok: true, count: 13 },
   me: {
     id: 'cmtyit78s00sojj7dvsv5ssog',
     name: 'Pooja Dahiya',
@@ -3697,7 +3731,7 @@ export const PREVIEW_WORLD = {
     title: 'HR Manager',
   },
   version: 1,
-  generatedAt: '2026-09-14T13:21:38.792Z',
+  generatedAt: '2026-09-15T03:30:51.134Z',
   firms: [
     {
       id: 'grand',

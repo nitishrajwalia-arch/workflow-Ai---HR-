@@ -10305,24 +10305,9 @@ const GENDER_WORDS = { f: 1, female: 1, woman: 1, women: 1, m: 1, male: 1, man: 
   o: 1, other: 1, others: 1, "non-binary": 1, nb: 1, transgender: 1,
   "prefer not to say": 1, "prefers not to say": 1, undisclosed: 1, "not disclosed": 1, declined: 1 };
 
-function parseSheet(text) {
-  const lines = String(text).replace(/\r/g, "").split("\n").filter(l => l.trim());
-  if (!lines.length) return { head: [], rows: [] };
-  const split = (l) => {
-    const out = []; let cur = "", q = false;
-    for (const ch of l) {
-      if (ch === '"') q = !q;
-      else if (ch === "," && !q) { out.push(cur); cur = ""; }
-      else cur += ch;
-    }
-    out.push(cur); return out.map(x => x.trim());
-  };
-  const head = split(lines[0]);
-  const rows = lines.slice(1).map(split);
-  return { head, rows };
-}
 const guessMap = (head, fields = IMP_FIELDS) => {
   const m = {};
+
   head.forEach((h, i) => {
     const s = h.toLowerCase().replace(/[^a-z ]/g, "").trim();
     const f = fields.find(f => f.aliases.some(a => s === a || s.includes(a)));
@@ -10330,6 +10315,57 @@ const guessMap = (head, fields = IMP_FIELDS) => {
   });
   return m;
 };
+
+/**
+ * Read a pasted sheet.
+ *
+ * Three things real sheets do that a naive reader gets wrong:
+ *
+ *   1. COPYING CELLS OUT OF EXCEL gives you TABS, not commas. Splitting on
+ *      commas turns the whole paste into one column, and the screen then says
+ *      "matched 0 of 1 columns" with no hint why.
+ *   2. THE HEADER IS RARELY THE FIRST LINE. Marbella's own employee file opens
+ *      with a merged title bar and a note; the column names are on line three.
+ *   3. SHEETS HAVE SECTION BANNERS — a row reading "SALES DEPARTMENT" across
+ *      the width. Those are not records and must not be reported as errors.
+ *
+ * So: sniff the delimiter, then take as the header whichever of the first few
+ * lines matches the most known column names, and drop anything above it.
+ */
+function parseSheet(text, fields = IMP_FIELDS) {
+  const lines = String(text).replace(/\r/g, "").split("\n").filter(l => l.trim());
+  if (!lines.length) return { head: [], rows: [] };
+
+  // Whichever separator appears on the most lines wins. Tab first: a sheet
+  // pasted from Excel is tab-separated, and its cells may well contain commas.
+  const sep = ["\t", ",", ";"]
+    .map(ch => ({ ch, n: lines.reduce((a, l) => a + (l.split(ch).length - 1), 0) }))
+    .sort((a, b) => b.n - a.n)[0].ch;
+
+  const split = (l) => {
+    const out = []; let cur = "", q = false;
+    for (const ch of l) {
+      if (ch === '"') q = !q;
+      else if (ch === sep && !q) { out.push(cur); cur = ""; }
+      else cur += ch;
+    }
+    out.push(cur); return out.map(x => x.trim());
+  };
+
+  const score = (cells) => Object.keys(guessMap(cells, fields)).length;
+  let best = 0, bestScore = score(split(lines[0]));
+  for (let i = 1; i < Math.min(lines.length, 12); i++) {
+    const n = score(split(lines[i]));
+    if (n > bestScore) { best = i; bestScore = n; }
+  }
+
+  const head = split(lines[best]);
+  const rows = lines.slice(best + 1)
+    .map(split)
+    // A banner row is one filled cell and the rest empty. Not a record.
+    .filter(r => r.filter(c => c !== "").length > 1);
+  return { head, rows, skipped: best };
+}
 const normDate = (s) => {
   const t = String(s).trim();
   const M = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
@@ -10354,9 +10390,10 @@ function BulkImportView() {
   const [done, setDone] = useState(null);
 
   const read = (text) => {
-    const { head, rows } = parseSheet(text);
+    const { head, rows, skipped } = parseSheet(text, FIELDS);
     if (!head.length) { toast("Nothing to read in that", "amber"); return; }
     setHead(head); setRows(rows); setMap(guessMap(head, FIELDS)); setStep(2);
+    if (skipped) toast(`Found the column names on line ${skipped + 1} — the ${skipped} line${skipped > 1 ? "s" : ""} above were skipped`, "gold");
   };
   const val = (r, k) => (map[k] === undefined ? "" : (r[map[k]] || "").trim());
 
@@ -10396,6 +10433,31 @@ function BulkImportView() {
 
   const good = checked.filter(c => !c.errs.length);
   const bad = checked.filter(c => c.errs.length);
+
+  /* In fill mode, "good" only means the row is valid. What matters is which
+     rows actually CHANGE something — the sheet comes back pre-filled with what
+     we already hold, so most rows will be repeating it. The server decides this
+     for real; this is the same sum, shown before she commits to anything. */
+  const gEq = (a, b) => {
+    const norm = (g) => {
+      const t = String(g || "").toLowerCase();
+      return !t ? "" : t.startsWith("f") ? "female" : t.startsWith("m") ? "male"
+        : t.startsWith("o") || t.startsWith("n") || t.startsWith("t") ? "other" : "undisclosed";
+    };
+    return norm(a) === norm(b || "");
+  };
+  const willChange = mode === "fill" ? good.map(c => {
+    const p = people.find(x => x.id === c.rec.id) || {};
+    const changes = [];
+    if (c.rec.gender && !gEq(c.rec.gender, p.gender)) changes.push("gender");
+    if (c.rec.dob && normDate(c.rec.dob) !== (p.dob || "")) changes.push("date of birth");
+    if (c.rec.email && c.rec.email !== (p.email || "")) changes.push("personal email");
+    if (c.rec.phone && c.rec.phone !== (p.phone || "")) changes.push("personal mobile");
+    if (c.rec.reportsTo && c.rec.reportsTo !== (p.reportsTo || "")) changes.push("reporting line");
+    if (c.rec.imei) changes.push("device IMEI");
+    ["basic", "hra", "special"].forEach(k => { if (c.rec[k]) changes.push(k === "special" ? "allowances" : k); });
+    return { ...c, who: p.name || c.rec.id, changes };
+  }).filter(c => c.changes.length) : [];
 
   /* EDIT 22 of 23: `await`. The server assigns the employee IDs, resolves the
      employer from the posting and normalises the dates, so the count shown is
@@ -10526,8 +10588,14 @@ function BulkImportView() {
       {step === 3 && (
         <>
           <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr 1fr" : "repeat(3,1fr)", gap: 12, marginBottom: 16 }}>
-            {[["Ready to import", good.length, C.green], ["Held back", bad.length, bad.length ? C.red : C.stone],
-              ["Missing personal email", checked.filter(c => c.warns.length).length, C.amber]].map(([k, v, col]) => (
+            {(mode === "add"
+              ? [["Ready to import", good.length, C.green],
+                 ["Held back", bad.length, bad.length ? C.red : C.stone],
+                 ["Missing personal email", checked.filter(c => c.warns.length).length, C.amber]]
+              : [["Records to fill in", willChange.length, C.green],
+                 ["Held back", bad.length, bad.length ? C.red : C.stone],
+                 ["Already correct", good.length - willChange.length, C.stone]]
+            ).map(([k, v, col]) => (
               <Card key={k} pad={14}>
                 <div style={{ font: `700 26px ${mono}`, color: col }}>{v}</div>
                 <div style={{ font: `11px ${sans}`, color: C.stone, marginTop: 3 }}>{k}</div>
@@ -10551,8 +10619,15 @@ function BulkImportView() {
           )}
 
           <Card pad={mob ? 14 : 18}>
-            <Eyebrow>What will be created</Eyebrow>
+            <Eyebrow>{mode === "add" ? "What will be created" : "What will change"}</Eyebrow>
+            {mode === "fill" && willChange.length === 0 && (
+              <div style={{ font: `13px ${sans}`, color: C.stone, marginTop: 10, lineHeight: 1.6 }}>
+                Every row matches what is already on file, so there is nothing to write. That is the
+                expected answer when you upload the sheet again without having added anything new.
+              </div>
+            )}
             <div style={{ overflowX: "auto", marginTop: 10 }}>
+              {mode === "add" ? (
               <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 640 }}>
                 <thead><tr>{["Name", "Designation", "Dept", "Joined", "Mobile", "Gross"].map(h =>
                   <th key={h} style={{ textAlign: "left", font: `600 10px ${sans}`, letterSpacing: ".1em", textTransform: "uppercase", color: C.stone, padding: "0 10px 8px 0", borderBottom: `1px solid ${C.line}` }}>{h}</th>)}</tr></thead>
@@ -10571,7 +10646,25 @@ function BulkImportView() {
                   ))}
                 </tbody>
               </table>
-              {good.length > 10 && <div style={{ font: `12px ${sans}`, color: C.stone, marginTop: 8 }}>…and {good.length - 10} more.</div>}
+              ) : (
+              <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 560 }}>
+                <thead><tr>{["Employee", "ID", "What gets filled in"].map(h =>
+                  <th key={h} style={{ textAlign: "left", font: `600 10px ${sans}`, letterSpacing: ".1em", textTransform: "uppercase", color: C.stone, padding: "0 10px 8px 0", borderBottom: `1px solid ${C.line}` }}>{h}</th>)}</tr></thead>
+                <tbody>
+                  {willChange.slice(0, 12).map(c => (
+                    <tr key={c.i}>
+                      <td style={{ padding: "9px 10px 9px 0", borderBottom: `1px solid ${C.lineSoft}`, font: `600 13px ${sans}`, color: C.ink }}>{c.who}</td>
+                      <td style={{ padding: "9px 10px 9px 0", borderBottom: `1px solid ${C.lineSoft}`, font: `12px ${mono}`, color: C.stone }}>{c.rec.id}</td>
+                      <td style={{ padding: "9px 0", borderBottom: `1px solid ${C.lineSoft}`, font: `12px ${sans}`, color: C.inkSoft }}>
+                        {c.changes.join(", ")}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              )}
+              {(mode === "add" ? good.length > 10 : willChange.length > 12) &&
+                <div style={{ font: `12px ${sans}`, color: C.stone, marginTop: 8 }}>…and {(mode === "add" ? good.length - 10 : willChange.length - 12)} more.</div>}
             </div>
             <div style={{ display: "flex", gap: 8, marginTop: 16, flexWrap: "wrap" }}>
               <button onClick={() => setStep(2)} style={softBtn}>Back to matching</button>
