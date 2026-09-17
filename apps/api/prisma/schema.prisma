@@ -199,6 +199,12 @@ model Person {
   dobOn       DateTime?
   /// NULL means not asked yet — distinct from `undisclosed`. See the enum.
   gender      Gender?
+  /// The number the attendance machine knows them by — its own roll, nothing to
+  /// do with our employee IDs. Stored because the machine's monthly export
+  /// carries this and its own spelling of the name, and joining a new month of
+  /// attendance on a NAME is how "Rohit" ends up credited to "Mohit". Matched
+  /// once, by hand, then every export after joins on the number.
+  biometricId String?      @unique
   status      PersonStatus @default(active)
   exitedOn    String?
   perf        Int          @default(75)

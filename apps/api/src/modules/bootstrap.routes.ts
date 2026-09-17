@@ -188,10 +188,17 @@ export const bootstrapRoutes: FastifyPluginAsyncZod = async (app) => {
 
       const att: Record<
         string,
-        Array<{ date: string; in: string | null; out: string | null }>
+        Array<{ date: string; in: string | null; out: string | null; source: string }>
       > = {};
+      // `source` travels with the row so the screen can name the export that
+      // fed it, rather than a brand somebody guessed at.
       for (const r of attRows)
-        (att[r.personId] ??= []).push({ date: r.date, in: r.inAt, out: r.outAt });
+        (att[r.personId] ??= []).push({
+          date: r.date,
+          in: r.inAt,
+          out: r.outAt,
+          source: r.source,
+        });
 
       const grants: Record<string, Record<string, Record<string, boolean>>> = {};
       for (const g of accessGrants)

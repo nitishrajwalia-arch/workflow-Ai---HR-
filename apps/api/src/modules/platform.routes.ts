@@ -234,7 +234,9 @@ export const platformRoutes: FastifyPluginAsyncZod = async (app) => {
           rows: z
             .array(
               z.object({
-                personId: z.string().trim().max(20),
+                /** Either our employee ID, or the machine's own number. */
+                personId: z.string().trim().max(20).optional(),
+                biometricId: z.string().trim().max(20).optional(),
                 date: z.string().trim().max(20),
                 in: z.string().trim().max(10).nullable().default(null),
                 out: z.string().trim().max(10).nullable().default(null),
@@ -250,8 +252,27 @@ export const platformRoutes: FastifyPluginAsyncZod = async (app) => {
       const me = requireUser(req);
       const { rows, source } = req.body;
 
-      const known = new Set((await db.person.findMany({ select: { id: true } })).map((p) => p.id));
-      const accepted = rows.filter((r) => known.has(r.personId));
+      // A biometric export names people by the machine's own number and its own
+      // spelling. Once that number is on the person, every later month joins on
+      // it — which is the whole point of storing it, because joining a new
+      // month on a NAME is how one person's attendance lands on another's.
+      const people = await db.person.findMany({ select: { id: true, biometricId: true } });
+      const byId = new Set(people.map((p) => p.id));
+      const byCode = new Map(
+        people.filter((p) => p.biometricId).map((p) => [p.biometricId as string, p.id]),
+      );
+
+      const accepted = rows
+        .map((r) => {
+          const id =
+            r.personId && byId.has(r.personId)
+              ? r.personId
+              : r.biometricId
+                ? byCode.get(r.biometricId)
+                : undefined;
+          return id ? { ...r, personId: id } : null;
+        })
+        .filter((r): r is NonNullable<typeof r> & { personId: string } => r !== null);
       const unknown = rows.length - accepted.length;
 
       // Chunked: a year of attendance for 200 people is 70,000 rows, and one

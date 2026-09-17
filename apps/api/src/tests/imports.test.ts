@@ -264,3 +264,79 @@ describe('updating people already on the roster', () => {
     expect(res.statusCode).toBe(401);
   });
 });
+
+/**
+ * Attendance arrives from a biometric machine that keeps its own numbering and
+ * its own spelling of people's names. Joining a month of attendance on the NAME
+ * is how one person's days land on another's record — the export that prompted
+ * this has a "Rohit" and a "Mohit" four rows apart.
+ */
+describe('importing attendance from a machine', () => {
+  const SUBJECT = 'MB-ADM-0005';
+  const CODE = '90001';
+
+  const send = (rows: unknown[], source = 'test machine') =>
+    app.inject({
+      method: 'POST',
+      url: '/api/v1/attendance/import',
+      headers: auth(token),
+      payload: { source, rows },
+    });
+
+  it('files a row against the machine number, without being told the employee ID', async () => {
+    await db.person.update({ where: { id: SUBJECT }, data: { biometricId: CODE } });
+    try {
+      const res = await send([
+        { biometricId: CODE, date: '01 Jun 2026', in: '09:31', out: '18:42' },
+      ]);
+      expect(res.statusCode).toBe(200);
+      expect(res.json<{ imported: number }>().imported).toBe(1);
+
+      const row = await db.attendanceDay.findFirstOrThrow({
+        where: { personId: SUBJECT, date: '01 Jun 2026' },
+      });
+      expect(row.inAt).toBe('09:31');
+      expect(row.outAt).toBe('18:42');
+    } finally {
+      await db.attendanceDay.deleteMany({ where: { personId: SUBJECT } });
+      await db.person.update({ where: { id: SUBJECT }, data: { biometricId: null } });
+    }
+  });
+
+  it('skips a machine number nobody has, rather than filing it against a guess', async () => {
+    const before = await db.attendanceDay.count();
+    const res = await send([
+      { biometricId: 'no-such-code', date: '01 Jun 2026', in: '09:00', out: '18:00' },
+    ]);
+    expect(res.json<{ imported: number; skippedUnknownPeople: number }>()).toMatchObject({
+      imported: 0,
+      skippedUnknownPeople: 1,
+    });
+    expect(await db.attendanceDay.count()).toBe(before);
+  });
+
+  it('re-importing the same export changes nothing', async () => {
+    const rows = [{ personId: SUBJECT, date: '02 Jun 2026', in: '09:30', out: '18:30' }];
+    try {
+      await send(rows);
+      const after = await db.attendanceDay.count();
+      await send(rows);
+      expect(await db.attendanceDay.count()).toBe(after);
+    } finally {
+      await db.attendanceDay.deleteMany({ where: { personId: SUBJECT } });
+    }
+  });
+
+  it('a corrected export overwrites the day it corrects', async () => {
+    try {
+      await send([{ personId: SUBJECT, date: '03 Jun 2026', in: '09:30', out: null }]);
+      await send([{ personId: SUBJECT, date: '03 Jun 2026', in: '09:30', out: '18:44' }]);
+      const row = await db.attendanceDay.findFirstOrThrow({
+        where: { personId: SUBJECT, date: '03 Jun 2026' },
+      });
+      expect(row.outAt).toBe('18:44');
+    } finally {
+      await db.attendanceDay.deleteMany({ where: { personId: SUBJECT } });
+    }
+  });
+});

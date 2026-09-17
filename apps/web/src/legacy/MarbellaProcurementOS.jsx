@@ -8449,9 +8449,22 @@ function HRCommandView({ go = () => {} }) {
    device feed would be a backend connector. */
 
 const DEFAULT_SHIFT = { in: "09:30", out: "18:30", hours: 9 };
-const ATT_PERIOD = ["28 Jul", "29 Jul", "30 Jul", "31 Jul", "01 Aug"];
-const rec = (date, i, o) => ({ date, in: i, out: o });
-const ab = (date) => ({ date, in: null, out: null });
+/* The period on screen is whatever the machines have actually given us, newest
+   last. It used to be five dates typed into this file — "28 Jul" … "01 Aug" —
+   so the header read 01 August whatever month the export covered. */
+const attDayValue = (d) => {
+  const m = String(d || "").match(/^(\d{1,2}) ([A-Za-z]{3})\s*(\d{4})?$/);
+  if (!m) return 0;
+  const mo = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
+    .indexOf(m[2][0].toUpperCase() + m[2].slice(1, 3).toLowerCase());
+  return (Number(m[3] || 0) * 10000) + ((mo + 1) * 100) + Number(m[1]);
+};
+const attPeriod = (att) => [...new Set(Object.values(att || {}).flat().map(r => r.date))]
+  .sort((a, b) => attDayValue(a) - attDayValue(b));
+/* Somebody's day on a given date. NOT the last element of their array — the
+   server returns the days in no particular order, so that was whichever row
+   happened to come back last. */
+const attOn = (days, date) => (days || []).find(r => r.date === date) || null;
 
 const ATT_SEED = {};
 
@@ -8533,7 +8546,7 @@ function normalizeRows(rows, headers, map, people) {
   }).filter(r => r.id || r.name);
 }
 
-const ATT_SOURCES = ["Hikvision", "HID", "ZKTeco", "ESSL", "Jio", "Matrix", "Other"];
+const ATT_SOURCES = ["Secureye", "Hikvision", "HID", "ZKTeco", "ESSL", "Jio", "Matrix", "Other"];
 /* What each machine's export looks like, so HR recognises the file when they see
    it. Built from our own people, two rows each — never invented employees, since
    a made-up ID pasted into the importer by mistake would create a made-up person. */
@@ -8619,8 +8632,12 @@ function AttendanceView() {
   const mob = useIsMobile(); const { people, att } = useProc();
   const [imp, setImp] = useState(false); const [sel, setSel] = useState(null);
   const tracked = people.filter(p => p.status === "active" && att[p.id] && att[p.id].length);
-  const latestDate = ATT_PERIOD[ATT_PERIOD.length - 1];
-  const rows = tracked.map(p => { const days = att[p.id]; const last = days[days.length - 1]; const s = dayStatus(last, p.shift || DEFAULT_SHIFT); const sum = attSummary(p.id, att, p.shift || DEFAULT_SHIFT); return { p, last, s, sum }; });
+  const period = attPeriod(att);
+  /* What actually fed this, not a brand from the picker's default. The server
+     stamps each row with the export it came from. */
+  const sources = [...new Set(Object.values(att || {}).flat().map(r => r.source).filter(Boolean))];
+  const latestDate = period[period.length - 1] || "\u2014";
+  const rows = tracked.map(p => { const last = attOn(att[p.id], latestDate); const s = dayStatus(last, p.shift || DEFAULT_SHIFT); const sum = attSummary(p.id, att, p.shift || DEFAULT_SHIFT); return { p, last, s, sum }; });
   const onTime = rows.filter(r => r.s.key === "ok").length;
   const flags = rows.filter(r => ["late", "early", "nocheckout", "absent"].includes(r.s.key)).length;
   return (
@@ -8631,7 +8648,7 @@ function AttendanceView() {
         <GoldButton small onClick={() => setImp(true)}><span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Upload size={14} /> Import attendance</span></GoldButton>
       </div>
       <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr 1fr" : "repeat(4,1fr)", gap: 12, marginBottom: 16 }}>
-        {[["Tracked", tracked.length, C.ink], ["On time · " + latestDate, onTime, C.green], ["Flags · " + latestDate, flags, flags ? C.amber : C.stone], ["Sources", "Hikvision +", C.goldDeep]].map(([l, v, col], i) => (
+        {[["Tracked", tracked.length, C.ink], ["On time · " + latestDate, onTime, C.green], ["Flags · " + latestDate, flags, flags ? C.amber : C.stone], ["Source", sources, C.goldDeep]].map(([l, v, col], i) => (
           <Card key={i} pad={14}><div style={{ font: `600 10px ${sans}`, letterSpacing: "0.1em", textTransform: "uppercase", color: C.stone }}>{l}</div><div style={{ font: `400 ${i === 3 ? 18 : 24}px ${serif}`, marginTop: 4, color: col }}>{v}</div></Card>
         ))}
       </div>
