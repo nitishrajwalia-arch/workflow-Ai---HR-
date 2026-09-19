@@ -9,7 +9,7 @@
  * gateway is added, this is the one function that changes: see the note below.
  */
 
-import { schemas } from '@marbella/shared';
+import { readJd, schemas, type BootstrapJd } from '@marbella/shared';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import { nowStamp } from '../lib/dates.js';
@@ -144,7 +144,10 @@ export const documentsRoutes: FastifyPluginAsyncZod = async (app) => {
     },
     async () => {
       const rows = await db.jobDescription.findMany();
-      return Object.fromEntries(rows.map((j) => [j.role, j.jd]));
+      return rows.reduce<Record<string, Record<string, BootstrapJd>>>((acc, j) => {
+        (acc[j.dept] ??= {})[j.role] = readJd(j.jd);
+        return acc;
+      }, {});
     },
   );
 
@@ -161,10 +164,10 @@ export const documentsRoutes: FastifyPluginAsyncZod = async (app) => {
     },
     async (req) => {
       const me = requireUser(req);
-      const { role, jd } = req.body;
+      const { dept, role, jd } = req.body;
       await db.jobDescription.upsert({
-        where: { role },
-        create: { role, jd, updatedBy: me.name },
+        where: { dept_role: { dept, role } },
+        create: { dept, role, jd, updatedBy: me.name },
         update: { jd, updatedBy: me.name },
       });
       return { ok: true as const };

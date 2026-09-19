@@ -31,7 +31,7 @@
  * is meant to serve. See docs/FRONTEND-INTEGRATION.md for when that changes.
  */
 
-import type { BootstrapPayload } from '@marbella/shared';
+import type { BootstrapJd, BootstrapPayload } from '@marbella/shared';
 import { verifyChainNewestFirst } from '@marbella/shared';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ApiError, api } from '../lib/api.js';
@@ -357,10 +357,13 @@ export function ProcProvider({ children, toast }: Props) {
           }),
       );
 
-    const saveJD = (role: string, jd: string) =>
+    // Department as well as title: "Assistant Manager" is three different jobs
+    // here, and keying on the title alone showed Sales's description against
+    // the one in Accounts.
+    const saveJD = (dept: string, role: string, jd: BootstrapJd) =>
       optimistic(
-        (s) => ({ ...s, jds: { ...s.jds, [role]: jd } }),
-        () => api.put('/job-descriptions', { role, jd }),
+        (s) => ({ ...s, jds: { ...s.jds, [dept]: { ...s.jds[dept], [role]: jd } } }),
+        () => api.put('/job-descriptions', { dept, role, jd }),
       );
 
     const logDoc = (d: Record<string, unknown>) =>
@@ -413,6 +416,7 @@ export function ProcProvider({ children, toast }: Props) {
       usage: state.usage,
       docLog: state.docLog,
       jds: state.jds,
+      holidays: state.holidays,
       offices: state.offices,
       hrLog: state.hrLog,
       scope,

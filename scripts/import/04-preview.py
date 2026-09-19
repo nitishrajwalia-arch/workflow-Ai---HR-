@@ -15,8 +15,8 @@ grows — a key added to the API appears here automatically.
 
 What comes out has the same structure, the same headcount and the same
 departments. What it does not have is any regulated identifier: Aadhaar, PAN,
-home addresses, full mobile numbers, salaries, and residents' names, emails and
-PANs. They are ABSENT, not masked in the UI — there is nothing to recover by
+home addresses, full mobile numbers, salaries, device IMEIs, and residents'
+names, emails and PANs. They are ABSENT, not masked in the UI — there is nothing to recover by
 opening devtools.
 """
 import json, re, sys, unicodedata
@@ -52,6 +52,13 @@ w['contacts'] = {k: {'phone': mask_phone(v.get('phone')), 'email': ''}
 # Salary is behind a role check on the server. It is behind nothing at a URL.
 w['salaries'] = {}
 
+# Devices. The model and the type are the point of the screen; an IMEI is a
+# permanent handset identifier and a SIM is a phone number, and both sit against
+# a named person here.
+for d in w.get('devices', []):
+    d['imei'] = ''
+    d['sim'] = mask_phone(d.get('sim'))
+
 # Residents: the unit, the tower, and an initial. No emails, no PANs, no
 # addresses, no full names.
 for s in w.get('sales', []):
@@ -66,6 +73,26 @@ for c in w.get('companies', []):
     c['gstin'] = ''
     c['pan'] = ''
     c['addr'] = ''
+
+# Free text that people type. A note meant for one desk can name a number or an
+# address, and this file is a URL — so anything shaped like a phone number or an
+# email is redacted here whatever it was written for. Belt and braces: nothing
+# generated is supposed to put one in, and this is what catches it when it does.
+CONTACT_SHAPED = re.compile(r'[\w.+-]+@[\w-]+\.[\w.]+|(?<!\d)(?:\+?91[\s-]?)?\d{10,}(?!\d)')
+def redact(v):
+    return CONTACT_SHAPED.sub('[removed]', str(v or ''))
+
+for t in w.get('hrTasks', []):
+    t['text'] = redact(t.get('text'))
+for a in w.get('hrAnn', []):
+    a['title'] = redact(a.get('title'))
+    a['body'] = redact(a.get('body'))
+for n in w.get('hrLog', []):
+    n['what'] = redact(n.get('what'))
+for p in w.get('people', []):
+    p['growth'] = redact(p.get('growth'))
+    for note in p.get('notes', []) or []:
+        note['text'] = redact(note.get('text'))
 
 w['me'] = {**w.get('me', {}), 'email': 'preview@marbellagroup.in'}
 

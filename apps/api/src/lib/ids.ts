@@ -25,12 +25,23 @@ export const deptCode = (dept: string): string => DEPT_CODES[dept as Department]
 export async function nextEmployeeId(tx: Tx, dept: string, attempt = 0): Promise<string> {
   const code = deptCode(dept);
   const prefix = `MB-${code}-`;
-  const highest = await tx.person.findFirst({
-    where: { id: { startsWith: prefix } },
-    orderBy: { id: 'desc' },
-    select: { id: true },
-  });
-  const current = highest ? Number(highest.id.slice(prefix.length)) : 0;
+  // Past the people on the roster AND past any ID that was retired rather than
+  // deleted — see RetiredEmployeeId. An ID that has been printed against a name
+  // is spent whether or not a row still holds it.
+  const [highest, retired] = await Promise.all([
+    tx.person.findFirst({
+      where: { id: { startsWith: prefix } },
+      orderBy: { id: 'desc' },
+      select: { id: true },
+    }),
+    tx.retiredEmployeeId.findFirst({
+      where: { id: { startsWith: prefix } },
+      orderBy: { id: 'desc' },
+      select: { id: true },
+    }),
+  ]);
+  const num = (row: { id: string } | null) => (row ? Number(row.id.slice(prefix.length)) : 0);
+  const current = Math.max(num(highest), num(retired));
   const next = (Number.isFinite(current) ? current : 0) + 1 + attempt;
   if (next > 9999) {
     throw conflict(

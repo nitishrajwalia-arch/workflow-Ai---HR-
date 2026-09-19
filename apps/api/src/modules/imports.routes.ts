@@ -51,15 +51,18 @@ export const importsRoutes: FastifyPluginAsyncZod = async (app) => {
       const me = requireUser(req);
       const { rows, commit } = req.body;
 
-      const [offices, companies, projects, existing] = await Promise.all([
+      const [offices, companies, projects, existing, retired] = await Promise.all([
         db.office.findMany(),
         db.company.findMany({ select: { id: true } }),
         db.project.findMany({ select: { id: true, companyId: true } }),
         db.person.findMany({ select: { id: true } }),
+        db.retiredEmployeeId.findMany({ select: { id: true } }),
       ]);
 
       const companyIds = new Set(companies.map((c) => c.id));
-      const takenIds = new Set(existing.map((p) => p.id));
+      // Retired IDs count as taken: they were printed against a name in the
+      // workbooks the company holds, so nobody else may be given one.
+      const takenIds = new Set([...existing, ...retired].map((p) => p.id));
       const projectCompany = new Map(projects.map((p) => [p.id, p.companyId]));
       const defaultCompany = companyIds.has('dpre') ? 'dpre' : (companies[0]?.id ?? '');
 

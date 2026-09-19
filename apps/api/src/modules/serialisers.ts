@@ -47,6 +47,9 @@ export function serialisePerson(p: PersonWithRelations): BootstrapPerson {
     office: p.officeId,
     employer: p.employerId,
     reportsTo: p.reportsToId,
+    // Set only when there is no employee to point at: the Managing Directors
+    // are not on the payroll register, so their reports carry the line as text.
+    reportsToNote: p.reportsToNote,
     photo: p.photo,
     shift: { in: p.shiftIn, out: p.shiftOut, hours: p.shiftHours },
     imported: p.imported,

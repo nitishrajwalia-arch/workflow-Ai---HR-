@@ -40,6 +40,12 @@ export interface BootstrapPerson {
   office: string;
   employer: string;
   reportsTo: string | null;
+  /**
+   * Who they answer to when that is not an employee — twenty-three people report
+   * to a Managing Director, and the directors are not on the payroll register.
+   * Set only when `reportsTo` is null.
+   */
+  reportsToNote: string;
   photo: string | null;
   shift: { in: string; out: string; hours: number };
   imported: boolean;
@@ -123,6 +129,8 @@ export interface BootstrapDeptRule {
   days: string;
   grace: number;
   setBy: string;
+  /** Blank means nobody has agreed this — it is still the commonest shift. */
+  setOn: string;
   note: string;
 }
 
@@ -132,6 +140,33 @@ export interface BootstrapLeavePolicy {
   earned: number;
   halfDay: string;
   lateAfter: number;
+  /** How many late marks cost a day's pay. 0 means not decided. */
+  lateStrikes: number;
+  carryForward: boolean;
+  encashable: boolean;
+  /** Free text: the answer is a sentence, e.g. "1 day per month". */
+  probation: string;
+  maternityWeeks: number;
+  paternityDays: number;
+  notice: string;
+  setBy: string;
+  setOn: string;
+}
+
+export interface BootstrapJd {
+  purpose: string;
+  duties: string[];
+  needs: string[];
+}
+
+export interface BootstrapHoliday {
+  id: string;
+  name: string;
+  /** Display form, "26 Jan 2027". */
+  on: string;
+  /** False when some sites stay open. */
+  allSites: boolean;
+  note: string;
 }
 
 export interface BootstrapDoc {
@@ -174,7 +209,14 @@ export interface BootstrapPayload {
   exits: BootstrapExit[];
   usage: Record<string, number>;
   docLog: BootstrapDoc[];
-  jds: Record<string, string>;
+  /**
+   * Keyed by department, then by title. One title means different jobs in
+   * different departments — "Assistant Manager" is three of them here — so a
+   * flat map let whichever department was saved last replace the rest.
+   */
+  jds: Record<string, Record<string, BootstrapJd>>;
+  /** Soonest first. Attendance cannot tell a day off from an absence without these. */
+  holidays: BootstrapHoliday[];
   offices: BootstrapOffice[];
   hrLog: Array<{ at: string; who: string; what: string }>;
   /** Server's verdict on the chain. The browser re-checks it independently. */

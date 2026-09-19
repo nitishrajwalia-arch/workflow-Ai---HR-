@@ -253,7 +253,17 @@ const HEAD = { admins: 4, open: 3 };
    packages/shared/src/constants.ts. It is declared here, above the list that
    derives from it: a `const` read before its initialiser is a ReferenceError at
    load, and this file had it 7,000 lines further down. */
-const DEPT_CODES = { Admin: "ADM", Purchase: "PUR", Store: "STR", Accounts: "ACC", Security: "SEC", "Site Engineering": "SIT", Maintenance: "MNT", "QA / QC": "QAC", HR: "HR", Marketing: "MKT", Labour: "LAB" };
+const DEPT_CODES = {
+  Sales: "SAL", CRM: "CRM", Accounts: "ACC", IT: "IT", Admin: "ADM", Pantry: "PAN",
+  HR: "HR", Marketing: "MKT", Project: "PRJ", Purchase: "PUR", Maintenance: "MNT",
+  Horticulture: "HRT",
+};
+/* Marbella's twelve departments, in the order the company's own register lists
+   them. This map used to carry Store, Security, Site Engineering, QA / QC and
+   Labour — five departments the company does not have — and was missing Sales,
+   CRM, IT, Pantry, Project and Horticulture, which it does. Every list below
+   derives from here, so a department invented here was invented on six screens. */
+const DEPARTMENTS = Object.keys(DEPT_CODES);
 
 /* EDIT 2 of 23: this was `[["Admin", 4], ["Purchase", 9], …]` — eight
    departments with headcounts frozen at the moment the file was written. Three
@@ -635,7 +645,15 @@ const TIER_COLOR = { 1: C.gold, 2: C.amber, 3: C.stone };
 function Clock12({ compact }) {
   const [now, setNow] = useState(new Date());
   useEffect(() => { const t = setInterval(() => setNow(new Date()), 1000); return () => clearInterval(t); }, []);
-  const close = new Date(now); close.setHours(18, 0, 0, 0);
+  /* This read "Store · Open" against a closing time of 18:00, both invented:
+     Marbella has no store, and no department closes at six. It is the signed-in
+     person's own department that is open or shut, at the hour that department
+     actually works to. */
+  const { me, people = [], deptRules = {} } = useProc();
+  const mine = people.find(p => p.id === (me && me.personId));
+  const shutAt = (mine && mine.shift && mine.shift.out) || (mine && (deptRules[mine.dept] || {}).out) || "18:30";
+  const [sh, sm] = shutAt.split(":").map(Number);
+  const close = new Date(now); close.setHours(sh || 18, sm || 30, 0, 0);
   const mins = Math.round((close - now) / 60000);
   const label = mins <= 0 ? "Closed" : mins <= 45 ? "Closing soon" : "Open";
   const tone = mins <= 0 ? "red" : mins <= 45 ? "amber" : "green";
@@ -644,7 +662,7 @@ function Clock12({ compact }) {
     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
       <Clock size={14} color={tone === "green" ? C.green : tone === "amber" ? C.amber : C.red} />
       <span style={{ font: `600 12px ${mono}`, color: C.ink }}>{hh}</span>
-      {!compact && <Pill tone={tone}>Store · {label}</Pill>}
+      {!compact && <Pill tone={tone}>{mine ? mine.dept : "Office"} · {label}</Pill>}
     </div>
   );
 }
@@ -3107,7 +3125,9 @@ const EXP_CATS = [
   ["Professional fees", "CA, legal, architects"],
   ["Repairs", "Upkeep and breakdowns"],
 ];
-const EXP_DEPTS = ["Purchase", "Store", "Site Engineering", "Maintenance", "HR", "Accounts", "Admin", "Security"];
+/* The departments that book expenses. Derived from the real twelve rather
+   than a hand-typed list, which had five departments Marbella does not have. */
+const EXP_DEPTS = DEPARTMENTS;
 const EXP_SEED = [];
 const HOW_ICON = { pdf: "📄", photo: "📷", email: "✉️", zip: "🗂️", sheet: "📊", scan: "🖨️" };
 const inrShort = (n) => n >= 1e7 ? "₹" + (n / 1e7).toFixed(2) + " Cr" : n >= 1e5 ? "₹" + (n / 1e5).toFixed(1) + " L" : inr(n);
@@ -5337,7 +5357,7 @@ function RequirementForm({ from = "Maintenance", prefillItem = "", onDone, compa
       <input value={item} onChange={e => setItem(e.target.value)} placeholder="What do you need? e.g. DG filters + 20 L oil" style={{ ...inp, margin: "0 0 10px" }} />
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
         <input value={qty} onChange={e => setQty(e.target.value)} placeholder="Qty" style={{ ...inp, margin: 0, width: 110 }} />
-        <select value={dept} onChange={e => setDept(e.target.value)} style={{ ...sel, margin: 0, flex: 1, minWidth: 150 }}>{["Maintenance", "Marbella Grand · Structure", "MEP", "QA / QC", "Store"].map(d => <option key={d}>{d}</option>)}</select>
+        <select value={dept} onChange={e => setDept(e.target.value)} style={{ ...sel, margin: 0, flex: 1, minWidth: 150 }}>{DEPARTMENTS.map(d => <option key={d}>{d}</option>)}</select>
         <GoldButton small onClick={raise}><span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Send size={13} /> Raise</span></GoldButton>
       </div>
       {match && (
@@ -5878,7 +5898,7 @@ function DirectoryView({ userKey }) {
     for (const p of dirPeople) {
       if (p.status === "exited") continue;
       const phone = (dirContacts[p.id] || {}).phone || p.phone || "";
-      (groups[p.dept] ??= []).push({ name: p.name, role: p.designation, phone, wa: !!phone });
+      (groups[p.dept] ??= []).push({ id: p.id, name: p.name, role: p.designation, phone, wa: !!phone });
     }
     return Object.keys(groups).sort().map(g => ({ group: g, people: groups[g].slice(0, 40) }));
   })();
@@ -5894,7 +5914,11 @@ function DirectoryView({ userKey }) {
           {contactGroups.map(g => (
             <Card key={g.group} pad={22}>
               <Eyebrow>{g.group}</Eyebrow>
-              <div style={{ marginTop: 6 }}>{g.people.map((p, i) => <CallRow key={p.name} p={p} i={i} />)}</div>
+              {/* Keyed on the employee ID, not the name. Project has two people called
+                  Pardeep Kumar — genuinely two people, with different dates of
+                  birth and different numbers — and a list keyed on the name
+                  rendered one of them and warned about the other. */}
+              <div style={{ marginTop: 6 }}>{g.people.map((p, i) => <CallRow key={p.id} p={p} i={i} />)}</div>
             </Card>
           ))}
         </div>
@@ -7367,10 +7391,11 @@ const INCENTIVE_BOOK = [
   ["Referral", "₹5,000", "Paid after the referred person clears probation."],
 ];
 function EnrollPerson({ onClose }) {
-  const mob = useIsMobile(); const { people, addPerson } = useProc();
+  const mob = useIsMobile();
+  const { people, addPerson, leavePolicy = {}, holidays = [] } = useProc();
   const [step, setStep] = useState(0);
   const [f, setF] = useState({
-    name: "", designation: "", dept: "Site Engineering", type: "Site", phone: "", email: "",
+    name: "", designation: "", dept: DEPARTMENTS[0], type: "Staff", phone: "", email: "",
     face: false, pan: "", aadhaar: "", id1: "Voter ID", id1no: "", id2: "Passport", id2no: "",
     drives: false, dl: "", dlExp: "", address: "", addrMatch: "",
     joinDate: "", joinTime: "09:00", hours: "9", offDay: "Sunday", salary: "", probation: "3 months", conditions: "",
@@ -7381,6 +7406,11 @@ function EnrollPerson({ onClose }) {
   const [sentOtp, setSentOtp] = useState(false);
   const [done, setDone] = useState(null);
   const set = (k, v) => setF(s => ({ ...s, [k]: v }));
+  // The rules that will apply to THIS person's department, not a company-wide
+  // average — the policy is stored per department even though today every
+  // department carries the same set.
+  const myLeave = leavePolicy[f.dept] || leavePolicy[DEPARTMENTS[0]] || {};
+  const policySetBy = myLeave.setBy ? `${myLeave.setBy}${myLeave.setOn ? `, ${myLeave.setOn}` : ""}` : "";
   const nextId = (dept) => {
     const code = DEPT_CODES[dept] || "GEN";
     const nums = people.filter(p => p.id.startsWith(`MB-${code}-`)).map(p => parseInt(p.id.split("-")[2], 10) || 0);
@@ -7518,8 +7548,11 @@ function EnrollPerson({ onClose }) {
             <div><L>Probation</L><select value={f.probation} onChange={e => set("probation", e.target.value)} style={sel}>{["None", "1 month", "3 months", "6 months"].map(x => <option key={x}>{x}</option>)}</select></div>
           </div>
           <div style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 10, padding: 12, marginTop: 14 }}>
-            <div style={{ font: `600 11px ${sans}`, color: C.inkDeep, marginBottom: 8 }}>Leave — what's allowed, what isn't</div>
-            {LEAVE_POLICY.map(([k, v, why], i) => (
+            <div style={{ font: `600 11px ${sans}`, color: C.inkDeep, marginBottom: 8 }}>
+              Leave — what's allowed, what isn't
+              {policySetBy && <span style={{ fontWeight: 400, color: C.stone }}> · set by {policySetBy}</span>}
+            </div>
+            {leaveLines(myLeave, holidays).map(([k, v, why], i) => (
               <div key={k} style={{ padding: "7px 0", borderTop: i ? `1px solid ${C.lineSoft}` : "none" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 8, font: `12px ${sans}` }}><span style={{ color: C.ink, fontWeight: 600 }}>{k}</span><span style={{ color: C.goldDeep, fontWeight: 600 }}>{v}</span></div>
                 <div style={{ font: `11px ${sans}`, color: C.stone, marginTop: 2 }}>{why}</div>
@@ -7532,18 +7565,20 @@ function EnrollPerson({ onClose }) {
 
         {step === 3 && (<>
           <div style={{ font: `13px ${sans}`, color: C.inkSoft, marginBottom: 12 }}>What the company gives <b style={{ color: C.ink }}>{f.name || "them"}</b> beyond salary. This summary goes on the offer and into their profile.</div>
-          <div style={{ background: C.goldTint, border: `1px solid ${C.goldSoft}`, borderRadius: 12, padding: 14 }}>
-            {INCENTIVE_BOOK.map(([k, v, why], i) => (
-              <div key={k} style={{ padding: "9px 0", borderTop: i ? `1px solid ${C.goldSoft}` : "none" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
-                  <span style={{ font: `600 13px ${sans}`, color: C.inkDeep }}>{k}</span>
-                  <span style={{ font: `600 13px ${sans}`, color: C.goldDeep }}>{v}</span>
-                </div>
-                <div style={{ font: `11px ${sans}`, color: C.inkSoft, marginTop: 3 }}>{why}</div>
-              </div>
-            ))}
+          {/* There was a table of bonuses here — a quarterly star bonus, an
+              attendance bonus, a site allowance, a referral fee, all with rupee
+              figures against them. Marbella has never said any of that. An
+              amount on an offer letter is a promise, so this stays empty until
+              somebody decides what the promise is. */}
+          <div style={{ background: C.paper, border: `1px dashed ${C.line}`, borderRadius: 12, padding: 18, textAlign: "center" }}>
+            <div style={{ font: `13px ${sans}`, color: C.inkSoft, lineHeight: 1.6 }}>
+              No incentive scheme has been decided yet — no bonus, allowance or referral fee.
+            </div>
+            <div style={{ font: `11px ${sans}`, color: C.stone, marginTop: 6 }}>
+              Anything you agree with this person goes in "any other condition" on the previous step.
+            </div>
           </div>
-          <div style={{ display: "flex", alignItems: "flex-start", gap: 8, marginTop: 12, font: `11px ${sans}`, color: C.stone }}><Info size={13} color={C.goldDeep} style={{ flexShrink: 0, marginTop: 1 }} /> Group-wide policy. Anything person-specific goes in "any other condition" on the previous step.</div>
+          <div style={{ display: "flex", alignItems: "flex-start", gap: 8, marginTop: 12, font: `11px ${sans}`, color: C.stone }}><Info size={13} color={C.goldDeep} style={{ flexShrink: 0, marginTop: 1 }} /> Put a figure on an offer letter only once management has agreed it. Raise it with them and it can be built in.</div>
         </>)}
 
         {step === 4 && (<>
@@ -8208,18 +8243,22 @@ function PeopleRosterView() {
 /* ---------- HR command (her private homework desk) ---------- */
 function LiveStrength() {
   const mob = useIsMobile();
-  const { people, me } = useProc();
+  const { people, me, deptRules = {} } = useProc();
   const active = people.filter(p => p.status === "active");
   const now = new Date();
   const hr = now.getHours() + now.getMinutes() / 60;
-  const SHIFTS = [
-    { name: "General", from: 9, to: 18, depts: ["Admin", "Purchase", "Accounts", "HR", "Store"] },
-    { name: "Site day", from: 7, to: 17, depts: ["Site Engineering", "Maintenance", "Store"] },
-    { name: "Gate · round the clock", from: 0, to: 24, depts: ["Security"] },
-  ];
+  /* This used to be three invented shift bands — "General", "Site day" and a
+     round-the-clock gate shift — spread over Store, Site Engineering and
+     Security, none of which are Marbella departments. Whether somebody is at
+     work right now is answered by their own recorded hours, falling back to
+     their department's rule. */
+  const clock = (t) => { const m = /^(\d{1,2}):(\d{2})$/.exec(String(t || "")); return m ? Number(m[1]) + Number(m[2]) / 60 : null; };
   const onNow = active.filter(p => {
-    const s = SHIFTS.find(x => x.depts.includes(p.dept)) || SHIFTS[0];
-    return s.from === 0 ? true : hr >= s.from && hr < s.to;
+    const r = deptRules[p.dept] || {};
+    const from = clock(p.shift && p.shift.in) ?? clock(r.in);
+    const to = clock(p.shift && p.shift.out) ?? clock(r.out);
+    if (from === null || to === null) return false;
+    return to > from ? hr >= from && hr < to : hr >= from || hr < to;
   });
   const offNow = active.length - onNow.length;
   const byDept = {};
@@ -8473,6 +8512,11 @@ const hhmm = (mins) => `${Math.floor(mins / 60)}h ${String(mins % 60).padStart(2
 function dayStatus(r, shift) {
   if (!r || (!r.in && !r.out)) return { key: "absent", label: "Absent", tone: "red", worked: 0 };
   if (r.in && !r.out) return { key: "nocheckout", label: "No check-out", tone: "amber", worked: 0, flag: true };
+  // The mirror case, which was missing: one punch that the import placed at the
+  // END of the shift. Without this branch `toMin(null)` came through as zero and
+  // the day was scored from midnight — a single 18:42 punch read as 18h 42m
+  // worked, and the row said "In ✓ Out ✓" with no check-in against it.
+  if (!r.in && r.out) return { key: "nocheckin", label: "No check-in", tone: "amber", worked: 0, flag: true };
   const worked = toMin(r.out) - toMin(r.in);
   const late = toMin(r.in) > toMin(shift.in) + 10;
   const early = toMin(r.out) < toMin(shift.out) - 10;
@@ -8483,7 +8527,7 @@ function dayStatus(r, shift) {
 function attSummary(id, att, shift) {
   const days = att[id] || [];
   let present = 0, absent = 0, late = 0, incomplete = 0, mins = 0;
-  days.forEach(r => { const s = dayStatus(r, shift); if (s.key === "absent") absent++; else { present++; mins += s.worked; if (s.key === "late" || s.key === "early") late++; if (s.key === "nocheckout") incomplete++; } });
+  days.forEach(r => { const s = dayStatus(r, shift); if (s.key === "absent") absent++; else { present++; mins += s.worked; if (s.key === "late" || s.key === "early") late++; if (s.key === "nocheckout" || s.key === "nocheckin") incomplete++; } });
   const total = days.length || 1;
   const reqMins = present * (shift.hours * 60);
   return { present, absent, late, incomplete, mins, reqMins, pct: Math.round(present / total * 100), days };
@@ -10228,7 +10272,7 @@ function PopulationView() {
 /* ---------- each department's day, as its manager defined it ---------- */
 function DeptRulesView() {
   const mob = useIsMobile();
-  const { people, deptRules, setDeptRule } = useProc();
+  const { people, deptRules, setDeptRule, leavePolicy = {}, holidays = [] } = useProc();
   const [edit, setEdit] = useState(null);
   const [f, setF] = useState({});
   const active = people.filter(p => p.status === "active");
@@ -10241,11 +10285,16 @@ function DeptRulesView() {
   return (
     <div>
       <div style={{ display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}>
-        <Eyebrow>Working hours</Eyebrow><Pill tone="gold">set by each manager</Pill>
+        <Eyebrow>Hours, leave and holidays</Eyebrow>
+        <Pill tone="gold">{Object.keys(deptRules).length} departments</Pill>
+        <Pill tone={holidays.length ? "green" : "amber"}>{holidays.length || "no"} holidays</Pill>
       </div>
-      <h1 style={{ font: `400 25px ${serif}`, margin: "6px 0 5px" }}>Every department runs its own clock.</h1>
+      <h1 style={{ font: `400 25px ${serif}`, margin: "6px 0 5px" }}>What the company has actually decided.</h1>
       <p style={{ font: `13px ${sans}`, color: C.inkSoft, maxWidth: 640, margin: "0 0 18px", lineHeight: 1.55 }}>
-        Store opens before site starts, accounts comes in at ten, security runs three shifts. The manager decides, HR records it here, and attendance is judged against it — not against one company-wide rule.
+        Horticulture starts at half past eight and Accounts at half past ten. Attendance is judged
+        against each department's own clock, never one company-wide rule. Everything on this page
+        carries the name of whoever decided it — a number with nobody's name against it is
+        indistinguishable from one somebody made up.
       </p>
 
       <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr" : "repeat(auto-fill, minmax(280px, 1fr))", gap: 14 }}>
@@ -10269,13 +10318,90 @@ function DeptRulesView() {
               </div>
               {r.note && <div style={{ font: `12px ${sans}`, color: C.inkSoft, marginBottom: 10, lineHeight: 1.5 }}>{r.note}</div>}
               <div style={{ display: "flex", alignItems: "center", gap: 8, paddingTop: 10, borderTop: `1px solid ${C.lineSoft}` }}>
-                <span style={{ font: `11px ${sans}`, color: C.stone }}>Set by {r.setBy}</span>
+                <span style={{ font: `11px ${sans}`, color: C.stone }}>
+                  {r.setOn ? `Set by ${r.setBy}, ${r.setOn}` : `${r.setBy} — nobody has agreed this yet`}
+                </span>
                 <button onClick={() => open(d)} style={{ ...softBtn, marginLeft: "auto", padding: "5px 11px" }}>Change</button>
               </div>
             </Card>
           );
         })}
       </div>
+
+      {/* The leave rules. Every one of these was blank until HR went and asked:
+          the written policy quantified casual leave and nothing else, deferring
+          the rest to "the company's approved HR policy", which did not exist. */}
+      {(() => {
+        const l = leavePolicy[Object.keys(leavePolicy)[0]] || {};
+        if (!l.setBy) return null;
+        const same = Object.values(leavePolicy).every(x => x.casual === l.casual && x.sick === l.sick && x.earned === l.earned);
+        const num = (v, unit) => v ? `${v} ${unit}` : "not decided";
+        const rows = [
+          ["Casual leave", num(l.casual, "days a year")],
+          ["Sick leave", num(l.sick, "days a year")],
+          ["Earned leave", num(l.earned, "days a year")],
+          ["During probation", l.probation || "not decided"],
+          ["Carries forward", l.carryForward ? "yes" : "no — balances lapse at year end"],
+          ["Encashable", l.encashable ? "yes" : "no"],
+          ["Maternity", num(l.maternityWeeks, "weeks")],
+          ["Paternity", num(l.paternityDays, "days")],
+          ["Late mark after", num(l.lateAfter, "minutes")],
+          ["Late marks per day's cut", l.lateStrikes ? String(l.lateStrikes) : "not decided"],
+          ["Notice on resignation", l.notice || "not decided"],
+        ];
+        return (
+          <Card pad={mob ? 14 : 18} style={{ marginTop: 18 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 9, flexWrap: "wrap", marginBottom: 4 }}>
+              <Eyebrow>Leave</Eyebrow>
+              <Pill tone="stone">{same ? "same for every department" : "differs by department"}</Pill>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr" : "1fr 1fr", gap: "0 26px", marginTop: 8 }}>
+              {rows.map(([k, v], i) => (
+                <div key={k} style={{ display: "flex", justifyContent: "space-between", gap: 10, padding: "8px 0",
+                  borderTop: i > (mob ? 0 : 1) ? `1px solid ${C.lineSoft}` : "none", font: `12px ${sans}` }}>
+                  <span style={{ color: C.inkSoft }}>{k}</span>
+                  <span style={{ color: /not decided/.test(v) ? C.amber : C.ink, fontWeight: 600, textAlign: "right" }}>{v}</span>
+                </div>
+              ))}
+            </div>
+            {l.halfDay && <div style={{ font: `12px ${sans}`, color: C.inkSoft, lineHeight: 1.6, marginTop: 12,
+              background: C.paper, borderRadius: 9, padding: "10px 12px" }}>{l.halfDay}</div>}
+            <div style={{ font: `11px ${sans}`, color: C.stone, marginTop: 10 }}>
+              Decided by {l.setBy}{l.setOn ? `, ${l.setOn}` : ""}.
+            </div>
+          </Card>
+        );
+      })()}
+
+      {/* Without this list an absence and a day off look identical on the
+          attendance sheet, which is why it is on the same page as the hours. */}
+      <Card pad={mob ? 14 : 18} style={{ marginTop: 18 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 9, flexWrap: "wrap", marginBottom: 10 }}>
+          <Eyebrow>Holiday calendar</Eyebrow>
+          <Pill tone={holidays.length ? "stone" : "amber"}>{holidays.length} listed</Pill>
+          {holidays.length > 0 && !holidays.some(h => h.allSites) &&
+            <Pill tone="amber">none marked as closing every site</Pill>}
+        </div>
+        {holidays.length === 0 ? (
+          <div style={{ font: `13px ${sans}`, color: C.stone, lineHeight: 1.6 }}>
+            Nothing loaded. Until there is a list, the attendance screen cannot tell a public
+            holiday from an absence.
+          </div>
+        ) : (
+          <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr" : "repeat(auto-fill, minmax(230px, 1fr))", gap: 10 }}>
+            {holidays.map(h => (
+              <div key={h.id} style={{ border: `1px solid ${C.line}`, borderRadius: 10, padding: "10px 12px" }}>
+                <div style={{ font: `600 13px ${sans}`, color: C.ink }}>{h.name}</div>
+                <div style={{ font: `12px ${mono}`, color: C.goldDeep, marginTop: 2 }}>{h.on}</div>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 7 }}>
+                  <Pill tone={h.allSites ? "green" : "amber"}>{h.allSites ? "every site closed" : "some sites open"}</Pill>
+                </div>
+                {h.note && <div style={{ font: `11px ${sans}`, color: C.stone, marginTop: 6, lineHeight: 1.5 }}>{h.note}</div>}
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
 
       {edit && (
         <Overlay onClose={() => setEdit(null)} width={470}>
@@ -12207,7 +12333,11 @@ function suggestJD(designation, dept) {
   const s = String(designation || "").toLowerCase();
   const hit = JD_LIB.find(j => j.match.some(m => s.includes(m)));
   if (hit) return hit;
-  const byDept = { Store: 3, Purchase: 4, Security: 5, "Site Engineering": 6, Accounts: 7, Maintenance: 8, HR: 9, Admin: 10, "QA / QC": 11, Labour: 12 }[dept];
+  // Falls back to a description written for that kind of department. The map
+  // used to name Store, Security, Site Engineering, QA / QC and Labour, which
+  // meant nine of Marbella's twelve departments fell through to the labour
+  // description — a Sales Manager was offered "report at the muster time".
+  const byDept = { Purchase: 4, Accounts: 7, Maintenance: 8, HR: 9, Admin: 10, Project: 6, Sales: 0, CRM: 1, Marketing: 1, IT: 2 }[dept];
   return byDept !== undefined ? JD_LIB[byDept] : JD_LIB[12];
 }
 
@@ -12309,7 +12439,9 @@ function CorrespondenceView() {
   const base = p ? {
     name: p.name, first: p.name.split(" ")[0], id: p.id, designation: p.designation, dept: p.dept,
     company: co ? co.name : "", joined: p.joined, tenure: ten.text, years: String(ten.years),
-    manager: boss ? `${boss.name} (${boss.designation})` : "your reporting manager",
+    // A letter that says "your reporting manager" when the record knows the
+    // answer reads like a form letter, which is what it is trying not to be.
+    manager: boss ? `${boss.name} (${boss.designation})` : (p && p.reportsToNote) || "your reporting manager",
     today: prettyToday(), hrName: (me && me.name) || "", hrTitle: (me && me.title) || "HR", project: proj ? proj.name : "",
   } : {};
   const all = { ...base, ...vals };
@@ -12551,12 +12683,12 @@ function JDView() {
   const [sel, setSel] = useState(null);
   const [draft, setDraft] = useState(null);
   const cur = sel ? roles.find(r => r.designation === sel.designation && r.dept === sel.dept) : null;
-  const saved = sel ? jds[sel.designation] : null;
+  const saved = sel ? jds[sel.dept]?.[sel.designation] : null;
   const sug = sel ? suggestJD(sel.designation, sel.dept) : null;
 
   const open = (r) => {
     setSel(r); track("jd:open");
-    const s = jds[r.designation] || suggestJD(r.designation, r.dept);
+    const s = jds[r.dept]?.[r.designation] || suggestJD(r.designation, r.dept);
     setDraft({ purpose: s.purpose, duties: [...s.duties], needs: [...s.needs] });
   };
 
@@ -12577,7 +12709,7 @@ function JDView() {
           <div style={{ maxHeight: 520, overflowY: "auto", marginTop: 10 }}>
             {roles.map(r => {
               const on = sel && sel.designation === r.designation && sel.dept === r.dept;
-              const has = !!jds[r.designation];
+              const has = !!jds[r.dept]?.[r.designation];
               return (
                 <button key={r.designation + r.dept} onClick={() => open(r)}
                   style={{ width: "100%", textAlign: "left", cursor: "pointer", border: "none", background: on ? C.goldTint : "transparent",
@@ -12606,7 +12738,9 @@ function JDView() {
               <h2 style={{ font: `400 22px ${serif}`, margin: "6px 0 16px", color: C.ink }}>{sel.designation}</h2>
 
               <label style={lbl}>What this job is for</label>
-              <textarea rows={2} value={draft.purpose} onChange={e => setDraft(d => ({ ...d, purpose: e.target.value }))} style={{ ...inp, margin: "7px 0 16px", fontSize: 13 }} />
+              <textarea rows={Math.min(14, Math.max(3, Math.ceil((draft.purpose || "").length / 70)))} value={draft.purpose}
+                onChange={e => setDraft(d => ({ ...d, purpose: e.target.value }))}
+                style={{ ...inp, margin: "7px 0 16px", fontSize: 13, lineHeight: 1.5, resize: "vertical" }} />
 
               <label style={lbl}>What they do</label>
               <div style={{ marginTop: 7, marginBottom: 8 }}>
@@ -12637,7 +12771,7 @@ function JDView() {
               </div>
 
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <GoldButton onClick={() => { saveJD(sel.designation, draft); track("jd:save"); toast(`Job description saved — ${sel.designation}`, "green"); }}>Save this description</GoldButton>
+                <GoldButton onClick={() => { saveJD(sel.dept, sel.designation, draft); track("jd:save"); toast(`Job description saved — ${sel.designation}`, "green"); }}>Save this description</GoldButton>
                 <button onClick={() => { const s = suggestJD(sel.designation, sel.dept); setDraft({ purpose: s.purpose, duties: [...s.duties], needs: [...s.needs] }); toast("Back to the suggestion", "stone"); }} style={softBtn}>Start over</button>
               </div>
             </Card>
@@ -12715,9 +12849,13 @@ function UsageView() {
    crisp at every angle, and text in a WebGL scene does not. You get the depth without
    losing the legibility, and it runs on a site office phone.                            */
 
+/* One colour per real department. Six of the eleven keys here used to be
+   departments Marbella does not have, so six that it does fell through to grey
+   and the org board read as half-unclassified. */
 const DEPT_HUE = {
-  Admin: "#224A85", HR: "#7B4B8A", Purchase: "#8A6224", Store: "#3E7C55", Accounts: "#1F6F7A",
-  "Site Engineering": "#B0603C", Maintenance: "#5B6B8C", Security: "#8A2B3B", "QA / QC": "#2F6E4E", Labour: "#7A6A4F",
+  Sales: "#8A2B3B", CRM: "#7B4B8A", Accounts: "#1F6F7A", IT: "#2F6E4E", Admin: "#224A85",
+  Pantry: "#7A6A4F", HR: "#B0603C", Marketing: "#A2522E", Project: "#5B6B8C",
+  Purchase: "#8A6224", Maintenance: "#4A5A70", Horticulture: "#3E7C55",
 };
 const hueOf = (d) => DEPT_HUE[d] || C.stone;
 
@@ -12802,7 +12940,7 @@ function OrgView() {
   const kids = p ? active.filter(x => x.reportsTo === p.id && x.id !== p.id) : [];
   const co = p && companies.find(c => c.id === p.employer);
   const ten = p ? tenureOf(p.joined) : null;
-  const jd = p ? (jds[p.designation] || suggestJD(p.designation, p.dept)) : null;
+  const jd = p ? (jds[p.dept]?.[p.designation] || suggestJD(p.designation, p.dept)) : null;
 
   const chain = (() => {
     if (!p) return [];
@@ -12937,6 +13075,11 @@ function OrgView() {
                 <div>Employed by <b style={{ color: C.ink }}>{co ? co.name : "—"}</b></div>
                 <div>Joined <b style={{ color: C.ink }}>{p.joined}</b></div>
                 {boss && <div>Reports to <b style={{ color: C.ink }}>{boss.name}</b> · {boss.designation}</div>}
+                {/* Twenty-three people answer to a Managing Director, and the
+                    directors are not on the payroll register. The line is real;
+                    it just has no card to click through to. */}
+                {!boss && p.reportsToNote && <div>Reports to <b style={{ color: C.ink }}>{p.reportsToNote}</b></div>}
+                {!boss && !p.reportsToNote && <div style={{ color: C.stone }}>Nobody is recorded above them.</div>}
               </div>
 
               {chain.length > 1 && (
@@ -12977,7 +13120,7 @@ function OrgView() {
               {jd && (
                 <div style={{ borderTop: `1px solid ${C.lineSoft}`, paddingTop: 12, marginBottom: 14 }}>
                   <div style={{ font: `600 10px ${sans}`, letterSpacing: ".1em", textTransform: "uppercase", color: C.stone, marginBottom: 6 }}>
-                    What this job is for {jds[p.designation] ? <Pill tone="green">saved</Pill> : <Pill tone="gold">suggested</Pill>}
+                    What this job is for {jds[p.dept]?.[p.designation] ? <Pill tone="green">saved</Pill> : <Pill tone="gold">suggested</Pill>}
                   </div>
                   <div style={{ font: `12px ${sans}`, color: C.inkSoft, lineHeight: 1.6 }}>{jd.purpose}</div>
                 </div>
@@ -13069,6 +13212,9 @@ export default function App() {
   const [usage, setUsage] = useState({});
   const [docLog, setDocLog] = useState([]);
   const [jds, setJds] = useState({});
+  /* Filled from the server. Empty here for the same reason the leave numbers
+     are: a holiday list decides whether a day off is an absence. */
+  const [holidays] = useState([]);
   const [people, setPeople] = useState(() => PEOPLE_SEED.map((p) => ({
     shift: { ...DEFAULT_SHIFT },
     office: p.office || ORG_SEED[p.id]?.office || "hq",
@@ -13130,8 +13276,8 @@ export default function App() {
     usage, docLog, jds,
     track: (k) => setUsage(u => ({ ...u, [k]: (u[k] || 0) + 1 })),
     logDoc: (d) => setDocLog(l => [{ at: nowStamp(), ...d }, ...l]),
-    saveJD: (role, jd) => setJds(x => ({ ...x, [role]: jd })),
-    cardLog, ledger, salaries, devices, contacts, leavePolicy, exits,
+    saveJD: (dept, role, jd) => setJds(x => ({ ...x, [dept]: { ...x[dept], [role]: jd } })),
+    cardLog, ledger, salaries, devices, contacts, leavePolicy, holidays, exits,
     companies, projects, scope, setScope,
     saveCompany: (c) => setCompanies(x => x.some(y => y.id === c.id) ? x.map(y => y.id === c.id ? { ...y, ...c } : y) : [...x, c]),
     saveProject: (p) => setProjects(x => x.some(y => y.id === p.id) ? x.map(y => y.id === p.id ? { ...y, ...p } : y) : [...x, p]),
@@ -13153,7 +13299,7 @@ export default function App() {
         const off = (OFFICES.find(o => (r.office || "").toLowerCase().includes(o.short.toLowerCase())) || OFFICES[0]).id;
         return { id, name: r.name, designation: r.desig, dept: r.dept, type: "Staff",
           phone: "", email: "", joined: normDate(r.joined), status: "active", perf: 75, growth: "", notes: [],
-          shift: { ...DEFAULT_SHIFT }, office: off, reportsTo: "MB-ADM-0001", photo: null, imported: true,
+          shift: { ...DEFAULT_SHIFT }, office: off, reportsTo: null, reportsToNote: "", photo: null, imported: true,
           employer: (projects.find(pr => pr.id === off) || {}).company || "dpre" };
       });
       setPeople(x => [...made, ...x]);

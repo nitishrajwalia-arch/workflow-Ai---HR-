@@ -1,15 +1,20 @@
 /**
  * Working hours and leave, per department.
  *
- * Each department keeps its own clock, set by its own manager. The store opens
- * at 08:00 because site starts at 08:00; Accounts opens at 10:00. A single
- * company-wide office-hours setting would be wrong for every department except
- * one, so there isn't one.
+ * Each department keeps its own clock, set by its own manager. Horticulture
+ * starts at 08:30 because the gardens are worked before the heat; Accounts opens
+ * at 10:30. A single company-wide office-hours setting would be wrong for every
+ * department except one, so there isn't one.
+ *
+ * Leave is stored per department too, even though HR answered that the rules do
+ * not currently differ: the day one department gets something different, there
+ * is a row to put it in rather than a schema change.
  */
 
 import { schemas } from '@marbella/shared';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
+import { toDisplayDate } from '../lib/dates.js';
 import { requireUser } from '../plugins/auth.js';
 import { appendInTx } from '../services/ledger.js';
 
@@ -38,6 +43,7 @@ export const policiesRoutes: FastifyPluginAsyncZod = async (app) => {
             days: r.days,
             grace: r.grace,
             setBy: r.setBy,
+            setOn: r.setOn,
             note: r.note,
           },
         ]),
@@ -63,10 +69,13 @@ export const policiesRoutes: FastifyPluginAsyncZod = async (app) => {
       const b = req.body;
 
       return db.$transaction(async (tx) => {
+        // Stamped here, not taken from the client: the field exists to say when
+        // somebody decided this.
+        const stamped = { ...b, setOn: toDisplayDate(new Date()) };
         const row = await tx.deptRule.upsert({
           where: { dept },
-          create: { dept, ...b },
-          update: b,
+          create: { dept, ...stamped },
+          update: stamped,
         });
         await appendInTx(tx, {
           kind: 'policy',
@@ -100,6 +109,15 @@ export const policiesRoutes: FastifyPluginAsyncZod = async (app) => {
             earned: r.earned,
             halfDay: r.halfDay,
             lateAfter: r.lateAfter,
+            lateStrikes: r.lateStrikes,
+            carryForward: r.carryForward,
+            encashable: r.encashable,
+            probation: r.probation,
+            maternityWeeks: r.maternityWeeks,
+            paternityDays: r.paternityDays,
+            notice: r.notice,
+            setBy: r.setBy,
+            setOn: r.setOn,
           },
         ]),
       );
@@ -124,10 +142,14 @@ export const policiesRoutes: FastifyPluginAsyncZod = async (app) => {
       const b = req.body;
 
       return db.$transaction(async (tx) => {
+        // Who decided it and when, from the session and the server's clock —
+        // never from the client. A leave entitlement with nobody's name against
+        // it is indistinguishable from one somebody made up.
+        const stamped = { ...b, setBy: me.name, setOn: toDisplayDate(new Date()) };
         const row = await tx.leavePolicy.upsert({
           where: { dept },
-          create: { dept, ...b },
-          update: b,
+          create: { dept, ...stamped },
+          update: stamped,
         });
         await appendInTx(tx, {
           kind: 'policy',

@@ -13,6 +13,7 @@ export * from './validation.js';
 export * from './ledger.js';
 export * from './bootstrap.js';
 export * as schemas from './schemas.js';
+export { readJd } from './schemas.js';
 export type {
   LoginBody,
   SessionUser,

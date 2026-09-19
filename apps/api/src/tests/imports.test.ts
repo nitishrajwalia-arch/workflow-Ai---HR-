@@ -145,7 +145,11 @@ describe('updating people already on the roster', () => {
     });
 
   it('matches on the employee ID and says which fields a row will touch', async () => {
-    const res = await update([{ id: 'MB-HR-0001', gender: 'Female', email: 'her@gmail.com' }]);
+    // Both cells differ from what is on file. A cell repeating what is already
+    // recorded is not a change, and is covered by its own test below.
+    const res = await update([
+      { id: 'MB-HR-0001', gender: 'Prefers not to say', email: 'someone.else@gmail.com' },
+    ]);
     expect(res.statusCode).toBe(200);
     const body = res.json<{
       accepted: Array<{ id: string; fields: string[] }>;
@@ -177,8 +181,8 @@ describe('updating people already on the roster', () => {
   it('holds back the same person listed twice in one sheet', async () => {
     const body = (
       await update([
-        { id: 'MB-HR-0001', gender: 'F' },
         { id: 'MB-HR-0001', gender: 'M' },
+        { id: 'MB-HR-0001', gender: 'Prefers not to say' },
       ])
     ).json<{ accepted: unknown[]; rejected: Array<{ field: string }> }>();
     expect(body.accepted).toHaveLength(1);

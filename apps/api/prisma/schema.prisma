@@ -227,20 +227,27 @@ model Person {
   reportsTo   Person?  @relation("reports", fields: [reportsToId], references: [id], onDelete: SetNull)
   reports     Person[] @relation("reports")
 
+  /// Who they answer to when that is not an employee. Twenty-three people
+  /// report to a Managing Director, and the directors are not on the payroll
+  /// register. Creating Person rows for them would put four people on the
+  /// headcount who are not staff, so the line is kept as text and the org chart
+  /// renders it as text.
+  reportsToNote String @default("")
+
   /// True when the row arrived through Bulk intake rather than being keyed in.
   imported  Boolean  @default(false)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  notes    PersonNote[]
-  contact  Contact?
-  kyc      Kyc?
-  salary   Salary?
-  devices  Device[]
-  cards    Card[]
-  exits    Exit[]
-  users    User[]
-  docs     DocLog[]
+  notes   PersonNote[]
+  contact Contact?
+  kyc     Kyc?
+  salary  Salary?
+  devices Device[]
+  cards   Card[]
+  exits   Exit[]
+  users   User[]
+  docs    DocLog[]
 
   @@index([dept])
   @@index([officeId])
@@ -372,20 +379,20 @@ model Device {
 // ------------------------------------------------------------------- cards
 
 model Card {
-  id       String @id @default(cuid())
-  personId String
-  person   Person @relation(fields: [personId], references: [id], onDelete: Cascade)
+  id          String  @id @default(cuid())
+  personId    String
+  person      Person  @relation(fields: [personId], references: [id], onDelete: Cascade)
   /// Denormalised on purpose: the log must still read correctly if the person is
   /// later renamed. It records what was printed, not who they are now.
-  name     String
-  ver      Int
-  reason   String
-  at       String
-  by       String
-  recv     String @default("—")
-  note     String @default("")
+  name        String
+  ver         Int
+  reason      String
+  at          String
+  by          String
+  recv        String  @default("—")
+  note        String  @default("")
   /// Which version this issue cancelled, e.g. "v2".
-  killed   String?
+  killed      String?
   /// True when the card was unaccounted for and its zone access was revoked.
   zonesKilled Boolean @default(false)
 
@@ -437,10 +444,10 @@ model LedgerEntry {
 // ------------------------------------------------------------------- exits
 
 model Exit {
-  id       String @id @default(cuid())
+  id       String  @id @default(cuid())
   personId String
-  person   Person @relation(fields: [personId], references: [id], onDelete: Cascade)
-  stage    String @default("decision")
+  person   Person  @relation(fields: [personId], references: [id], onDelete: Cascade)
+  stage    String  @default("decision")
   reason   String
   opened   String
   closedAt String?
@@ -458,14 +465,14 @@ model Exit {
 /// One row per stage cleared. The Exit row says where it is now; these say how
 /// it got there, who did each step and what they recorded.
 model ExitStep {
-  id      String @id @default(cuid())
+  id      String   @id @default(cuid())
   exitId  String
-  exit    Exit   @relation(fields: [exitId], references: [id], onDelete: Cascade)
+  exit    Exit     @relation(fields: [exitId], references: [id], onDelete: Cascade)
   stage   String
-  payload Json   @default("{}")
+  payload Json     @default("{}")
   summary String
   byId    String?
-  by      User?  @relation(fields: [byId], references: [id], onDelete: SetNull)
+  by      User?    @relation(fields: [byId], references: [id], onDelete: SetNull)
   at      DateTime @default(now())
 
   /// A stage is cleared once. Re-clearing it would silently rewrite the record.
@@ -487,6 +494,10 @@ model DeptRule {
   days      String
   grace     Int      @default(0)
   setBy     String
+  /// When the person named in `setBy` decided it, as they wrote it. Blank means
+  /// the row is still the shift most of the department happens to work rather
+  /// than a rule anybody has agreed.
+  setOn     String   @default("")
   note      String   @default("")
   updatedAt DateTime @updatedAt
 
@@ -494,15 +505,70 @@ model DeptRule {
 }
 
 model LeavePolicy {
-  dept      String   @id
-  casual    Int      @default(0)
-  sick      Int      @default(0)
-  earned    Int      @default(0)
-  halfDay   String   @default("")
-  lateAfter Int      @default(0)
+  dept      String @id
+  casual    Int    @default(0)
+  sick      Int    @default(0)
+  earned    Int    @default(0)
+  halfDay   String @default("")
+  /// Minutes of grace before a late mark. 0 means no grace at all, which is a
+  /// rule; it is not the same as nobody having decided.
+  lateAfter Int    @default(0)
+
+  /// How many late marks cost one day's pay. 0 means not decided.
+  lateStrikes    Int     @default(0)
+  carryForward   Boolean @default(false)
+  encashable     Boolean @default(false)
+  /// As written, e.g. "1 day per month". Free text because the answer is a
+  /// sentence, not a number.
+  probation      String  @default("")
+  maternityWeeks Int     @default(0)
+  paternityDays  Int     @default(0)
+  notice         String  @default("")
+
+  /// Who decided, and when. An entitlement on a screen with nobody's name
+  /// against it is indistinguishable from one somebody made up.
+  setBy     String   @default("")
+  setOn     String   @default("")
   updatedAt DateTime @updatedAt
 
   @@map("leave_policy")
+}
+
+/// An employee ID that must never be given to anybody else.
+///
+/// Two IDs were reserved for people who appeared on some sheets of the company's
+/// file and not on the master list. Both turned out to be a second copy of
+/// somebody already on the payroll, so neither is a person any more — but both
+/// were printed in the workbooks the company was sent, against a name. Handing
+/// one to a new joiner would mean two different people answering to the same
+/// number on two documents, so the allocator counts past them.
+model RetiredEmployeeId {
+  id        String   @id
+  reason    String
+  retiredAt DateTime @default(now())
+
+  @@map("retired_employee_id")
+}
+
+/// The holiday calendar. Attendance rules mean nothing without one: a day off
+/// and an absence look identical until something says which days the company is
+/// shut. Supplied by HR on the data-gap workbook; blank before that.
+model Holiday {
+  id       String   @id @default(cuid())
+  name     String
+  /// Display form, "26 Jan 2027" — what a letter or a notice merges.
+  on       String
+  /// Sortable copy of `on`. Written by the API, never by a client.
+  onDate   DateTime
+  /// False when some sites stay open. Recorded as answered, not assumed.
+  allSites Boolean  @default(true)
+  note     String   @default("")
+
+  updatedAt DateTime @updatedAt
+
+  @@unique([name, on])
+  @@index([onDate])
+  @@map("holiday")
 }
 
 // -------------------------------------------------------- documents and JDs
@@ -528,12 +594,20 @@ model DocLog {
   @@map("doc_log")
 }
 
+/// Keyed by department AND title. "Assistant Manager" is three different jobs
+/// here — Accounts, Purchase and Sales each wrote their own — and a single-title
+/// key meant whichever department was written last silently replaced the rest.
 model JobDescription {
-  role      String   @id
-  jd        String
+  dept String
+  role String
+  /// `{ purpose, duties[], needs[] }`. The screen has always edited those three
+  /// fields; the column used to be a single string, so every save from that
+  /// screen was rejected by the body schema before it reached here.
+  jd   Json
   updatedBy String   @default("")
   updatedAt DateTime @updatedAt
 
+  @@id([dept, role])
   @@map("job_description")
 }
 
@@ -589,9 +663,9 @@ model Firm {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@map("firm")
-
   units Unit[]
+
+  @@map("firm")
 }
 
 enum VendorStatus {

@@ -118,14 +118,18 @@ describe('age and gender', () => {
     }
   });
 
-  it('starts with gender unrecorded, and keeps "not asked" apart from "would rather not say"', async () => {
-    const before = await app.inject({
-      method: 'GET',
+  it('keeps "not asked" apart from "would rather not say"', async () => {
+    // HR has since gone and asked all 126 people, so the seed carries an answer
+    // for everybody. What still has to hold is that clearing one puts it back to
+    // "nobody has asked" rather than to "they declined to say" — the two mean
+    // different things and HR reports on them separately.
+    const cleared0 = await app.inject({
+      method: 'PATCH',
       url: '/api/v1/people/MB-ADM-0001',
       headers: auth(token),
+      payload: { gender: null },
     });
-    // Nobody was asked during the import, so it is null — NOT 'undisclosed'.
-    expect(before.json<{ gender: string | null }>().gender).toBeNull();
+    expect(cleared0.json<{ gender: string | null }>().gender).toBeNull();
 
     const set = await app.inject({
       method: 'PATCH',
@@ -143,6 +147,9 @@ describe('age and gender', () => {
       payload: { gender: null },
     });
     expect(cleared.json<{ gender: string | null }>().gender).toBeNull();
+
+    // Other files read this person. Put back what the workbook says.
+    await db.person.update({ where: { id: 'MB-ADM-0001' }, data: { gender: 'female' } });
   });
 
   it('refuses a gender it does not recognise', async () => {

@@ -17,6 +17,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import type { BootstrapJd } from '@marbella/shared';
 import { verifyChainNewestFirst } from '@marbella/shared';
 import { ApiError, api } from '../lib/api.js';
 import { ProcCtx, type ProcValue } from './context.js';
@@ -144,6 +145,7 @@ export function ProcurementProvider({ children, toast }: Props) {
       usage: w.usage,
       docLog: w.docLog,
       jds: w.jds,
+      holidays: w.holidays,
       offices: w.offices,
       hrLog: w.hrLog,
       hrTasks: w.hrTasks,
@@ -693,10 +695,11 @@ export function ProcurementProvider({ children, toast }: Props) {
             return { ...x, docLog: [r, ...x.docLog] };
           },
         ),
-      saveJD: (role: string, jd: string) =>
+      // Keyed by department as well as title — see the note in ProcProvider.
+      saveJD: (dept: string, role: string, jd: BootstrapJd) =>
         optimistic(
-          (x) => ({ ...x, jds: { ...x.jds, [role]: jd } }),
-          () => api.put('/job-descriptions', { role, jd }),
+          (x) => ({ ...x, jds: { ...x.jds, [dept]: { ...x.jds[dept], [role]: jd } } }),
+          () => api.put('/job-descriptions', { dept, role, jd }),
         ),
       setSalary: (pid: string, sal: any) =>
         optimistic(

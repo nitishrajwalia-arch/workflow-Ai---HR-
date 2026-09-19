@@ -344,6 +344,9 @@ export const deptRuleBody = z.object({
   grace: z.number().int().min(0).max(120),
   setBy: z.string().trim().max(120),
   note: z.string().trim().max(500).default(''),
+  // `setOn` is NOT here. The server stamps it from its own clock, because the
+  // point of the field is to say when somebody decided this, and a client that
+  // can write it can say the decision was made last year.
 });
 
 export const leavePolicyBody = z.object({
@@ -352,6 +355,20 @@ export const leavePolicyBody = z.object({
   earned: z.number().int().min(0).max(365),
   halfDay: z.string().trim().max(200).default(''),
   lateAfter: z.number().int().min(0).max(31),
+  /**
+   * The rest of the entitlement. The written policy quantified casual leave and
+   * deferred everything else to "the company's approved HR policy", which did
+   * not exist; HR answered these on the data-gap workbook. Optional so an older
+   * client that only knows the first five fields does not blank them.
+   */
+  lateStrikes: z.number().int().min(0).max(31).optional(),
+  carryForward: z.boolean().optional(),
+  encashable: z.boolean().optional(),
+  probation: z.string().trim().max(200).optional(),
+  maternityWeeks: z.number().int().min(0).max(104).optional(),
+  paternityDays: z.number().int().min(0).max(365).optional(),
+  notice: z.string().trim().max(200).optional(),
+  // setBy and setOn are the server's: see the note on deptRuleBody.
 });
 
 /* ------------------------------------------------------- documents and JDs */
@@ -367,8 +384,23 @@ export const logDocBody = z.object({
 });
 
 export const saveJdBody = z.object({
+  /**
+   * Department as well as title. "Assistant Manager" is three different jobs at
+   * Marbella — Accounts, Purchase and Sales each wrote their own — and keying on
+   * the title alone meant whoever saved last replaced the other two.
+   */
+  dept: z.string().trim().min(2).max(60),
   role: z.string().trim().min(2).max(120),
-  jd: z.string().trim().max(20_000),
+  /**
+   * The three fields the Roles screen edits. This used to be a bare string,
+   * which the screen never sent — it has always posted this object — so every
+   * "Save this description" was answered with a 400.
+   */
+  jd: z.object({
+    purpose: z.string().trim().max(8_000),
+    duties: z.array(z.string().trim().max(2_000)).max(60),
+    needs: z.array(z.string().trim().max(2_000)).max(60),
+  }),
 });
 
 /* ------------------------------------------------------------ bulk import */
@@ -497,6 +529,18 @@ export type DeptRuleBody = z.infer<typeof deptRuleBody>;
 export type LeavePolicyBody = z.infer<typeof leavePolicyBody>;
 export type LogDocBody = z.infer<typeof logDocBody>;
 export type SaveJdBody = z.infer<typeof saveJdBody>;
+
+/**
+ * A job description out of the database, where the column is free JSON.
+ *
+ * Anything that does not parse comes back empty rather than throwing: a row
+ * somebody hand-edited into the wrong shape should cost that one description,
+ * not the whole bootstrap request.
+ */
+export function readJd(v: unknown): { purpose: string; duties: string[]; needs: string[] } {
+  const r = saveJdBody.shape.jd.safeParse(v);
+  return r.success ? r.data : { purpose: '', duties: [], needs: [] };
+}
 export type ImportRow = z.infer<typeof importRow>;
 export type ImportUpdateRow = z.infer<typeof importUpdateRow>;
 export type BulkImportBody = z.infer<typeof bulkImportBody>;

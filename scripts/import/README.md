@@ -1,15 +1,37 @@
 # Importing the company's own data
 
-These three scripts turn the workbooks the company supplies into
-`apps/api/prisma/real-data.ts`. Run them in order, from the repository root,
-with the workbooks in the current directory.
+These scripts turn the files the company supplies into the modules the seed
+reads. Run them in order, from the repository root.
 
 ```bash
-python3 scripts/import/01-employees.py    # employee register -> people.json
-python3 scripts/import/02-residents.py    # tower register    -> units.json
-python3 scripts/import/03-generate.py     # both              -> real-data.ts
+python3 scripts/import/01-employees.py    # employee register  -> people.json
+python3 scripts/import/02-residents.py    # tower register     -> units.json
+python3 scripts/import/03-generate.py     # both               -> real-data.ts
+python3 scripts/import/05-gaps.py   gaps.xlsx [master.xlsx]  # -> real-gaps.ts
+python3 scripts/import/06-attendance.py  attendance.xls      # -> real-attendance.ts
 npm run db:seed -- --wipe                 # replace everything in the database
+python3 scripts/import/04-preview.py boot.json   # -> the shareable preview
+python3 scripts/leak-check.py             # prove the preview carries nothing regulated
 ```
+
+`real-data.ts` is what the company's own registers say. `real-gaps.ts` is what
+HR went and asked afterwards, on the data-gap workbook, and the seed applies the
+second over the first — never the other way round, so any field in the database
+can still be traced to the sheet it came from. `real-attendance.ts` is one month
+of the biometric machine's export, matched to the roster once by name; after that
+first match every export joins on `Person.biometricId`, the machine's own number.
+
+Give `05-gaps.py` the company master workbook as a second argument and it also
+recovers the rows the first import held back — a KYC record and an issued
+desktop filed under a name the master list did not carry — now that the gap sheet
+has said whose they are.
+
+**Nothing is resolved quietly.** Every contradiction the scripts find is printed,
+written to `GAP_CONFLICTS`, and raised as a task on the HR desk. Run
+`scripts/leak-check.py` after any change to what the preview carries: it reads
+every regulated value out of the database and looks for it in what the preview
+actually ships. Identifiers must therefore never be written into free text —
+a task that quotes a mobile number puts that number at a URL.
 
 `--wipe` empties every table, **including the append-only ledger**. That is the
 only operation in this system that can, it disables the database triggers for
@@ -25,12 +47,15 @@ department's block. A row that will not join is **reported, not merged** — the
 run prints them and they are left out rather than attached to whoever looks
 closest.
 
-Known things the last run reported, all genuine discrepancies in the source:
+Known things the last run reported, all genuine discrepancies in the source.
+The first two were answered by the data-gap workbook: both reserved IDs turned
+out to be a second copy of somebody already on the payroll, and `05-gaps.py`
+folds them in. Neither number is reused — see `RetiredEmployeeId`.
 
 | Sheet                                 | Row                                                   | What                                                                                           |
 | ------------------------------------- | ----------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| KYC                                   | Prem Ranjan                                           | Employee Details has a Prem Kumar in Project; no way to tell whether these are the same person |
-| Timings, Companies, Dept list, Assets | Ravinder Singh                                        | Not in Employee Details, which instead has a Vinod Kumar in Project                            |
+| KYC                                   | Prem Ranjan                                           | **Answered.** Same serial number, same row of every sheet, as MB-PRJ-0060 — whose name HR has corrected to Prem Ranjan. One person, two spellings. |
+| Timings, Companies, Dept list, Assets | Ravinder Singh                                        | **Answered.** Same serial as MB-PRJ-0036, whose name HR has corrected to Ravinder Bawa. The desktop filed under him moves with him. |
 | Dept Wise List                        | Chetan Malik, Sandeep Pathania, Manoj, Gurpreet Singh | Listed twice each in Purchase                                                                  |
 | Tower D                               | D-2103                                                | Row appears twice, identical                                                                   |
 | Tower E                               | E-2102                                                | Row appears twice, identical                                                                   |

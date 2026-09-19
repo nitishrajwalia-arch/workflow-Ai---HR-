@@ -29,7 +29,14 @@
  * Role checks that live only in the browser are decoration.
  */
 
-import { BOOTSTRAP_VERSION, roleAtLeast, type BootstrapPayload, type Role } from '@marbella/shared';
+import {
+  BOOTSTRAP_VERSION,
+  roleAtLeast,
+  readJd,
+  type BootstrapJd,
+  type BootstrapPayload,
+  type Role,
+} from '@marbella/shared';
 import { qty, toRupees } from '../lib/money.js';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
@@ -72,6 +79,7 @@ export const bootstrapRoutes: FastifyPluginAsyncZod = async (app) => {
         usage,
         docs,
         jds,
+        holidays,
         offices,
         hrLog,
         health,
@@ -99,6 +107,7 @@ export const bootstrapRoutes: FastifyPluginAsyncZod = async (app) => {
             })
           : Promise.resolve([]),
         db.jobDescription.findMany(),
+        db.holiday.findMany({ orderBy: { onDate: 'asc' } }),
         db.office.findMany({ orderBy: { id: 'asc' } }),
         db.hrLog.findMany({ orderBy: { createdAt: 'desc' }, take: 200 }),
         ledgerHealth(db),
@@ -260,6 +269,15 @@ export const bootstrapRoutes: FastifyPluginAsyncZod = async (app) => {
               earned: l.earned,
               halfDay: l.halfDay,
               lateAfter: l.lateAfter,
+              lateStrikes: l.lateStrikes,
+              carryForward: l.carryForward,
+              encashable: l.encashable,
+              probation: l.probation,
+              maternityWeeks: l.maternityWeeks,
+              paternityDays: l.paternityDays,
+              notice: l.notice,
+              setBy: l.setBy,
+              setOn: l.setOn,
             },
           ]),
         ),
@@ -273,6 +291,7 @@ export const bootstrapRoutes: FastifyPluginAsyncZod = async (app) => {
               days: r.days,
               grace: r.grace,
               setBy: r.setBy,
+              setOn: r.setOn,
               note: r.note,
             },
           ]),
@@ -316,7 +335,19 @@ export const bootstrapRoutes: FastifyPluginAsyncZod = async (app) => {
           subject: d.subject,
           by: d.by?.name ?? '',
         })),
-        jds: Object.fromEntries(jds.map((j) => [j.role, j.jd])),
+        // Department, then title. A flat map by title let the Sales "Assistant
+        // Manager" description show against the one in Accounts.
+        jds: jds.reduce<Record<string, Record<string, BootstrapJd>>>((acc, j) => {
+          (acc[j.dept] ??= {})[j.role] = readJd(j.jd);
+          return acc;
+        }, {}),
+        holidays: holidays.map((h) => ({
+          id: h.id,
+          name: h.name,
+          on: h.on,
+          allSites: h.allSites,
+          note: h.note,
+        })),
         offices: offices.map((o) => ({ id: o.id, name: o.name, short: o.short, tint: o.tint })),
         hrLog: hrLog.map((h) => ({ at: h.at, who: h.who, what: h.what })),
         ledgerHealth: health,

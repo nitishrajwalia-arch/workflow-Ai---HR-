@@ -1,10 +1,12 @@
 /**
  * Seed the database with Marbella Group as it actually is.
  *
- * Everything here comes from real-data.ts, which is generated from the two
- * workbooks the company supplied. There is no invented data in this file and
- * no generated roster: what the company sent is what goes in, and where the
- * company was silent the field stays empty.
+ * Everything here comes from real-data.ts, generated from the two workbooks the
+ * company supplied, and real-gaps.ts, generated from the data-gap workbook HR
+ * filled in afterwards. The second is applied over the first and never the
+ * other way round, so a field can always be traced to the sheet it came from.
+ * There is no invented data in this file and no generated roster: what the
+ * company sent is what goes in, and where it was silent the field stays empty.
  *
  * Run with `--wipe` to clear what is already there first. That path truncates
  * the ledger, which the database otherwise refuses — see wipe() below.
@@ -22,6 +24,22 @@ import {
   REAL_UNITS,
 } from './real-data.js';
 import { LEAVE_POLICY, DEPT_HOURS } from './real-policy.js';
+import {
+  GAP_CONFLICTS,
+  GAP_DEVICES,
+  GAP_HOLIDAYS,
+  GAP_HOURS,
+  GAP_JDS,
+  GAP_LEAVE,
+  GAP_MERGES,
+  GAP_PEOPLE,
+} from './real-gaps.js';
+import {
+  ATTENDANCE_HELD,
+  ATTENDANCE_SOURCE,
+  REAL_ATTENDANCE,
+  REAL_BIOMETRIC,
+} from './real-attendance.js';
 
 // Same as the server: load .env from apps/api if it is there. Node 22 has this
 // built in, and it throws when the file is absent rather than when it matters.
@@ -132,12 +150,18 @@ async function main() {
     placed++;
   }
   const noManager = REAL_PEOPLE.length - placed;
-  console.log(`  people      ${REAL_PEOPLE.length}  (${noManager} with no manager recorded)`);
+  console.log(`  people      ${REAL_PEOPLE.length}  (${noManager} the register puts under nobody)`);
 
   // Mentioned in the company's files but not on the master list. They get an ID
   // now and stay out of every count until somebody confirms them — see the note
   // on REAL_PENDING.
+  // Two of the reserved IDs turned out to be a second copy of somebody already
+  // on the payroll — same serial number, same row of every sheet in the source,
+  // confirmed by the name HR corrected on the gap workbook. They are folded into
+  // the real record below rather than left standing as people who do not exist.
+  const merged = new Set(GAP_MERGES.map((m) => m.id));
   for (const p of REAL_PENDING) {
+    if (merged.has(p.id)) continue;
     const data = {
       name: p.name,
       designation: p.designation || 'Not recorded',
@@ -156,7 +180,8 @@ async function main() {
       update: data,
     });
   }
-  console.log(`  pending     ${REAL_PENDING.length}  (an ID reserved, not counted as staff)`);
+  const stillPending = REAL_PENDING.filter((p) => !merged.has(p.id)).length;
+  console.log(`  pending     ${stillPending}  (an ID reserved, not counted as staff)`);
 
   /* --------------------------------------------- contact, KYC and assets  */
 
@@ -215,22 +240,200 @@ async function main() {
   console.log(`  KYC         ${kyc}  (Aadhaar / PAN / address — HR and above only)`);
   console.log(`  assets      ${devices}`);
 
+  /* -------------------------------------- what HR filled in on the gap sheet */
+
+  // Applied over the register above. A key that is absent was not answered, so
+  // the field keeps whatever the register had; it is never blanked.
+  let genders = 0;
+  let emails = 0;
+  let lines = 0;
+  for (const g of GAP_PEOPLE) {
+    const data: Record<string, unknown> = {};
+    if (g.name) data.name = g.name;
+    if (g.designation) data.designation = g.designation;
+    if (g.gender) {
+      data.gender = g.gender;
+      genders++;
+    }
+    if (g.reportsTo) {
+      data.reportsToId = g.reportsTo;
+      data.reportsToNote = '';
+      lines++;
+    } else if (g.reportsToNote) {
+      // Answering to a director, who is not on the payroll. The line is real
+      // and belongs on the record; it just cannot be a foreign key.
+      data.reportsToId = null;
+      data.reportsToNote = g.reportsToNote;
+      lines++;
+    }
+    if (Object.keys(data).length) await prisma.person.update({ where: { id: g.id }, data });
+
+    if (g.email || g.phone) {
+      const c = {
+        ...(g.email ? { email: g.email } : {}),
+        ...(g.phone ? { phone: g.phone } : {}),
+      };
+      await prisma.contact.upsert({
+        where: { personId: g.id },
+        create: { personId: g.id, phone: g.phone ?? '', email: g.email ?? '' },
+        update: c,
+      });
+      if (g.email) emails++;
+    }
+  }
+  console.log(`  answered    ${genders} genders, ${emails} personal emails, ${lines} reporting lines`);
+
+  // The two reserved IDs, folded away. Whatever was filed under them in the
+  // company's own workbook — a KYC record, an issued desktop — moves to the
+  // person it turned out to belong to rather than disappearing with the row.
+  for (const m of GAP_MERGES) {
+    await prisma.person.deleteMany({ where: { id: m.id } });
+    // The row goes; the number does not come back. Both IDs were printed against
+    // a name in the workbooks the company was sent, so handing one to a new
+    // joiner would put two different people on the same number on two documents.
+    await prisma.retiredEmployeeId.upsert({
+      where: { id: m.id },
+      create: { id: m.id, reason: `Reserved for ${m.name}, who turned out to be ${m.into} ${m.as}.` },
+      update: { reason: `Reserved for ${m.name}, who turned out to be ${m.into} ${m.as}.` },
+    });
+    const c = m.carries;
+    if (c?.kind === 'kyc') {
+      await prisma.kyc.upsert({
+        where: { personId: m.into },
+        create: { personId: m.into, aadhaar: c.aadhaar, pan: c.pan, address: c.address },
+        update: { aadhaar: c.aadhaar, pan: c.pan, address: c.address },
+      });
+    } else if (c?.kind === 'device') {
+      const have = await prisma.device.findFirst({ where: { personId: m.into, type: c.type } });
+      if (!have) {
+        await prisma.device.create({
+          data: { personId: m.into, type: c.type, model: c.model, issued: c.issued },
+        });
+      }
+    }
+    console.log(`  merged      ${m.id} ${m.name} into ${m.into} ${m.as}` +
+      (c ? `, carrying the ${c.kind === 'kyc' ? 'KYC record' : `${c.type.toLowerCase()} issued to them`}` : ''));
+  }
+
+  // IMEI and SIM against the devices already on record. Matched on the person
+  // and the kind of device, because that pair is unique on the asset sheet.
+  let tagged = 0;
+  for (const d of GAP_DEVICES) {
+    if (!d.imei && !d.sim && !d.returned) continue;
+    const have = await prisma.device.findFirst({
+      where: { personId: d.id, type: { equals: d.type, mode: 'insensitive' } },
+    });
+    if (!have) continue;
+    await prisma.device.update({
+      where: { id: have.id },
+      data: { ...(d.imei ? { imei: d.imei } : {}), ...(d.sim ? { sim: d.sim } : {}) },
+    });
+    tagged++;
+  }
+  console.log(`  devices     ${tagged} given an IMEI or a SIM`);
+
   /* ------------------------------------------------- hours and leave rules */
 
   for (const [dept, r] of Object.entries(DEPT_HOURS)) {
+    // The hours themselves are the shift the department actually works, from
+    // the company's timings sheet. The working days, the grace period and the
+    // name against the decision are what HR answered.
+    const answered = GAP_HOURS[dept as keyof typeof GAP_HOURS];
+    const rule = {
+      ...r,
+      ...(answered
+        ? {
+            days: answered.days,
+            grace: answered.grace,
+            setBy: answered.setBy,
+            setOn: answered.setOn,
+            note: [r.note, answered.note].filter(Boolean).join(' '),
+          }
+        : {}),
+    };
     await prisma.deptRule.upsert({
       where: { dept },
-      create: { dept, ...r },
-      update: r,
+      create: { dept, ...rule },
+      update: rule,
     });
+    // Sheet 3 was asked whether the rules differ by department and answered no,
+    // so one set goes to all twelve.
+    const leave = {
+      ...LEAVE_POLICY,
+      casual: GAP_LEAVE.casual,
+      sick: GAP_LEAVE.sick,
+      earned: GAP_LEAVE.earned,
+      lateAfter: GAP_LEAVE.lateAfter,
+      lateStrikes: GAP_LEAVE.lateStrikes,
+      carryForward: GAP_LEAVE.carryForward,
+      encashable: GAP_LEAVE.encashable,
+      probation: GAP_LEAVE.probation,
+      maternityWeeks: GAP_LEAVE.maternityWeeks,
+      paternityDays: GAP_LEAVE.paternityDays,
+      notice: GAP_LEAVE.notice,
+      setBy: GAP_LEAVE.setBy,
+      setOn: GAP_LEAVE.setOn,
+    };
     await prisma.leavePolicy.upsert({
       where: { dept },
-      create: { dept, ...LEAVE_POLICY },
-      update: LEAVE_POLICY,
+      create: { dept, ...leave },
+      update: leave,
     });
   }
   console.log(`  hours       ${Object.keys(DEPT_HOURS).length} departments`);
-  console.log(`  leave       company policy applied to every department`);
+  console.log(`  leave       ${GAP_LEAVE.casual} casual, ${GAP_LEAVE.sick} sick, ` +
+    `${GAP_LEAVE.earned} earned, ${GAP_LEAVE.lateAfter}-minute grace — set by ` +
+    `${GAP_LEAVE.setBy}, ${GAP_LEAVE.setOn}`);
+
+  /* ------------------------------------------------------------- holidays */
+
+  for (const h of GAP_HOLIDAYS) {
+    const data = { onDate: new Date(`${h.onDate}T00:00:00Z`), allSites: h.allSites, note: h.note };
+    await prisma.holiday.upsert({
+      where: { name_on: { name: h.name, on: h.on } },
+      create: { name: h.name, on: h.on, ...data },
+      update: data,
+    });
+  }
+  console.log(`  holidays    ${GAP_HOLIDAYS.length}  (${GAP_HOLIDAYS.filter((h) => h.allSites).length} closing every site)`);
+
+  /* ------------------------------------------------------------ attendance */
+
+  // The machine's own roll number, matched to the employee once, by name. Every
+  // export after this one joins on the number — which is the whole point, since
+  // joining a new month on a NAME is how "Rohit" ends up credited to "Mohit".
+  for (const b of REAL_BIOMETRIC) {
+    await prisma.person.update({ where: { id: b.id }, data: { biometricId: b.code } });
+  }
+  for (const a of REAL_ATTENDANCE) {
+    const data = { inAt: a.in, outAt: a.out, source: ATTENDANCE_SOURCE };
+    await prisma.attendanceDay.upsert({
+      where: { personId_date: { personId: a.personId, date: a.date } },
+      create: { personId: a.personId, date: a.date, ...data },
+      update: data,
+    });
+  }
+  console.log(`  attendance  ${REAL_ATTENDANCE.length} days for ${REAL_BIOMETRIC.length} people — ${ATTENDANCE_SOURCE}`);
+  if (ATTENDANCE_HELD.length) {
+    console.log(`              ${ATTENDANCE_HELD.length} on the machine matched to nobody: ` +
+      ATTENDANCE_HELD.map((h) => `${h.machineName} (#${h.code})`).join(', '));
+  }
+
+  /* ----------------------------------------------------- job descriptions */
+
+  for (const j of GAP_JDS) {
+    // HR wrote one paragraph per role. It goes in verbatim, as the purpose, and
+    // the duties and requirements stay empty for whoever wants to break them
+    // out. Splitting her sentences on their commas would read as a list of
+    // duties and be a list of fragments.
+    const jd = { purpose: j.jd, duties: [], needs: [] };
+    await prisma.jobDescription.upsert({
+      where: { dept_role: { dept: j.dept, role: j.role } },
+      create: { dept: j.dept, role: j.role, jd, updatedBy: GAP_LEAVE.setBy },
+      update: { jd, updatedBy: GAP_LEAVE.setBy },
+    });
+  }
+  console.log(`  job descr.  ${GAP_JDS.length} of 68 titles`);
 
   /* -------------------------------------------------------------- residents */
 
@@ -299,9 +502,38 @@ async function main() {
     console.log(`  accounts    ${existing} already exist, none created`);
   }
 
+  /* ----------------------------------------- what nobody has answered yet */
+
+  // The importers refuse to resolve a contradiction in the company's own
+  // records. Printing them on a console nobody reads is not the same as telling
+  // anybody, so each one becomes a task on the HR desk. `where` is the text
+  // itself, so re-running the seed does not pile up twelve copies.
+  const questions = [
+    ...GAP_CONFLICTS,
+    ...ATTENDANCE_HELD.map(
+      (h) =>
+        `Attendance machine #${h.code} records "${h.machineName}", who is not on the roster` +
+        (h.candidates.length ? ` — closest names are ${h.candidates.join(', ')}` : '') +
+        '. Nobody is being credited for those days.',
+    ),
+  ];
+  for (const text of questions) {
+    const have = await prisma.hrTask.findFirst({ where: { text } });
+    if (!have) await prisma.hrTask.create({ data: { text, who: 'HR', due: '' } });
+  }
+  console.log(`  questions   ${questions.length} raised on the HR desk`);
+
   console.log('\nDone. No sample data was loaded.');
   const codes = Object.keys(DEPT_CODES).length;
   console.log(`${codes} departments, ${REAL_PEOPLE.length} people, ${REAL_UNITS.length} units.`);
+
+  // Printed every run, deliberately. These are contradictions in the company's
+  // own records that nobody has answered; the importer refuses to resolve them
+  // and they are not worth less for being seen a second time.
+  if (GAP_CONFLICTS.length) {
+    console.log(`\n${GAP_CONFLICTS.length} things on the gap workbook that nobody has answered:`);
+    for (const c of GAP_CONFLICTS) console.log(`  ! ${c}`);
+  }
 }
 
 main()
