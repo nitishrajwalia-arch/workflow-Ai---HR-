@@ -346,6 +346,7 @@ export const bootstrapRoutes: FastifyPluginAsyncZod = async (app) => {
           name: h.name,
           on: h.on,
           allSites: h.allSites,
+          closure: h.closure,
           note: h.note,
         })),
         offices: offices.map((o) => ({ id: o.id, name: o.name, short: o.short, tint: o.tint })),

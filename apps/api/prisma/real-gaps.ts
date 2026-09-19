@@ -13,7 +13,11 @@
  * Regenerate with scripts/import/05-gaps.py — do not hand-edit.
  */
 
-/** Per person. Only the keys present were answered; the rest are untouched. */
+/**
+ * Per person. Only the keys PRESENT were answered; the rest are untouched. A key
+ * present and NULL is HR answering that there is no such thing — "Not Given" in
+ * the cell — and clears the field.
+ */
 export const GAP_PEOPLE = [
   {
     "id": "MB-ACC-0001",
@@ -104,6 +108,7 @@ export const GAP_PEOPLE = [
     "id": "MB-CRM-0004",
     "gender": "female",
     "email": "k999hushiarora@gmail.com",
+    "phone": "8295976727",
     "reportsTo": "MB-CRM-0001"
   },
   {
@@ -139,12 +144,14 @@ export const GAP_PEOPLE = [
   {
     "id": "MB-HRT-0001",
     "gender": "male",
+    "email": null,
     "phone": "7708763200",
     "reportsTo": "MB-HR-0001"
   },
   {
     "id": "MB-HRT-0002",
     "gender": "male",
+    "email": null,
     "reportsTo": "MB-HR-0001"
   },
   {
@@ -168,7 +175,7 @@ export const GAP_PEOPLE = [
   {
     "id": "MB-MNT-0003",
     "gender": "male",
-    "email": "manojver13@gmail.com",
+    "email": null,
     "reportsTo": "MB-MNT-0019"
   },
   {
@@ -198,6 +205,7 @@ export const GAP_PEOPLE = [
   {
     "id": "MB-MNT-0008",
     "gender": "male",
+    "email": null,
     "reportsTo": "MB-MNT-0019"
   },
   {
@@ -216,6 +224,7 @@ export const GAP_PEOPLE = [
   {
     "id": "MB-MNT-0011",
     "gender": "male",
+    "email": null,
     "reportsTo": "MB-MNT-0019"
   },
   {
@@ -233,6 +242,7 @@ export const GAP_PEOPLE = [
   {
     "id": "MB-MNT-0014",
     "gender": "male",
+    "email": null,
     "reportsTo": "MB-MNT-0019"
   },
   {
@@ -250,11 +260,13 @@ export const GAP_PEOPLE = [
   {
     "id": "MB-MNT-0017",
     "gender": "male",
+    "email": null,
     "reportsTo": "MB-MNT-0019"
   },
   {
     "id": "MB-MNT-0018",
     "gender": "male",
+    "email": null,
     "reportsTo": "MB-MNT-0019"
   },
   {
@@ -290,11 +302,13 @@ export const GAP_PEOPLE = [
   {
     "id": "MB-PAN-0002",
     "gender": "male",
+    "email": null,
     "reportsTo": "MB-HR-0001"
   },
   {
     "id": "MB-PAN-0003",
     "gender": "male",
+    "email": null,
     "reportsTo": "MB-HR-0001"
   },
   {
@@ -402,6 +416,7 @@ export const GAP_PEOPLE = [
   },
   {
     "id": "MB-PRJ-0017",
+    "dob": "10 Jan 1990",
     "gender": "male",
     "email": "gurudutt1990@gmail.com",
     "reportsTo": "MB-PRJ-0014"
@@ -439,6 +454,7 @@ export const GAP_PEOPLE = [
   {
     "id": "MB-PRJ-0023",
     "gender": "male",
+    "email": null,
     "reportsTo": "MB-PRJ-0014"
   },
   {
@@ -468,6 +484,7 @@ export const GAP_PEOPLE = [
   {
     "id": "MB-PRJ-0028",
     "gender": "male",
+    "email": null,
     "reportsTo": "MB-PRJ-0014"
   },
   {
@@ -509,6 +526,7 @@ export const GAP_PEOPLE = [
   {
     "id": "MB-PRJ-0035",
     "gender": "male",
+    "email": null,
     "reportsTo": "MB-PRJ-0014"
   },
   {
@@ -557,6 +575,7 @@ export const GAP_PEOPLE = [
   {
     "id": "MB-PRJ-0043",
     "gender": "male",
+    "email": null,
     "reportsTo": "MB-PRJ-0014"
   },
   {
@@ -580,6 +599,7 @@ export const GAP_PEOPLE = [
   {
     "id": "MB-PRJ-0047",
     "gender": "male",
+    "email": null,
     "reportsTo": "MB-PRJ-0014"
   },
   {
@@ -621,6 +641,7 @@ export const GAP_PEOPLE = [
   {
     "id": "MB-PRJ-0054",
     "gender": "male",
+    "email": null,
     "reportsTo": "MB-PRJ-0014"
   },
   {
@@ -652,12 +673,14 @@ export const GAP_PEOPLE = [
     "id": "MB-PRJ-0059",
     "name": "Pardeep Kumar",
     "gender": "male",
+    "email": null,
     "reportsTo": "MB-PRJ-0014"
   },
   {
     "id": "MB-PRJ-0060",
     "name": "Prem Ranjan",
     "gender": "male",
+    "email": null,
     "phone": "8283853528",
     "reportsTo": "MB-PRJ-0014"
   },
@@ -789,28 +812,32 @@ export const GAP_HOLIDAYS = [
     "name": "Republic Day",
     "on": "26 Jan 2027",
     "onDate": "2027-01-26",
-    "allSites": false,
+    "allSites": true,
+    "closure": "Public holidays for all other department with essential maintenance,pantry,project staff working on a rotational basis.",
     "note": "National holiday"
   },
   {
     "name": "Independence Day",
     "on": "15 Aug 2027",
     "onDate": "2027-08-15",
-    "allSites": false,
+    "allSites": true,
+    "closure": "Public holidays for all other department with essential maintenance,pantry,project staff working on a rotational basis.",
     "note": "National holiday"
   },
   {
     "name": "Gandhi Jayanti",
     "on": "02 Oct 2027",
     "onDate": "2027-10-02",
-    "allSites": false,
+    "allSites": true,
+    "closure": "Public holidays for all other department with essential maintenance,pantry,project staff working on a rotational basis.",
     "note": "National holiday"
   },
   {
     "name": "Holi",
     "on": "22 Mar 2027",
     "onDate": "2027-03-22",
-    "allSites": false,
+    "allSites": true,
+    "closure": "Public holidays for all other department with essential maintenance,pantry,project staff working on a rotational basis.",
     "note": "Punjab holiday"
   },
   {
@@ -818,6 +845,7 @@ export const GAP_HOLIDAYS = [
     "on": "14 Apr 2027",
     "onDate": "2027-04-14",
     "allSites": false,
+    "closure": "No",
     "note": "Punjab holiday"
   },
   {
@@ -825,6 +853,7 @@ export const GAP_HOLIDAYS = [
     "on": "14 Nov 2027",
     "onDate": "2027-11-14",
     "allSites": false,
+    "closure": "No",
     "note": "Punjab holiday"
   },
   {
@@ -832,13 +861,15 @@ export const GAP_HOLIDAYS = [
     "on": "10 Oct 2027",
     "onDate": "2027-10-10",
     "allSites": false,
+    "closure": "No",
     "note": "Vijaya Dashami"
   },
   {
     "name": "Diwali",
     "on": "29 Oct 2027",
     "onDate": "2027-10-29",
-    "allSites": false,
+    "allSites": true,
+    "closure": "Public holiday for all other department with essential maintenance,pantry,project staff working on a rotational basis.",
     "note": "Diwali"
   },
   {
@@ -846,6 +877,7 @@ export const GAP_HOLIDAYS = [
     "on": "10 Mar 2027",
     "onDate": "2027-03-10",
     "allSites": false,
+    "closure": "No",
     "note": "Date may be subject to official confirmation"
   },
   {
@@ -853,6 +885,7 @@ export const GAP_HOLIDAYS = [
     "on": "25 Dec 2027",
     "onDate": "2027-12-25",
     "allSites": false,
+    "closure": "No",
     "note": "Christmas holiday"
   }
 ] as const;
@@ -1618,27 +1651,32 @@ export const GAP_RENAMES = [
   {
     "id": "MB-PRJ-0014",
     "was": "Ajay Goyal",
-    "now": "Ajay Goel"
+    "now": "Ajay Goel",
+    "dept": "Project"
   },
   {
     "id": "MB-PRJ-0036",
     "was": "Ravinder Kumar",
-    "now": "Ravinder Bawa"
+    "now": "Ravinder Bawa",
+    "dept": "Project"
   },
   {
     "id": "MB-PRJ-0057",
     "was": "Sorav",
-    "now": "Sourav Alwa"
+    "now": "Sourav Alwa",
+    "dept": "Project"
   },
   {
     "id": "MB-PRJ-0059",
     "was": "Pardeep Yadav",
-    "now": "Pardeep Kumar"
+    "now": "Pardeep Kumar",
+    "dept": "Project"
   },
   {
     "id": "MB-PRJ-0060",
     "was": "Prem Kumar",
-    "now": "Prem Ranjan"
+    "now": "Prem Ranjan",
+    "dept": "Project"
   }
 ] as const;
 
@@ -1648,6 +1686,16 @@ export const GAP_RETITLED = [
     "id": "MB-MNT-0009",
     "was": "Plunber",
     "now": "Plumber"
+  }
+] as const;
+
+/** Dates of birth, joining dates and postings the register had wrong. */
+export const GAP_REDATED = [
+  {
+    "id": "MB-PRJ-0017",
+    "field": "dob",
+    "was": "01 Oct 1990",
+    "now": "10 Jan 1990"
   }
 ] as const;
 
@@ -1681,19 +1729,24 @@ export const GAP_MERGES = [
   }
 ] as const;
 
+/**
+ * People struck off the workbook who are provably a second copy of somebody
+ * still on it. Their ID is retired rather than freed: it was printed against a
+ * name in the workbooks the company holds.
+ */
+export const GAP_DUPLICATES = [] as const;
+
 /** Read these. Nothing here was resolved by the importer. */
 export const GAP_CONFLICTS = [
   "2 records share a date of birth AND a mobile number: MB-MNT-0015 (Rahul Kumar Verma, Maintenance, joined 01 Apr 2026), MB-MNT-0017 (Rahul Kumar, Maintenance, joined 01 Apr 2026). Either one person entered twice, or a row copied from the one above it.",
   "2 records share a date of birth AND a mobile number: MB-SAL-0001 (Gurbinder Singh, Sales, joined 07 Jan 2019), MB-PRJ-0017 (Guru Dutt, Project, joined 20 Feb 2020). Either one person entered twice, or a row copied from the one above it.",
-  "All 10 holidays are marked \"NO\" under \"Every Site Closed?\", including the three national holidays. Loaded as written, but that is almost certainly the column being read the wrong way round.",
   "MB-PRJ-0004 (Jagmohan Singh): the mobile on file cannot be dialled — it is 11 digits. It was checked off as correct on the sheet.",
   "MB-PRJ-0014 (Ajay Goel): sheet 1 has them reporting to themselves. Taken from sheet 2 instead.",
   "MB-SAL-0007 (Saransh Rao): sheet 1 has them reporting to themselves. Taken from sheet 2 instead.",
   "Project now has two people called Pardeep Kumar: MB-PRJ-0049, MB-PRJ-0059. Correct if they really are two people; say so if they are not.",
-  "The same mobile number is on 2 records: MB-CRM-0001 (Kiran Bala), MB-CRM-0004 (Khushi Arora). At most one of them can be right.",
+  "THE MAINTENANCE BLOCK HAS SLIPPED BY A ROW and NOTHING from it has been loaded. MB-MNT-0017 now reads Vinod Kumar instead of Rahul Kumar, MB-MNT-0018 now reads Amandeep Singh instead of Vinod Kumar, MB-MNT-0019 now reads Arjun instead of Amandeep Singh. That is what deleting a row does: the people move up, the employee ID column does not move with them, and everybody below the deleted row is handed the ID of the person above. Delete the CONTENTS of the row instead of the row itself, or clear the row and leave the ID sitting where it is.",
   "The same mobile number is on 2 records: MB-MNT-0015 (Rahul Kumar Verma), MB-MNT-0017 (Rahul Kumar). At most one of them can be right.",
-  "The same mobile number is on 2 records: MB-PRJ-0017 (Guru Dutt), MB-SAL-0001 (Gurbinder Singh). At most one of them can be right.",
-  "The same personal email is on 2 records: MB-MNT-0003 (Manoj kumar), MB-PUR-0003 (Manoj). A shared address means one of them cannot be reached after they leave."
+  "The same mobile number is on 2 records: MB-PRJ-0017 (Guru Dutt), MB-SAL-0001 (Gurbinder Singh). At most one of them can be right."
 ] as const;
 
 /** Worth knowing, but nothing is blocked on them. */

@@ -166,6 +166,8 @@ export interface BootstrapHoliday {
   on: string;
   /** False when some sites stay open. */
   allSites: boolean;
+  /** What HR wrote in the closure column, verbatim. Often a sentence. */
+  closure: string;
   note: string;
 }
 

@@ -562,6 +562,12 @@ model Holiday {
   onDate   DateTime
   /// False when some sites stay open. Recorded as answered, not assumed.
   allSites Boolean  @default(true)
+  /// What HR actually wrote in the closure column, which turned out to be a
+  /// sentence rather than the yes or no the box asked for — "public holiday for
+  /// all other departments, with essential maintenance, pantry and project staff
+  /// on a rotational basis". Reducing that to a boolean loses the part somebody
+  /// needs when they are working out who is on site.
+  closure  String   @default("")
   note     String   @default("")
 
   updatedAt DateTime @updatedAt

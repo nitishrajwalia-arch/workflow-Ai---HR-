@@ -10468,8 +10468,11 @@ function DeptRulesView() {
         <div style={{ display: "flex", alignItems: "center", gap: 9, flexWrap: "wrap", marginBottom: 10 }}>
           <Eyebrow>Holiday calendar</Eyebrow>
           <Pill tone={holidays.length ? "stone" : "amber"}>{holidays.length} listed</Pill>
-          {holidays.length > 0 && !holidays.some(h => h.allSites) &&
-            <Pill tone="amber">none marked as closing every site</Pill>}
+          {holidays.length > 0 && (
+            <Pill tone={holidays.some(h => h.allSites) ? "stone" : "amber"}>
+              {holidays.filter(h => h.allSites).length} close the company
+            </Pill>
+          )}
         </div>
         {holidays.length === 0 ? (
           <div style={{ font: `13px ${sans}`, color: C.stone, lineHeight: 1.6 }}>
@@ -10483,8 +10486,15 @@ function DeptRulesView() {
                 <div style={{ font: `600 13px ${sans}`, color: C.ink }}>{h.name}</div>
                 <div style={{ font: `12px ${mono}`, color: C.goldDeep, marginTop: 2 }}>{h.on}</div>
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 7 }}>
-                  <Pill tone={h.allSites ? "green" : "amber"}>{h.allSites ? "every site closed" : "some sites open"}</Pill>
+                  <Pill tone={h.allSites ? "green" : "amber"}>{h.allSites ? "company closed" : "a normal working day"}</Pill>
                 </div>
+                {/* HR answered the closure column in sentences rather than yes
+                    or no — who stays on site, and on what basis. That is the
+                    part somebody actually needs, so it is shown rather than
+                    reduced to the pill above it. */}
+                {h.closure && !/^no\.?$/i.test(String(h.closure).trim()) && (
+                  <div style={{ font: `11px ${sans}`, color: C.inkSoft, marginTop: 6, lineHeight: 1.5 }}>{h.closure}</div>
+                )}
                 {h.note && <div style={{ font: `11px ${sans}`, color: C.stone, marginTop: 6, lineHeight: 1.5 }}>{h.note}</div>}
               </div>
             ))}

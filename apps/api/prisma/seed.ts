@@ -33,6 +33,7 @@ import {
   GAP_LEAVE,
   GAP_MERGES,
   GAP_PEOPLE,
+  GAP_REDATED,
 } from './real-gaps.js';
 import {
   ATTENDANCE_HELD,
@@ -259,6 +260,17 @@ async function main() {
     const data: Record<string, unknown> = {};
     if (g.name) data.name = g.name;
     if (g.designation) data.designation = g.designation;
+    // Corrections to the columns the sheet asked HR to CHECK rather than fill.
+    // Both forms of a date go together, always — see the note in the schema.
+    if (g.joined) {
+      data.joined = g.joined;
+      data.joinedOn = parseDisplayDate(g.joined);
+    }
+    if (g.dob) {
+      data.dob = g.dob;
+      data.dobOn = parseDisplayDate(g.dob);
+    }
+    if (g.office) data.officeId = g.office;
     if (g.gender) {
       data.gender = g.gender;
       genders++;
@@ -276,20 +288,30 @@ async function main() {
     }
     if (Object.keys(data).length) await prisma.person.update({ where: { id: g.id }, data });
 
-    if (g.email || g.phone) {
+    // A key that is present and null is HR answering "there is no such thing" —
+    // "Not Given" in the cell — which clears the field. A key that is absent was
+    // not answered and leaves what is on file alone. Collapsing the two meant a
+    // later revision could add a personal email but never remove a wrong one.
+    const has = (k: 'email' | 'phone') => k in g;
+    const pick = (k: 'email' | 'phone') => (g as Record<string, string | null>)[k] ?? '';
+    if (has('email') || has('phone')) {
       const c = {
-        ...(g.email ? { email: g.email } : {}),
-        ...(g.phone ? { phone: g.phone } : {}),
+        ...(has('email') ? { email: pick('email') } : {}),
+        ...(has('phone') ? { phone: pick('phone') } : {}),
       };
       await prisma.contact.upsert({
         where: { personId: g.id },
-        create: { personId: g.id, phone: g.phone ?? '', email: g.email ?? '' },
+        create: { personId: g.id, phone: pick('phone'), email: pick('email') },
         update: c,
       });
-      if (g.email) emails++;
+      if (pick('email')) emails++;
     }
   }
   console.log(`  answered    ${genders} genders, ${emails} personal emails, ${lines} reporting lines`);
+  if (GAP_REDATED.length) {
+    console.log(`  corrected   ${GAP_REDATED.length} date or posting: ` +
+      GAP_REDATED.map((d) => `${d.id} ${d.field} ${d.was} -> ${d.now}`).join('; '));
+  }
 
   // The two reserved IDs, folded away. Whatever was filed under them in the
   // company's own workbook — a KYC record, an issued desktop — moves to the
@@ -396,7 +418,12 @@ async function main() {
   /* ------------------------------------------------------------- holidays */
 
   for (const h of GAP_HOLIDAYS) {
-    const data = { onDate: new Date(`${h.onDate}T00:00:00Z`), allSites: h.allSites, note: h.note };
+    const data = {
+      onDate: new Date(`${h.onDate}T00:00:00Z`),
+      allSites: h.allSites,
+      closure: h.closure,
+      note: h.note,
+    };
     await prisma.holiday.upsert({
       where: { name_on: { name: h.name, on: h.on } },
       create: { name: h.name, on: h.on, ...data },
