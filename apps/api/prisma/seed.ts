@@ -14,7 +14,7 @@
 import { randomBytes } from 'node:crypto';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '@prisma/client';
-import { DEPT_CODES } from '@marbella/shared';
+import { DEPT_CODES, parseDisplayDate } from '@marbella/shared';
 import { hashPassword } from '../src/lib/password.js';
 import {
   REAL_COMPANIES,
@@ -125,7 +125,13 @@ async function main() {
       dept: p.dept,
       type: p.type,
       joined: p.joined,
+      // The sortable twin of every display date. The API writes both forms on
+      // every write and the schema says so; the seed wrote only the display
+      // string, so all 126 real people had a NULL `joinedOn` and `dobOn` and
+      // anything the database ordered by date saw an empty column.
+      joinedOn: parseDisplayDate(p.joined),
       dob: p.dob,
+      dobOn: parseDisplayDate(p.dob),
       shiftIn: p.shiftIn || '10:30',
       shiftOut: p.shiftOut || '18:30',
       officeId: p.office,
@@ -168,7 +174,9 @@ async function main() {
       dept: p.dept,
       type: p.type,
       joined: p.joined || '',
+      joinedOn: parseDisplayDate(p.joined || ''),
       dob: p.dob || null,
+      dobOn: parseDisplayDate(p.dob || ''),
       status: 'pending' as const,
       growth: p.evidence,
       officeId: p.office,
