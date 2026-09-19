@@ -13,6 +13,7 @@
 
 import { useState } from 'react';
 import { AuthProvider, useAuth } from './auth/AuthProvider.js';
+import { DESKS_SIGN_IN_DIRECTLY, QUICK_DESKS } from './lib/desks.js';
 import { ErrorBoundary } from './components/ErrorBoundary.js';
 import { ProcurementProvider } from './proc/ProcurementProvider.js';
 import {
@@ -68,8 +69,10 @@ function Gate() {
   if (!user) {
     return (
       <>
-        {/* `signIn` throws with the server's own message; Login shows it. */}
-        <Login onLogin={signIn} />
+        {/* `signIn` throws with the server's own message; Login shows it.
+            QUICK_DESKS is empty here and non-empty only in the shareable
+            preview, which has no server and so no password to bypass. */}
+        <Login onLogin={signIn} desks={QUICK_DESKS} direct={DESKS_SIGN_IN_DIRECTLY} />
         <Toaster />
       </>
     );

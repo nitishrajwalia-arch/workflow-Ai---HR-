@@ -111,13 +111,13 @@ for (const [desk, [empId, tabs]] of Object.entries(DESKS)) {
   });
 
   await page.goto('http://localhost:5173/', { waitUntil: 'domcontentloaded' });
-  await page.waitForSelector('input[placeholder="MB-PUR-0012"]', { timeout: 20000 });
-  await page.fill('input[placeholder="MB-PUR-0012"]', empId);
+  await page.waitForSelector('input[placeholder="MB-ACC-0001"]', { timeout: 20000 });
+  await page.fill('input[placeholder="MB-ACC-0001"]', empId);
   await page.fill('input[type=password]', PASSWORD);
   await page.getByText('Sign in', { exact: true }).click();
   await page.waitForTimeout(3500);
 
-  if (await page.locator('input[placeholder="MB-PUR-0012"]').count()) {
+  if (await page.locator('input[placeholder="MB-ACC-0001"]').count()) {
     report.push(`${desk}: LOGIN FAILED — still on the sign-in screen`);
     bad++;
     await ctx.close();
@@ -156,7 +156,7 @@ for (const [desk, [empId, tabs]] of Object.entries(DESKS)) {
   current = `${desk} › reload`;
   await page.reload({ waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(3000);
-  if (await page.locator('input[placeholder="MB-PUR-0012"]').count()) {
+  if (await page.locator('input[placeholder="MB-ACC-0001"]').count()) {
     report.push(`${desk}: RELOAD LOST THE SESSION`);
     bad++;
   }

@@ -24,6 +24,10 @@ export default defineConfig({
       // unchanged against a fixed payload.
       { find: /^\.\.\/lib\/api\.js$/, replacement: here('./src/preview/api.ts') },
       { find: /^\.\/lib\/api\.js$/, replacement: here('./src/preview/api.ts') },
+      // And the desk shortcuts on the sign-in screen, which are empty in the
+      // real build on purpose. See src/lib/desks.ts.
+      { find: /^\.\.\/lib\/desks\.js$/, replacement: here('./src/preview/desks.ts') },
+      { find: /^\.\/lib\/desks\.js$/, replacement: here('./src/preview/desks.ts') },
     ],
   },
   build: {

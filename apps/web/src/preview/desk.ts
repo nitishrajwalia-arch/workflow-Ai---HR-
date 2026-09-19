@@ -3,34 +3,46 @@
  *
  * The real application gets this from the server at sign-in: `user.userKey` is
  * the server's answer to "which screens does this account see", and the browser
- * has no say in it. The preview has no server, so the choice has to live
- * somewhere — here, in session storage, set by the switcher in the banner.
+ * has no say in it. There is no server here, so the answer is derived from the
+ * Employee ID that was signed in with — see `deskFor` in ./desks.ts — and kept
+ * for the length of the tab so a reload does not drop you somewhere else.
  *
  * This file exists only in the preview build. Nothing in the product reads it.
  */
-const KEY = 'marbella.previewDesk';
+const KEY = 'marbella.previewSession';
 
-export type Desk = 'hr' | 'admin';
+export interface PreviewSession {
+  /** Which set of screens — the server's `userKey` in the product. */
+  desk: string;
+  /** The Employee ID signed in with, or a desk that has no employee behind it. */
+  id: string;
+  name: string;
+  title: string;
+  /** Null when the desk has no employee record — Management, and the gate. */
+  personId: string | null;
+}
 
-export const DESKS: ReadonlyArray<{ key: Desk; label: string; who: string }> = [
-  { key: 'hr', label: 'HR desk', who: 'Pooja Dahiya · HR Manager' },
-  { key: 'admin', label: 'Admin desk', who: 'Chairman · full company view' },
-];
+const NOBODY: PreviewSession = {
+  desk: 'hr',
+  id: '',
+  name: 'Preview',
+  title: '',
+  personId: null,
+};
 
-export function currentDesk(): Desk {
+export function currentSession(): PreviewSession {
   try {
-    const v = window.sessionStorage.getItem(KEY);
-    return v === 'admin' ? 'admin' : 'hr';
+    const raw = window.sessionStorage.getItem(KEY);
+    return raw ? { ...NOBODY, ...(JSON.parse(raw) as Partial<PreviewSession>) } : NOBODY;
   } catch {
-    return 'hr';
+    return NOBODY;
   }
 }
 
-export function chooseDesk(desk: Desk): void {
+export function rememberSession(s: PreviewSession): void {
   try {
-    window.sessionStorage.setItem(KEY, desk);
+    window.sessionStorage.setItem(KEY, JSON.stringify(s));
   } catch {
-    /* Private window. The picker still works for this page view. */
+    /* A private window. The session still holds for this page view. */
   }
-  window.location.reload();
 }

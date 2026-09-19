@@ -391,8 +391,8 @@ function Pill({ children, tone = "gold" }) {
   const map = { gold: [C.goldSoft, C.goldDeep], green: [C.greenSoft, C.green], red: [C.redSoft, C.red], amber: [C.amberSoft, C.amber], stone: [C.lineSoft, C.stone] }[tone];
   return <span style={{ background: map[0], color: map[1], font: `600 11px/1 ${sans}`, padding: "5px 9px", borderRadius: 6, whiteSpace: "nowrap" }}>{children}</span>;
 }
-function GoldButton({ children, onClick, ghost, small }) {
-  return <button onClick={onClick} style={{ cursor: "pointer", border: ghost ? `1px solid ${C.gold}` : "none", background: ghost ? "transparent" : `linear-gradient(180deg, #2A4C7C, ${C.ink})`, color: ghost ? C.goldDeep : "#fff", font: `600 ${small ? 12 : 13}px ${sans}`, padding: small ? "8px 13px" : "11px 17px", borderRadius: 10, letterSpacing: "0.01em", boxShadow: ghost ? "none" : "0 2px 6px rgba(34,64,106,.18)" }}>{children}</button>;
+function GoldButton({ children, onClick, ghost, small, disabled }) {
+  return <button onClick={onClick} disabled={disabled} style={{ cursor: disabled ? "not-allowed" : "pointer", opacity: disabled ? .45 : 1, border: ghost ? `1px solid ${C.gold}` : "none", background: ghost ? "transparent" : `linear-gradient(180deg, #2A4C7C, ${C.ink})`, color: ghost ? C.goldDeep : "#fff", font: `600 ${small ? 12 : 13}px ${sans}`, padding: small ? "8px 13px" : "11px 17px", borderRadius: 10, letterSpacing: "0.01em", boxShadow: ghost ? "none" : "0 2px 6px rgba(34,64,106,.18)" }}>{children}</button>;
 }
 function Gauge({ value = 82, size = 168 }) {
   const [v, setV] = useState(0);
@@ -534,15 +534,32 @@ function Uploader({ label = "Snap an invoice or drop a document", sub = "Any for
 const softBtn = { cursor: "pointer", border: `1px solid ${C.line}`, background: "#fff", color: C.inkSoft, font: `600 12px ${sans}`, padding: "8px 12px", borderRadius: 20 };
 
 /* ============================== LOGIN ============================== */
-export function Login({ onLogin }) {
+/**
+ * `desks` is empty in the real build and stays that way — see lib/desks.ts for
+ * why. The shareable preview swaps that module for a full list, and there
+ * `direct` is true because there is no server behind it and so no password to
+ * bypass. When `direct` is false a desk button only fills in the Employee ID
+ * and the person still types their own password.
+ *
+ * The parameter types are spelled out because this file is JavaScript: without
+ * them TypeScript infers `never[]` from the default and the real build, which
+ * passes a readonly array, fails to compile.
+ *
+ * @param {{
+ *   onLogin: (id: string, password: string) => Promise<unknown>,
+ *   desks?: ReadonlyArray<{ key: string, label: string, sub: string, id: string }>,
+ *   direct?: boolean,
+ * }} props
+ */
+export function Login({ onLogin, desks = [], direct = false }) {
   const mob = useIsMobile();
   const [id, setId] = useState(""); const [pw, setPw] = useState("");
   const [busy, setBusy] = useState(false); const [err, setErr] = useState(null);
-  const submit = async () => {
+  const submit = async (useId, usePw) => {
     if (busy) return;
     setBusy(true); setErr(null);
     try {
-      await onLogin(id.trim(), pw);
+      await onLogin(String(useId ?? id).trim(), usePw ?? pw);
     } catch (e) {
       /* The server's own words. It answers identically for a wrong password and
          an unknown ID, on purpose — telling them apart hands an attacker a list
@@ -565,7 +582,9 @@ export function Login({ onLogin }) {
       <h2 style={{ font: `400 26px ${serif}`, margin: "10px 0 4px" }}>Welcome back</h2>
       <p style={{ color: C.stone, fontSize: 13, marginBottom: 24 }}>Enter your Marbella Employee ID.</p>
       <label style={lbl}>Employee ID</label>
-      <input value={id} onChange={e => setId(e.target.value)} placeholder="MB-PUR-0012" style={inp} />
+      {/* A real Employee ID. The old placeholder, MB-PUR-0012, was invented for
+          the prototype and matches nobody on the roster. */}
+      <input value={id} onChange={e => setId(e.target.value)} placeholder="MB-ACC-0001" style={inp} />
       <label style={lbl}>Password</label>
       <input value={pw} onChange={e => setPw(e.target.value)} type="password" placeholder="••••••••" style={inp} />
       {/* EDIT 4 of 23 — THE IMPORTANT ONE.
@@ -576,18 +595,56 @@ export function Login({ onLogin }) {
           to the server, and the desk you get back is the one the DATABASE says
           you hold. */}
       {err && <div style={{ background: "#FBEDEC", border: `1px solid #E7C4C1`, color: C.red, borderRadius: 9, padding: "10px 12px", font: `12.5px ${sans}`, lineHeight: 1.5, marginBottom: 14 }}>{err}</div>}
-      <GoldButton onClick={submit}>{busy ? "Signing in…" : "Sign in"}</GoldButton>
+      <GoldButton onClick={() => submit()}>{busy ? "Signing in…" : "Sign in"}</GoldButton>
       <div style={{ height: 1, background: C.line, margin: "18px 0 0" }} />
       <div style={{ marginTop: 18 }}>
         {/* EDIT 5 of 23: nine chips filled in nine Employee IDs — MB-ADM-0001,
             MB-PUR-0012 and so on. Every one of them was invented for the
-            prototype, and not one of them exists now that the company's real
-            roster is loaded. A chip that fills in an ID the server will reject
-            is worse than no chip: it looks like the app is broken rather than
-            like the ID is wrong. Sign in with your own Employee ID. */}
+            prototype, and not one existed once the company's real roster was
+            loaded. A chip that fills in an ID the server will reject is worse
+            than no chip: it looks like the app is broken rather than like the ID
+            is wrong. The list below is derived from the live roster instead, and
+            it is EMPTY in the real build — see lib/desks.ts. */}
+        {desks.length > 0 && (
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ font: `600 10px ${sans}`, letterSpacing: ".14em", textTransform: "uppercase",
+              color: C.stone, marginBottom: 9 }}>
+              {direct ? "Open a desk" : "Fill in an Employee ID"}
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr 1fr" : "1fr 1fr", gap: 7 }}>
+              {desks.map(d => (
+                <button key={d.key} type="button" disabled={busy}
+                  onClick={() => { setId(d.id); if (direct) submit(d.id, pw || "preview"); }}
+                  style={{ textAlign: "left", cursor: busy ? "default" : "pointer", background: "#fff",
+                    border: `1px solid ${id === d.id ? C.gold : C.line}`, borderRadius: 10,
+                    padding: "8px 10px", opacity: busy ? .6 : 1 }}>
+                  <span style={{ display: "block", font: `600 12px ${sans}`, color: C.ink }}>{d.label}</span>
+                  <span style={{ display: "block", font: `10px ${sans}`, color: C.stone, marginTop: 2,
+                    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{d.sub}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
         <div style={{ font: `12px ${sans}`, color: C.stone, lineHeight: 1.5 }}>
-          Use the Employee ID on your card. If you do not have one yet, HR will issue it.
+          {desks.length > 0
+            ? "Or use any Employee ID from the People screen. Sales, CRM, Project, Marketing, Pantry, IT and Horticulture have no desk of their own yet, so those open the HR desk."
+            : "Use the Employee ID on your card. If you do not have one yet, HR will issue it."}
         </div>
+        {/* The one thing somebody opening this link for the first time has to
+            know. It sat in a bar across the top of every screen; it now sits
+            here, read once, where the decision to trust what is on screen is
+            actually made. Regulated data is absent from this build rather than
+            hidden in it — scripts/leak-check.py proves that on every build. */}
+        {direct && (
+          <div style={{ font: `11px ${sans}`, color: C.stone, lineHeight: 1.55, marginTop: 14,
+            paddingTop: 12, borderTop: `1px solid ${C.lineSoft}` }}>
+            Marbella's real structure, with <b style={{ color: C.inkSoft }}>no server behind it</b> —
+            nothing you change here is saved. Aadhaar, PAN, home addresses, full mobiles, salaries
+            and residents' names are <b style={{ color: C.inkSoft }}>absent from this build</b>,
+            not hidden in it.
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1643,7 +1700,7 @@ function GateActivity({ compact }) {
           <GoldButton small ghost onClick={() => setOpenEntry(g)}>Open</GoldButton>
         </div>
       ))}
-      <div style={{ font: `11px ${sans}`, color: C.stone, marginTop: 10 }}>Every decision a guard makes is written here the moment he makes it — including the ones he turns away.</div>
+      <div style={{ font: `11px ${sans}`, color: C.stone, marginTop: 10 }}>Every decision a guard makes is written here the moment they make it — including the ones they turn away.</div>
       {exp && <ExportPanel userKey="admin" title="Gate activity" filterNote={only === "deny" ? "turned away only" : only === "permit" ? "let in only" : ""}
         cols={["Entry", "Outcome", "What", "Vehicle", "Guard", "Post", "Authorised by", "Attachments", "Note"]}
         rows={rows.map(g => [g.id, g.outcome === "permit" ? "Let in" : "Turned away", g.label, g.plate || "—", `${g.guard} (${g.guardId})`, g.post, g.who, g.ev, g.note || ""])}
@@ -3021,34 +3078,57 @@ function ScanGate({ pass, walkin, guard, onClose, onDone }) {
 
 function SecurityView({ userKey = "security" }) {
   const mob = useIsMobile();
-  const { activeFirm, gatepasses, markPass } = useProc();
+  const { activeFirm, gatepasses, markPass, me, people = [] } = useProc();
   const [log, setLog] = useState({});
   const [viewPass, setViewPass] = useState(null);
-  const guard = GUARDS[0];
+  /* GUARDS held three invented people with invented posts and shifts; it was
+     emptied when the real roster came in, and this line read `GUARDS[0]` and
+     then `guard.post` — so the gate screen threw the moment anybody could
+     actually reach it. Marbella has no security staff on the roster at all, so
+     the guard is whoever is signed in, and when nobody is the screen says so
+     rather than crashing. */
+  const signedIn = people.find(p => p.id === (me && me.personId));
+  const guard = GUARDS[0] || (signedIn && {
+    name: signedIn.name, id: signedIn.id, post: "Main gate",
+    shift: signedIn.shift ? `${signedIn.shift.in}–${signedIn.shift.out}` : "",
+  }) || null;
   const [scan, setScan] = useState(null);
   const [walkins, setWalkins] = useState([]);
   return (
     <div>
-      <Eyebrow>Gate · {guard.post}</Eyebrow>
+      <Eyebrow>Gate{guard ? ` · ${guard.post}` : ""}</Eyebrow>
       <h1 style={{ font: `400 25px ${serif}`, margin: "6px 0 12px" }}>Today’s expected deliveries</h1>
 
       {/* who is on this post */}
-      <Card pad={mob ? 14 : 18} style={{ marginBottom: 14, borderColor: C.goldSoft }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-          <div style={{ width: 40, height: 40, borderRadius: "50%", background: C.inkDeep, color: "#fff", display: "grid", placeItems: "center", font: `700 15px ${serif}`, flexShrink: 0 }}>{guard.name[0]}</div>
-          <div style={{ flex: 1, minWidth: 150 }}>
-            <div style={{ font: `600 14px ${sans}`, color: C.ink }}>{guard.name} <span style={{ font: `12px ${mono}`, color: C.stone }}>· {guard.id}</span></div>
-            <div style={{ font: `12px ${sans}`, color: C.stone }}>{guard.post} · on duty {guard.shift}</div>
+      <Card pad={mob ? 14 : 18} style={{ marginBottom: 14, borderColor: guard ? C.goldSoft : C.line }}>
+        {guard ? (
+          <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+            <div style={{ width: 40, height: 40, borderRadius: "50%", background: C.inkDeep, color: "#fff", display: "grid", placeItems: "center", font: `700 15px ${serif}`, flexShrink: 0 }}>{(guard.name || "?")[0]}</div>
+            <div style={{ flex: 1, minWidth: 150 }}>
+              <div style={{ font: `600 14px ${sans}`, color: C.ink }}>{guard.name} <span style={{ font: `12px ${mono}`, color: C.stone }}>· {guard.id}</span></div>
+              <div style={{ font: `12px ${sans}`, color: C.stone }}>{guard.post}{guard.shift ? ` · on duty ${guard.shift}` : ""}</div>
+            </div>
+            <Pill tone="green"><ShieldCheck size={10} style={{ verticalAlign: "-1px", marginRight: 3 }} />Signed in</Pill>
           </div>
-          <Pill tone="green"><ShieldCheck size={10} style={{ verticalAlign: "-1px", marginRight: 3 }} />Signed in</Pill>
-        </div>
+        ) : (
+          <div style={{ font: `13px ${sans}`, color: C.inkSoft, lineHeight: 1.6 }}>
+            <b style={{ color: C.ink }}>Nobody holds the gate yet.</b> There are no security staff on
+            the roster, so no post, shift or guard is recorded. Add them on the People screen and
+            this becomes their dashboard. Everything below still works.
+          </div>
+        )}
+        {/* Both open a dialog that stamps the guard's name and post onto the
+            record it writes. With nobody on the post there is no name to stamp,
+            so they are shut rather than left to fail halfway through. */}
         <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
-          <GoldButton onClick={() => setScan({ pass: gatepasses.find(p => p.status !== "arrived") || null })}><span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><ScanLine size={14} /> Scan a gate pass</span></GoldButton>
-          <GoldButton ghost onClick={() => setScan({ pass: null, walkin: true })}><span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><TriangleAlert size={14} /> Someone without an appointment</span></GoldButton>
+          <GoldButton disabled={!guard} onClick={() => guard && setScan({ pass: gatepasses.find(p => p.status !== "arrived") || null })}><span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><ScanLine size={14} /> Scan a gate pass</span></GoldButton>
+          <GoldButton ghost disabled={!guard} onClick={() => guard && setScan({ pass: null, walkin: true })}><span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><TriangleAlert size={14} /> Someone without an appointment</span></GoldButton>
         </div>
-        <div style={{ display: "flex", alignItems: "flex-start", gap: 7, marginTop: 10, font: `11px ${sans}`, color: C.stone }}>
-          <Lock size={12} color={C.stone} style={{ flexShrink: 0, marginTop: 1 }} /> This dashboard belongs to {guard.name} only. Other gates — {GUARDS.slice(1).map(g => g.post).join(", ")} — are locked to their own guards.
-        </div>
+        {guard && GUARDS.length > 1 && (
+          <div style={{ display: "flex", alignItems: "flex-start", gap: 7, marginTop: 10, font: `11px ${sans}`, color: C.stone }}>
+            <Lock size={12} color={C.stone} style={{ flexShrink: 0, marginTop: 1 }} /> This dashboard belongs to {guard.name} only. Other gates — {GUARDS.slice(1).map(g => g.post).join(", ")} — are locked to their own guards.
+          </div>
+        )}
       </Card>
 
       <GateActivity compact />
@@ -3066,7 +3146,7 @@ function SecurityView({ userKey = "security" }) {
           ))}
         </Card>
       )}
-      {scan && <ScanGate pass={scan.pass} walkin={scan.walkin} guard={guard} onClose={() => setScan(null)} onDone={(kind) => setWalkins(w => [{ label: scan.pass ? `${scan.pass.vendor} · ${scan.pass.po}` : "Walk-in at the gate", outcome: kind, who: "office", guard: guard.name, at: new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }), ev: 1 }, ...w])} />}
+      {scan && guard && <ScanGate pass={scan.pass} walkin={scan.walkin} guard={guard} onClose={() => setScan(null)} onDone={(kind) => setWalkins(w => [{ label: scan.pass ? `${scan.pass.vendor} · ${scan.pass.po}` : "Walk-in at the gate", outcome: kind, who: "office", guard: guard.name, at: new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }), ev: 1 }, ...w])} />}
       {gatepasses.length > 0 && (
         <div style={{ marginBottom: 16 }}><Card pad={mob ? 14 : 20}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}><ShieldCheck size={16} color={C.gold} /><span style={{ font: `600 13px ${sans}`, color: C.ink }}>Gate passes from the app</span><Pill tone="gold">{gatepasses.filter(p => p.status !== "arrived").length} live</Pill></div>
@@ -3086,6 +3166,15 @@ function SecurityView({ userKey = "security" }) {
         </Card></div>
       )}
       <Card pad={22}>
+        {/* DELIVERIES held a day of invented trucks and was emptied with the
+            rest of it. An empty card under "Today's expected deliveries" reads
+            as a broken screen; this says which it is. */}
+        {DELIVERIES.length === 0 && (
+          <div style={{ font: `13px ${sans}`, color: C.stone, lineHeight: 1.6 }}>
+            Nothing is expected today. Deliveries appear here once a purchase order has a
+            delivery date against it.
+          </div>
+        )}
         {DELIVERIES.map((d, i) => {
           const done = log[d.po + i];
           return (
