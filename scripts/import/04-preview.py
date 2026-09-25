@@ -15,7 +15,7 @@ grows — a key added to the API appears here automatically.
 
 What comes out has the same structure, the same headcount and the same
 departments. What it does not have is any regulated identifier: Aadhaar, PAN,
-home addresses, full mobile numbers, salaries, device IMEIs, and residents'
+home addresses, full mobile numbers, salaries, whole pay runs, device IMEIs, and residents'
 names, emails and PANs. They are ABSENT, not masked in the UI — there is nothing to recover by
 opening devtools.
 """
@@ -51,6 +51,14 @@ w['contacts'] = {k: {'phone': mask_phone(v.get('phone')), 'email': ''}
 
 # Salary is behind a role check on the server. It is behind nothing at a URL.
 w['salaries'] = {}
+
+# A pay run is a hundred and thirty named people with what each of them earns,
+# what was deducted and what went to their bank — the most sensitive collection
+# in the payload, and it arrived AFTER `salaries` was being emptied. Emptying it
+# leaves the Payroll screen on its own empty state, which is the truth about the
+# preview: there is nothing worked out here. Zeroing the figures instead would
+# put invented salaries on a screen people are being shown to judge the product.
+w['payRuns'] = []
 
 # Devices. The model and the type are the point of the screen; an IMEI is a
 # permanent handset identifier and a SIM is a phone number, and both sit against

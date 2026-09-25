@@ -315,6 +315,42 @@ export const salaryBody = z.object({
   note: z.string().trim().max(500).default(''),
 });
 
+/* ------------------------------------------------------------------ payroll */
+
+/** Asking for a month's payroll to be worked out. */
+export const payRunBody = z.object({
+  /** Display form, "Sep 2026". */
+  month: z.string().trim().regex(/^[A-Z][a-z]{2} \d{4}$/, 'Use a month like "Sep 2026".'),
+  company: slug,
+  monthDays: z.number().int().min(28).max(31),
+  /**
+   * Which month's attendance to take the days from. Usually the same month, and
+   * separate because it is not always loaded — there is one month of it so far,
+   * and a run for a month with none gives everybody the full month and says so
+   * rather than paying nobody.
+   */
+  attendanceMonth: z.string().trim().max(20).default(''),
+});
+
+/**
+ * What HR can change on a line once it is drafted.
+ *
+ * Nothing that is COMPUTED is in here — not the basic, not the earned gross,
+ * not ESI or PF. Those come from the person's structure and the company's
+ * policy, and a screen that lets somebody type over them is a screen where the
+ * number Accounts pays has no rule behind it. What HR sets is the days, the
+ * money the company is taking back or adding, and why.
+ */
+export const payLineBody = z.object({
+  days: z.number().min(0).max(31).optional(),
+  extraDays: z.number().min(0).max(31).optional(),
+  tds: z.number().int().min(0).max(10_000_000).optional(),
+  advance: z.number().int().min(0).max(10_000_000).optional(),
+  other: z.number().int().min(0).max(10_000_000).optional(),
+  arrear: z.number().int().min(-10_000_000).max(10_000_000).optional(),
+  remark: z.string().trim().max(500).optional(),
+});
+
 export const deviceBody = z.object({
   pid: employeeId,
   type: z.string().trim().min(2).max(60),
@@ -523,6 +559,8 @@ export type LedgerVerification = z.infer<typeof ledgerVerification>;
 export type OpenExitBody = z.infer<typeof openExitBody>;
 export type AdvanceExitBody = z.infer<typeof advanceExitBody>;
 export type SalaryBody = z.infer<typeof salaryBody>;
+export type PayRunBody = z.infer<typeof payRunBody>;
+export type PayLineBody = z.infer<typeof payLineBody>;
 export type DeviceBody = z.infer<typeof deviceBody>;
 export type ContactBody = z.infer<typeof contactBody>;
 export type DeptRuleBody = z.infer<typeof deptRuleBody>;

@@ -54,6 +54,7 @@ const DESKS = {
       'Working hours',
       'Usage',
       'Attendance',
+      'Payroll',
       'Incentives',
       'Letters',
       'Calendar',

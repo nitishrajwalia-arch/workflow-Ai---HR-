@@ -31,7 +31,7 @@
  * is meant to serve. See docs/FRONTEND-INTEGRATION.md for when that changes.
  */
 
-import type { BootstrapJd, BootstrapPayload } from '@marbella/shared';
+import type { BootstrapJd, BootstrapPayRun, BootstrapPayload } from '@marbella/shared';
 import { verifyChainNewestFirst } from '@marbella/shared';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ApiError, api } from '../lib/api.js';
@@ -360,6 +360,48 @@ export function ProcProvider({ children, toast }: Props) {
     // Department as well as title: "Assistant Manager" is three different jobs
     // here, and keying on the title alone showed Sales's description against
     // the one in Accounts.
+    /* ----------------------------------------------------------- payroll */
+
+    // All three are PESSIMISTIC: a pay run is money, and an optimistic update
+    // that rolls back leaves somebody looking at a figure the server never
+    // agreed to. Wait for the server, then show what it says.
+    /** Put the run the server just returned in place of whatever was there. */
+    const spliceRun = (run: BootstrapPayRun, s: State): State => ({
+      ...s,
+      payRuns: [run, ...s.payRuns.filter((r) => r.id !== run.id)].sort((a, b2) =>
+        a.month === b2.month ? a.company.localeCompare(b2.company) : 0,
+      ),
+    });
+
+    const draftPayRun = (body: {
+      month: string;
+      company: string;
+      monthDays: number;
+      attendanceMonth: string;
+    }) =>
+      pessimistic(
+        () =>
+          api.post<{
+            run: BootstrapPayRun;
+            drafted: number;
+            withoutSalary: Array<{ id: string; name: string }>;
+            attendanceCovered: number;
+          }>('/pay-runs', body),
+        (r, s) => spliceRun(r.run, s),
+      );
+
+    const setPayLine = (runId: string, lineId: string, patch: Record<string, unknown>) =>
+      pessimistic(
+        () => api.patch<{ run: BootstrapPayRun }>(`/pay-runs/${runId}/lines/${lineId}`, patch),
+        (r, s) => spliceRun(r.run, s),
+      );
+
+    const releasePayRun = (runId: string) =>
+      pessimistic(
+        () => api.post<{ run: BootstrapPayRun; payable: number }>(`/pay-runs/${runId}/release`, {}),
+        (r, s) => spliceRun(r.run, s),
+      );
+
     const saveJD = (dept: string, role: string, jd: BootstrapJd) =>
       optimistic(
         (s) => ({ ...s, jds: { ...s.jds, [dept]: { ...s.jds[dept], [role]: jd } } }),
@@ -417,6 +459,10 @@ export function ProcProvider({ children, toast }: Props) {
       docLog: state.docLog,
       jds: state.jds,
       holidays: state.holidays,
+      payRuns: state.payRuns,
+      draftPayRun,
+      setPayLine,
+      releasePayRun,
       offices: state.offices,
       hrLog: state.hrLog,
       scope,

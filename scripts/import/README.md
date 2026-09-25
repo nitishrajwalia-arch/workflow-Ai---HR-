@@ -9,6 +9,7 @@ python3 scripts/import/02-residents.py    # tower register     -> units.json
 python3 scripts/import/03-generate.py     # both               -> real-data.ts
 python3 scripts/import/05-gaps.py   gaps-v1.xlsx gaps-v2.xlsx [--master master.xlsx]
 python3 scripts/import/06-attendance.py  attendance.xls      # -> real-attendance.ts
+python3 scripts/import/07-pay.py  aug-*.xls aug-*.xlsx          # -> real-pay.ts
 npm run db:seed -- --wipe                 # replace everything in the database
 python3 scripts/import/04-preview.py boot.json   # -> the shareable preview
 python3 scripts/leak-check.py             # prove the preview carries nothing regulated
@@ -20,6 +21,15 @@ second over the first — never the other way round, so any field in the databas
 can still be traced to the sheet it came from. `real-attendance.ts` is one month
 of the biometric machine's export, matched to the roster once by name; after that
 first match every export joins on `Person.biometricId`, the machine's own number.
+`real-pay.ts` is the month the company actually paid: one salary book per
+company, every figure exactly as the book has it and nothing recomputed, so the
+engine in `packages/shared/src/pay.ts` can be checked against it line by line.
+Names on a salary book are matched to employee IDs in tiers, each tier run
+across all remaining lines at once and accepting only pairs that are unique both
+ways — matching one line at a time let a weak rule fire before a strong one had
+taken its people out of the pool, and put an MEP Manager's salary against a
+pantry cook. Lines it cannot tie to a person firmly are KEPT, with no employee
+id, and the payroll screen and the sheet both say so.
 
 Give `05-gaps.py` every revision of the gap workbook HR has sent, **oldest
 first**. They are layered: a later file overrides the earlier answer for the

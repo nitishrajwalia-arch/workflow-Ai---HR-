@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { ProcCtx, useProc } from "../proc/context.js";
+import { rollOutSheet } from "@marbella/shared";
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, ResponsiveContainer, Cell, Tooltip,
 } from "recharts";
@@ -688,7 +689,7 @@ export function Login({ onLogin, desks = [], direct = false }) {
 /* ============================== CHROME ============================== */
 const NAV = {
   admin:        [["overview", "Command", LayoutGrid], ["cost", "Budget", Wallet], ["costiq", "Cost IQ", Calculator], ["people", "People", Users], ["hr", "HR Desk", Contact], ["population", "Population", Building2], ["org", "Org chart", Users], ["cards", "Card bureau", ScanFace], ["incentives", "Incentives", Award], ["firms", "Projects", HardHat], ["accounts", "Accounts", FileText], ["expenses", "Expenses", Boxes], ["sales", "Sales & dues", Users], ["masters", "Masters", Boxes], ["access", "Access", Crown], ["subs", "Submissions", History], ["tax", "Tax & RERA", ShieldCheck], ["calendar", "Calendar", Calendar], ["connect", "Connections", Plug], ["directory", "Directory", Phone]],
-  hr:           [["hr", "HR Desk", Contact], ["roster", "People", Users], ["population", "Population", Building2], ["org", "Org chart", Users], ["cards", "Card bureau", ScanFace], ["desk", "The desk", Mail], ["jd", "Job descriptions", ClipboardList], ["companies", "Companies", Building2], ["intake", "Bulk intake", Upload], ["exits", "Exits & F&F", LogOut], ["deptrules", "Working hours", CalendarClock], ["usage", "Usage", TrendingUp], ["attend", "Attendance", Clock], ["incentives", "Incentives", Award], ["letters", "Letters", FileText], ["calendar", "Calendar", Calendar], ["directory", "Directory", Phone]],
+  hr:           [["hr", "HR Desk", Contact], ["roster", "People", Users], ["population", "Population", Building2], ["org", "Org chart", Users], ["cards", "Card bureau", ScanFace], ["desk", "The desk", Mail], ["jd", "Job descriptions", ClipboardList], ["companies", "Companies", Building2], ["intake", "Bulk intake", Upload], ["exits", "Exits & F&F", LogOut], ["deptrules", "Working hours", CalendarClock], ["usage", "Usage", TrendingUp], ["attend", "Attendance", Clock], ["payroll", "Payroll", Wallet], ["incentives", "Incentives", Award], ["letters", "Letters", FileText], ["calendar", "Calendar", Calendar], ["directory", "Directory", Phone]],
   purchase:     [["overview", "Purchasing", LayoutGrid], ["intent", "Intent → PO", Sparkles], ["invoices", "Invoices", Mail], ["subs", "Submissions", History], ["vendors", "Vendors", Building2], ["calendar", "Calendar", Calendar], ["directory", "Directory", Phone]],
   purchaseAsst: [["overview", "Purchasing", LayoutGrid], ["intent", "Intent → PO", Sparkles], ["calendar", "Calendar", Calendar], ["directory", "Directory", Phone]],
   store:        [["overview", "Store Floor", Package], ["inventory", "Inventory", Boxes], ["calendar", "Calendar", Calendar], ["directory", "Directory", Phone]],
@@ -830,6 +831,7 @@ function Views({ tab, userKey, onActAs, go = () => {} }) {
     {tab === "deptrules" && <DeptRulesView />}
     {tab === "letters" && <LettersView />}
     {tab === "attend" && <AttendanceView />}
+    {tab === "payroll" && <PayrollView />}
     {tab === "incentives" && <IncentivesView userKey={userKey} />}
     {tab === "calendar" && <CalendarView userKey={userKey} />}
     {tab === "connect" && <ConnectionsView />}
@@ -12765,6 +12767,308 @@ function CorrespondenceView() {
         </Card>
       )}
     </div>
+  );
+}
+
+/* ---------- payroll: the month HR hands to accounts ---------- */
+/*
+   The flow this replaces: HR works a month out in four Excel books, one per
+   company, with the arithmetic typed into the cells, and emails them to
+   Accounts. That is where the August sheets came from, and reading them is how
+   the rules in packages/shared/src/pay.ts were written.
+
+   What HR can touch here is deliberately narrow. Days, an advance, a deduction,
+   days worked beyond the month, an arrear, and a remark. NOT the basic, not the
+   earned gross, not ESI or PF — those come from the person's structure and the
+   company's policy, and a screen that lets somebody type over them is a screen
+   where the figure Accounts pays has no rule behind it.
+*/
+const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const monthLabel = (d) => `${MONTH_NAMES[d.getMonth()]} ${d.getFullYear()}`;
+const daysInMonth = (label) => {
+  const [m, y] = String(label).split(" ");
+  return new Date(Number(y), MONTH_NAMES.indexOf(m) + 1, 0).getDate();
+};
+const lastMonths = (n) => {
+  const out = [], now = new Date();
+  for (let i = 0; i < n; i++) out.push(monthLabel(new Date(now.getFullYear(), now.getMonth() - i, 1)));
+  return out;
+};
+
+function PayrollView() {
+  const mob = useIsMobile();
+  const { payRuns = [], companies = [], people = [], att = {}, me, draftPayRun, setPayLine, releasePayRun, track } = useProc();
+  const [company, setCompany] = useState((companies[0] || {}).id || "");
+  const [month, setMonth] = useState(lastMonths(1)[0]);
+  const [openLine, setOpenLine] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  const run = payRuns.find(r => r.company === company && r.month === month) || null;
+  const lines = run ? run.lines : [];
+  const co = companies.find(c => c.id === company) || {};
+  const total = lines.reduce((a, l) => a + (l.payable || 0), 0);
+  const deductions = lines.reduce((a, l) => a + (l.dTotal || 0), 0);
+  const orphans = lines.filter(l => !l.pid);
+  // How much of the month the attendance machine actually covers, which is the
+  // honest limit on "work it out from attendance".
+  const attMonth = month.slice(0, 3) + " " + month.slice(4);
+  const covered = new Set(Object.keys(att).filter(pid => (att[pid] || []).some(d => String(d.date).endsWith(attMonth))));
+  const forCompany = people.filter(p => p.status === "active" && p.employer === company);
+  const coveredHere = forCompany.filter(p => covered.has(p.id)).length;
+
+  /* The provider answers null when the server refused, and has already said
+     why. Nothing here re-reports it. */
+  const draft = async () => {
+    setBusy(true);
+    const r = await draftPayRun({ month, company, monthDays: daysInMonth(month), attendanceMonth: attMonth });
+    if (r) {
+      track("payroll:draft");
+      toast(`${month} worked out — ${r.drafted} people`, "green");
+      if (r.withoutSalary && r.withoutSalary.length) {
+        toast(`${r.withoutSalary.length} left out: no salary on file for them`, "amber");
+      }
+    }
+    setBusy(false);
+  };
+
+  const release = async () => {
+    setBusy(true);
+    const r = await releasePayRun(run.id);
+    if (r) {
+      track("payroll:release");
+      toast(`${month} released to Accounts — ${inr(r.payable)}. It does not change now.`, "green");
+    }
+    setBusy(false);
+  };
+
+  /* The sheet Accounts receives. Built in the browser from the run already on
+     screen, by the same shared code a test checks against the engine — so the
+     file and the screen cannot drift, and it works with the API unreachable. */
+  const sheet = () => {
+    const joined = {};
+    for (const p of people) if (p.joined) joined[p.id] = p.joined;
+    const { name, csv } = rollOutSheet(run, { companyName: co.name, joined, preparedBy: (me && me.name) || "" });
+    downloadFile(name, csv, "text/csv");
+    track("payroll:sheet");
+    toast(run.status === "released" ? `${run.month} sheet downloaded — send it to Accounts` : `${run.month} downloaded as a DRAFT — release it before Accounts pays from it`, run.status === "released" ? "green" : "amber");
+  };
+
+  const cell = { padding: "9px 10px", font: `12px ${sans}`, borderTop: `1px solid ${C.lineSoft}`, whiteSpace: "nowrap" };
+  const num = { ...cell, textAlign: "right", fontFamily: mono };
+  const th = { padding: "9px 10px", font: `600 10px ${sans}`, letterSpacing: ".06em", textTransform: "uppercase", color: "#fff", background: C.ink, whiteSpace: "nowrap", textAlign: "right" };
+
+  return (
+    <div>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}>
+        <Eyebrow>Payroll</Eyebrow>
+        {run && <Pill tone={run.status === "released" ? "green" : "gold"}>{run.status === "released" ? "released to accounts" : "draft"}</Pill>}
+        {run && run.source === "imported" && <Pill tone="stone">from your own salary book</Pill>}
+      </div>
+      <h1 style={{ font: `400 25px ${serif}`, margin: "6px 0 5px" }}>The month, worked out.</h1>
+      <p style={{ font: `13px ${sans}`, color: C.inkSoft, maxWidth: 680, margin: "0 0 18px", lineHeight: 1.55 }}>
+        Pick a company and a month and the desk works every payslip out from what each person is on
+        and what the company's policy says — the same arithmetic as your own salary books, checked
+        line by line against August. You set the days, an advance, an extra day, and why. Release it
+        and it stops moving: Accounts pays from these figures, so they are the figures that stay.
+      </p>
+
+      <div style={{ display: "flex", gap: 9, flexWrap: "wrap", alignItems: "center", marginBottom: 16 }}>
+        <select value={company} onChange={e => setCompany(e.target.value)} style={{ ...sel, margin: 0, minWidth: 220 }}>
+          {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </select>
+        <select value={month} onChange={e => setMonth(e.target.value)} style={{ ...sel, margin: 0, width: 140 }}>
+          {lastMonths(14).map(m => <option key={m} value={m}>{m}</option>)}
+        </select>
+        {(!run || run.status === "draft") && (
+          <GoldButton disabled={busy} onClick={draft}>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+              <Calculator size={14} /> {run ? "Work it out again" : "Work this month out"}
+            </span>
+          </GoldButton>
+        )}
+        {run && run.status === "draft" && lines.length > 0 && (
+          <GoldButton ghost disabled={busy} onClick={release}>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Send size={13} /> Release to Accounts</span>
+          </GoldButton>
+        )}
+        {run && lines.length > 0 && (
+          <GoldButton ghost onClick={sheet}>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Download size={13} /> Download the sheet for Accounts</span>
+          </GoldButton>
+        )}
+      </div>
+
+      {!run && (
+        <Card pad={22}>
+          <div style={{ font: `13px ${sans}`, color: C.inkSoft, lineHeight: 1.6 }}>
+            Nothing worked out for <b style={{ color: C.ink }}>{co.name}</b> in {month} yet.
+            {" "}{forCompany.length} people are employed by them.
+            {coveredHere > 0
+              ? ` The attendance machine covers ${coveredHere} of them this month; the rest get the full month and each line says so.`
+              : " There is no attendance loaded for this month, so everybody gets the full month and each line says so. Load the month's attendance first if you want the days taken off."}
+          </div>
+        </Card>
+      )}
+
+      {run && (
+        <>
+          <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr 1fr" : "repeat(4, 1fr)", gap: 12, marginBottom: 16 }}>
+            {[["People", lines.length, C.ink],
+              ["Gross earned", inrShort(lines.reduce((a, l) => a + l.eGross, 0)), C.ink],
+              ["Deductions", inrShort(deductions), C.amber],
+              ["Payable", inrShort(total), C.green]].map(([k, v]) => (
+              <Card key={k} pad={14}>
+                <div style={{ font: `600 10px ${sans}`, letterSpacing: ".1em", textTransform: "uppercase", color: C.stone }}>{k}</div>
+                <div style={{ font: `400 24px ${serif}`, color: C.ink, marginTop: 5 }}>{v}</div>
+              </Card>
+            ))}
+          </div>
+
+          {orphans.length > 0 && (
+            <Card pad={mob ? 14 : 18} style={{ marginBottom: 16, borderColor: C.amber }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                <TriangleAlert size={15} color={C.amber} />
+                <span style={{ font: `600 13px ${sans}`, color: C.ink }}>
+                  {orphans.length} {orphans.length === 1 ? "person is" : "people are"} on this sheet and not on the employee register
+                </span>
+              </div>
+              <div style={{ font: `12px ${sans}`, color: C.inkSoft, lineHeight: 1.6 }}>
+                {orphans.map(o => `${o.name} (${o.designation || "no designation"}, ${inr(o.gross)})`).join(" · ")}
+              </div>
+              <div style={{ font: `11px ${sans}`, color: C.stone, marginTop: 8 }}>
+                They are paid every month and nobody on the People screen answers to those names.
+                Add them, or find out who is being paid.
+              </div>
+            </Card>
+          )}
+
+          <Card pad={0}>
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 900 }}>
+                <thead>
+                  <tr>
+                    <th style={{ ...th, textAlign: "left" }}>Person</th>
+                    <th style={th}>Days</th>
+                    <th style={th}>Gross</th>
+                    <th style={th}>Earned</th>
+                    <th style={th}>ESI</th>
+                    <th style={th}>PF</th>
+                    <th style={th}>Other ded.</th>
+                    <th style={th}>Extra</th>
+                    <th style={th}>Payable</th>
+                    <th style={{ ...th, textAlign: "left" }}>Remark</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {lines.map(l => (
+                    <tr key={l.id} onClick={() => run.status === "draft" && setOpenLine(l)}
+                      style={{ cursor: run.status === "draft" ? "pointer" : "default", background: l.pid ? "transparent" : C.amberSoft || "#FFF9E0" }}>
+                      <td style={{ ...cell, whiteSpace: "normal" }}>
+                        <div style={{ font: `600 12px ${sans}`, color: C.ink }}>{l.name}</div>
+                        <div style={{ font: `10px ${sans}`, color: C.stone }}>{l.designation || "—"}{l.pid ? "" : " · not on the register"}</div>
+                      </td>
+                      <td style={num}>{l.days}{l.days < run.monthDays ? <span style={{ color: C.amber }}> /{run.monthDays}</span> : null}</td>
+                      <td style={num}>{inr(l.gross)}</td>
+                      <td style={num}>{inr(l.eGross)}</td>
+                      <td style={num}>{l.dEsi ? inr(l.dEsi) : "—"}</td>
+                      <td style={num}>{l.dPf ? inr(l.dPf) : "—"}</td>
+                      <td style={num}>{(l.dTds + l.dAdvance + l.dOther) ? inr(l.dTds + l.dAdvance + l.dOther) : "—"}</td>
+                      <td style={num}>{l.extraDays ? `${l.extraDays}d ${inr(l.extraAmount)}` : "—"}</td>
+                      <td style={{ ...num, fontWeight: 700, color: C.ink }}>{inr(l.payable)}</td>
+                      <td style={{ ...cell, whiteSpace: "normal", color: C.stone, maxWidth: 220 }}>{l.remark || ""}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+          <div style={{ font: `11px ${sans}`, color: C.stone, marginTop: 10, lineHeight: 1.6 }}>
+            {run.status === "draft"
+              ? "Click anybody to set their days, an advance, an extra day or a remark. Nothing is sent until you release it."
+              : `Released by ${run.releasedBy || "—"}. These figures do not change: Accounts is paying from them.`}
+            {" "}The sheet downloads as a CSV that opens in Excel — every part of the salary, what was
+            earned, each deduction, the employer's share and your remark, with a total under every column.
+            That file is what Accounts pays from.
+          </div>
+        </>
+      )}
+
+      {openLine && <PayLineEditor line={openLine} run={run} onClose={() => setOpenLine(null)} onSave={setPayLine} />}
+    </div>
+  );
+}
+
+function PayLineEditor({ line, run, onClose, onSave }) {
+  const mob = useIsMobile();
+  const [f, setF] = useState({
+    days: line.days, extraDays: line.extraDays, tds: line.dTds,
+    advance: line.dAdvance, other: line.dOther, arrear: line.arrear, remark: line.remark,
+  });
+  const [busy, setBusy] = useState(false);
+  const set = (k, v) => setF(s => ({ ...s, [k]: v }));
+  const nnum = (v) => { const n = Number(String(v).replace(/[^\d.-]/g, "")); return Number.isFinite(n) ? n : 0; };
+
+  const save = async () => {
+    setBusy(true);
+    const r = await onSave(run.id, line.id, {
+      days: nnum(f.days), extraDays: nnum(f.extraDays), tds: Math.round(nnum(f.tds)),
+      advance: Math.round(nnum(f.advance)), other: Math.round(nnum(f.other)),
+      arrear: Math.round(nnum(f.arrear)), remark: String(f.remark || ""),
+    });
+    if (r) { toast(`${line.name} updated`, "green"); onClose(); } else setBusy(false);
+  };
+
+  const Row = ({ label, k, hint, wide }) => (
+    <div style={{ marginBottom: 12, gridColumn: wide ? "1 / -1" : "auto" }}>
+      <label style={lbl}>{label}</label>
+      <input value={f[k]} onChange={e => set(k, e.target.value)}
+        style={{ ...inp, margin: "6px 0 0", fontFamily: k === "remark" ? sans : mono }} />
+      {hint && <div style={{ font: `10.5px ${sans}`, color: C.stone, marginTop: 4, lineHeight: 1.5 }}>{hint}</div>}
+    </div>
+  );
+
+  return (
+    <Overlay onClose={onClose} width={520}>
+      <div style={{ padding: mob ? 16 : 22 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
+          <Wallet size={18} color={C.gold} />
+          <Eyebrow>{run.month}</Eyebrow>
+          <button onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
+        </div>
+        <h2 style={{ font: `400 22px ${serif}`, margin: "4px 0 2px", color: C.ink }}>{line.name}</h2>
+        <div style={{ font: `12px ${sans}`, color: C.stone, marginBottom: 16 }}>
+          {line.designation || "—"} · on {inr(line.gross)} a month
+        </div>
+
+        {/* What HR sets. The earned figures, ESI and PF are not here on purpose:
+            they follow from the structure and the policy, and are recomputed on
+            save so the number on the sheet always has a rule behind it. */}
+        <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr" : "1fr 1fr", gap: "0 14px" }}>
+          <Row label={`Days paid (of ${run.monthDays})`} k="days"
+            hint={line.remark && !line.pid ? "" : "Taken from the month's attendance where there is any."} />
+          <Row label="Days beyond the month" k="extraDays" hint="Paid at a month's salary divided by 30." />
+          <Row label="Advance recovered" k="advance" />
+          <Row label="Other deduction" k="other" />
+          <Row label="TDS" k="tds" />
+          <Row label="Arrear" k="arrear" hint="Negative to take money back." />
+          <Row label="Remark — Accounts sees this" k="remark" wide
+            hint="Why the days are what they are, why there is an advance, anything they should know." />
+        </div>
+
+        <div style={{ background: C.paper, borderRadius: 10, padding: "12px 14px", margin: "6px 0 16px", font: `12px ${sans}`, color: C.inkSoft, lineHeight: 1.8 }}>
+          <div>Earned this month <b style={{ color: C.ink, float: "right" }}>{inr(line.eGross)}</b></div>
+          <div>ESI + PF <b style={{ color: C.ink, float: "right" }}>{inr(line.dEsi + line.dPf)}</b></div>
+          <div style={{ borderTop: `1px solid ${C.line}`, marginTop: 6, paddingTop: 6 }}>
+            Payable as it stands <b style={{ color: C.ink, float: "right" }}>{inr(line.payable)}</b>
+          </div>
+          <div style={{ font: `11px ${sans}`, color: C.stone, marginTop: 8, clear: "both" }}>
+            Recomputed when you save — these figures follow the rule, they are not typed.
+          </div>
+        </div>
+
+        <GoldButton disabled={busy} onClick={save}>{busy ? "Saving…" : "Save this line"}</GoldButton>
+      </div>
+    </Overlay>
   );
 }
 

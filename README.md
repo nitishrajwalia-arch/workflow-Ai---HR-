@@ -196,6 +196,42 @@ overflow is silent.
 front end would send and checks the API refuses each one — asserting the
 **messages**, not just the status codes.
 
+### 7. Payroll is worked out, not typed
+
+HR's month ends with a sheet that goes to Accounts, and Accounts pays from it.
+So the arithmetic is in one place — `packages/shared/src/pay.ts` — and every
+rule in it was read off the company's own four August 2026 salary books rather
+than designed here. `apps/api/src/tests/pay.test.ts` recomputes all 132 lines of
+that month from each person's structure and compares every figure to what was
+actually paid.
+
+Two policies, because the company runs two. Three books split a monthly gross
+(Basic is 70% of it, HRA 30% of Basic, Travelling 10% of Basic, Medical a flat
+per-person figure, Special the balance); the fourth states each part outright.
+Forcing one into the other's shape would invent numbers, so `SalaryPolicy.kind`
+says which a company is on. Where a person's recorded parts differ from the
+formula, **the record wins** — four people are on something the formula does not
+produce, and recomputing them would quietly change their pay.
+
+What HR sets is the days, an advance, an extra day, a TDS, an arrear and a
+remark. The earned gross, ESI and PF are not editable anywhere: a screen where
+somebody can type over an earned gross is a screen where the figure Accounts
+pays has no rule behind it. Once **released**, a run is frozen — correcting it
+means a new one.
+
+Six differences between the books and the books' own rules are listed by name in
+the test, which then asserts they are the **only** six, so next month's import
+cannot quietly add a seventh. One of them cost money: a TDS of ₹20,000 entered
+against a person and never subtracted.
+
+The sheet itself is `packages/shared/src/paysheet.ts` — a CSV with every part of
+the salary, what was earned, each deduction, the employer's share and the
+remark, totalled under each column, plus a separate block for days beyond the
+month. It is built in the browser from the run already on screen, so the file
+and the screen cannot drift; `paysheet.test.ts` parses it back out and checks
+every figure against the engine. Anybody being paid who is **not on the employee
+register** is named on the sheet rather than left for somebody to notice.
+
 ---
 
 ## How the old UI runs against a live server

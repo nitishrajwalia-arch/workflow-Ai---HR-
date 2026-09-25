@@ -17,7 +17,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import type { BootstrapJd } from '@marbella/shared';
+import type { BootstrapJd, BootstrapPayRun } from '@marbella/shared';
 import { verifyChainNewestFirst } from '@marbella/shared';
 import { ApiError, api } from '../lib/api.js';
 import { ProcCtx, type ProcValue } from './context.js';
@@ -106,6 +106,12 @@ export function ProcurementProvider({ children, toast }: Props) {
     [toast],
   );
 
+  /** Put the run the server just returned in place of whatever was there. */
+  const spliceRun = (run: BootstrapPayRun, w: World): World => ({
+    ...w,
+    payRuns: [run, ...(w.payRuns ?? []).filter((r: BootstrapPayRun) => r.id !== run.id)],
+  });
+
   const value = useMemo<ProcValue | null>(() => {
     if (!world) return null;
     const w = world;
@@ -146,6 +152,7 @@ export function ProcurementProvider({ children, toast }: Props) {
       docLog: w.docLog,
       jds: w.jds,
       holidays: w.holidays,
+      payRuns: w.payRuns,
       offices: w.offices,
       hrLog: w.hrLog,
       hrTasks: w.hrTasks,
@@ -695,6 +702,40 @@ export function ProcurementProvider({ children, toast }: Props) {
             return { ...x, docLog: [r, ...x.docLog] };
           },
         ),
+      /* --------------------------------------------------------- payroll */
+
+      // All three go through `server`, not `optimistic`: a pay run is money,
+      // and every write returns the WHOLE run, so the browser shows what the
+      // server holds rather than its own guess at what changed.
+      draftPayRun: (body: {
+        month: string;
+        company: string;
+        monthDays: number;
+        attendanceMonth: string;
+      }) =>
+        server(
+          () =>
+            api.post<{
+              run: BootstrapPayRun;
+              drafted: number;
+              withoutSalary: Array<{ id: string; name: string }>;
+              attendanceCovered: number;
+            }>('/pay-runs', body),
+          (r, x) => spliceRun(r.run, x),
+        ),
+
+      setPayLine: (runId: string, lineId: string, patch: Record<string, unknown>) =>
+        server(
+          () => api.patch<{ run: BootstrapPayRun }>(`/pay-runs/${runId}/lines/${lineId}`, patch),
+          (r, x) => spliceRun(r.run, x),
+        ),
+
+      releasePayRun: (runId: string) =>
+        server(
+          () => api.post<{ run: BootstrapPayRun; payable: number }>(`/pay-runs/${runId}/release`, {}),
+          (r, x) => spliceRun(r.run, x),
+        ),
+
       // Keyed by department as well as title — see the note in ProcProvider.
       saveJD: (dept: string, role: string, jd: BootstrapJd) =>
         optimistic(

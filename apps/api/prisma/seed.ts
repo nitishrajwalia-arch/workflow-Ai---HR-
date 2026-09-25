@@ -35,6 +35,7 @@ import {
   GAP_PEOPLE,
   GAP_REDATED,
 } from './real-gaps.js';
+import { PAY_AUGUST, PAY_POLICIES, PAY_STRUCTURES } from './real-pay.js';
 import {
   ATTENDANCE_HELD,
   ATTENDANCE_SOURCE,
@@ -536,6 +537,80 @@ async function main() {
   } else {
     console.log(`  accounts    ${existing} already exist, none created`);
   }
+
+  /* ------------------------------------------------------------- payroll */
+
+  // How each company turns a gross into a payslip. Two different rules across
+  // the group, taken off their own August books — see packages/shared/src/pay.ts.
+  for (const [companyId, p] of Object.entries(PAY_POLICIES)) {
+    await prisma.salaryPolicy.upsert({
+      where: { companyId },
+      create: { companyId, ...p },
+      update: p,
+    });
+  }
+
+  // What each person is on. The structure, not a payment.
+  for (const s of PAY_STRUCTURES) {
+    const data = {
+      gross: s.gross, basic: s.basic, hra: s.hra, travel: s.travel,
+      medical: s.medical, special: s.special,
+      esiOn: s.esiOn, pfOn: s.pfOn, pfWages: s.pfWages,
+    };
+    await prisma.salary.upsert({
+      where: { personId: s.id },
+      create: { personId: s.id, ...data },
+      update: data,
+    });
+  }
+  console.log(`  salaries    ${PAY_STRUCTURES.length} structures, ` +
+    `${Object.keys(PAY_POLICIES).length} company policies`);
+
+  // August 2026, as the company actually paid it. Loaded as a RELEASED run: it
+  // has been paid, and a released run is not editable.
+  const runs = new Map<string, string>();
+  for (const companyId of new Set(PAY_AUGUST.map((l) => l.company))) {
+    const head = {
+      monthOn: new Date('2026-08-01T00:00:00Z'), monthDays: 31,
+      status: 'released', source: 'imported',
+      note: "Loaded from the company's own August 2026 salary book.",
+      createdBy: 'Import', releasedBy: 'Import', releasedAt: new Date('2026-08-31T00:00:00Z'),
+    };
+    const run = await prisma.payRun.upsert({
+      where: { companyId_month: { companyId, month: 'Aug 2026' } },
+      create: { companyId, month: 'Aug 2026', ...head },
+      update: head,
+    });
+    runs.set(companyId, run.id);
+  }
+  for (const l of PAY_AUGUST) {
+    const runId = runs.get(l.company)!;
+    const data = {
+      // Null where the person is on the salary book and not on the employee
+      // register. Thirteen are, and dropping them would hide it.
+      personId: l.personId ?? null,
+      designation: l.designation, days: l.days,
+      gross: l.gross, basic: l.basic, hra: l.hra, travel: l.travel,
+      medical: l.medical, special: l.special,
+      eBasic: l.eBasic, eHra: l.eHra, eTravel: l.eTravel,
+      eMedical: l.eMedical, eSpecial: l.eSpecial, eGross: l.eGross,
+      dEsi: l.dEsi, dPf: l.dPf, dTds: l.dTds, dAdvance: l.dAdvance,
+      dOther: l.dOther, dTotal: l.dTotal, erEsi: l.erEsi, erPf: l.erPf,
+      extraDays: l.extraDays, extraAmount: l.extraAmount, arrear: l.arrear,
+      net: l.net,
+      remark: l.personId ? '' : 'On the salary book, not on the employee register.',
+    };
+    await prisma.payRunLine.upsert({
+      where: { runId_name: { runId, name: l.name } },
+      create: { runId, name: l.name, ...data },
+      update: data,
+    });
+  }
+  const orphans = PAY_AUGUST.filter((l) => !l.personId);
+  console.log(`  pay runs    ${runs.size} for Aug 2026, ${PAY_AUGUST.length} lines, ` +
+    `net ${(PAY_AUGUST.reduce((a, l) => a + l.net, 0) / 100000).toFixed(1)} lakh`);
+  console.log(`              ${orphans.length} paid who are not on the employee register ` +
+    `(${(orphans.reduce((a, l) => a + l.gross, 0) / 100000).toFixed(2)} lakh a month)`);
 
   /* ----------------------------------------- what nobody has answered yet */
 

@@ -12,6 +12,8 @@ export * from './constants.js';
 export * from './validation.js';
 export * from './ledger.js';
 export * from './bootstrap.js';
+export * from './pay.js';
+export * from './paysheet.js';
 export * as schemas from './schemas.js';
 export { readJd } from './schemas.js';
 export type {
@@ -35,6 +37,8 @@ export type {
   DeptRuleBody,
   LeavePolicyBody,
   LogDocBody,
+  PayRunBody,
+  PayLineBody,
   SaveJdBody,
   ImportRow,
   ImportUpdateRow,

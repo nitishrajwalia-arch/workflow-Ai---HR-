@@ -105,9 +105,11 @@ model Company {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  projects  Project[]
-  employees Person[]  @relation("employer")
-  docs      DocLog[]
+  projects       Project[]
+  employees      Person[]       @relation("employer")
+  docs           DocLog[]
+  salaryPolicies SalaryPolicy[]
+  payRuns        PayRun[]
 
   @@map("company")
 }
@@ -239,15 +241,16 @@ model Person {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  notes   PersonNote[]
-  contact Contact?
-  kyc     Kyc?
-  salary  Salary?
-  devices Device[]
-  cards   Card[]
-  exits   Exit[]
-  users   User[]
-  docs    DocLog[]
+  notes       PersonNote[]
+  contact     Contact?
+  kyc         Kyc?
+  salary      Salary?
+  devices     Device[]
+  cards       Card[]
+  exits       Exit[]
+  users       User[]
+  docs        DocLog[]
+  payRunLines PayRunLine[]
 
   @@index([dept])
   @@index([officeId])
@@ -345,18 +348,189 @@ model Contact {
 }
 
 /// Money. Read access is gated to HR and above; see the salary route guard.
+/// What a person is on, per month. The structure, not a payment.
+///
+/// WHOLE RUPEES, not paise — the one place in this schema that is not paise, and
+/// deliberately. Every figure on the company's own four salary books is a whole
+/// rupee: an earned Basic of 28,767.74 is written 28,768 and that rounded figure
+/// is what is paid and what Accounts reconciles against. Holding paise here
+/// would invent a precision the payroll does not have, and mixing the two units
+/// inside one subsystem is how somebody eventually pays a hundred times too
+/// much. Nothing else in payroll uses paise either.
 model Salary {
-  personId  String   @id
-  person    Person   @relation(fields: [personId], references: [id], onDelete: Cascade)
-  basic     Int      @default(0)
-  hra       Int      @default(0)
-  special   Int      @default(0)
-  pf        Int      @default(0)
-  pt        Int      @default(0)
+  personId String @id
+  person   Person @relation(fields: [personId], references: [id], onDelete: Cascade)
+
+  /// The monthly gross — the single figure everything else is derived from on a
+  /// percentage policy, and the sum of the parts on a stated one.
+  gross Int @default(0)
+
+  basic   Int @default(0)
+  hra     Int @default(0)
+  travel  Int @default(0)
+  /// Flat, and it varies per person: 500 for most, 440, 400, 360, 300 or 0 for
+  /// the rest. Not derivable, so it is stored.
+  medical Int @default(0)
+  special Int @default(0)
+
+  /// Whether the statutory deductions apply to this person at all. Sixty-five of
+  /// the hundred and nineteen people on the August books had neither.
+  esiOn   Boolean @default(false)
+  pfOn    Boolean @default(false)
+  /// The wage PF is computed on, which the policy caps. Zero means use the cap.
+  pfWages Int     @default(0)
+
+  /// Kept because the existing importer and the salary screen write them.
+  pf Int @default(0)
+  pt Int @default(0)
+
   note      String   @default("")
   updatedAt DateTime @updatedAt
 
   @@map("salary")
+}
+
+/// How a company turns a monthly gross into a payslip.
+///
+/// There are two at Marbella and they are genuinely different, so there is a row
+/// per company rather than one company-wide rule. The three SRG books split a
+/// gross: Basic is 70% of it, HRA is 30% of Basic, Travelling is 10% of Basic,
+/// Medical is a flat figure and Special is whatever is left. New Marbella does
+/// not split anything — its Basic, HRA and Special are figures somebody chose
+/// per person. Forcing either into the other's shape would invent numbers.
+model SalaryPolicy {
+  companyId String  @id
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  /// `percent` — derive the parts from the gross. `stated` — the parts are on
+  /// the person's record and the gross is their sum.
+  kind String @default("percent")
+
+  basicPct         Float @default(0)
+  hraPctOfBasic    Float @default(0)
+  travelPctOfBasic Float @default(0)
+
+  esiEmployeePct Float @default(0.75)
+  esiEmployerPct Float @default(3.25)
+  /// Above this monthly gross, ESI does not apply. Statutory, not a company choice.
+  esiCeiling     Int   @default(21000)
+  pfPct          Float @default(12)
+  /// PF is computed on wages capped at this. Statutory.
+  pfWageCap      Int   @default(15000)
+
+  /// A day worked beyond the month is paid at gross divided by this. The company
+  /// uses 30 even in a 31-day month, which is a choice, not an error — it is
+  /// what their own Extra sheets do.
+  extraDayDivisor Int @default(30)
+
+  setBy     String   @default("")
+  setOn     String   @default("")
+  updatedAt DateTime @updatedAt
+
+  @@map("salary_policy")
+}
+
+/// One month's payroll for one company.
+///
+/// A pay run is the thing HR hands to Accounts. It is not editable once
+/// released: the figures Accounts pays from and the figures on the screen have
+/// to be the same figures, and "somebody changed it afterwards" is the failure
+/// mode this exists to prevent. Correcting a released run means a new one.
+model PayRun {
+  id String @id @default(cuid())
+
+  /// Display form, "Aug 2026" — what the sheet is headed.
+  month     String
+  /// Sortable copy. First of the month.
+  monthOn   DateTime
+  /// Days in the month. The divisor for a part-month, and it is 31 in August.
+  monthDays Int
+
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+
+  /// draft — HR is still working on it.
+  /// released — handed to Accounts. Frozen.
+  /// paid — Accounts has paid it.
+  status String @default("draft")
+
+  /// Where the figures came from: `imported` for a month loaded from the
+  /// company's own books, `computed` for one this system worked out.
+  source String @default("computed")
+
+  note       String    @default("")
+  createdBy  String    @default("")
+  releasedAt DateTime?
+  releasedBy String    @default("")
+
+  lines     PayRunLine[]
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  @@unique([companyId, month])
+  @@index([monthOn])
+  @@map("pay_run")
+}
+
+/// One person's line on one pay run. Whole rupees — see the note on Salary.
+model PayRunLine {
+  id    String @id @default(cuid())
+  runId String
+  run   PayRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  /// Null for somebody on the company's sheet who is not on the employee
+  /// register. Thirteen people were in exactly that position in August, and
+  /// dropping them to keep the foreign key would have hidden it.
+  personId    String?
+  person      Person? @relation(fields: [personId], references: [id], onDelete: SetNull)
+  /// The name and job as the SHEET has them, which is not always what the
+  /// register has. Kept so a line can be traced back to the row it came from.
+  name        String
+  designation String  @default("")
+
+  /// Days paid for. A half day is real: the books carry 24.5.
+  days Float
+
+  /// What they are on, for this month.
+  gross   Int @default(0)
+  basic   Int @default(0)
+  hra     Int @default(0)
+  travel  Int @default(0)
+  medical Int @default(0)
+  special Int @default(0)
+
+  /// What they earned — the above, pro-rated for the days.
+  eBasic   Int @default(0)
+  eHra     Int @default(0)
+  eTravel  Int @default(0)
+  eMedical Int @default(0)
+  eSpecial Int @default(0)
+  eGross   Int @default(0)
+
+  dEsi     Int @default(0)
+  dPf      Int @default(0)
+  dTds     Int @default(0)
+  dAdvance Int @default(0)
+  dOther   Int @default(0)
+  dTotal   Int @default(0)
+
+  erEsi Int @default(0)
+  erPf  Int @default(0)
+
+  /// Days worked beyond the month, and what they come to.
+  extraDays   Float @default(0)
+  extraAmount Int   @default(0)
+  arrear      Int   @default(0)
+
+  net Int @default(0)
+
+  /// HR's note against this person for this month — why the days are what they
+  /// are, why there is an advance, anything Accounts should see.
+  remark String @default("")
+
+  @@unique([runId, name])
+  @@index([personId])
+  @@map("pay_run_line")
 }
 
 model Device {
@@ -604,12 +778,12 @@ model DocLog {
 /// here — Accounts, Purchase and Sales each wrote their own — and a single-title
 /// key meant whichever department was written last silently replaced the rest.
 model JobDescription {
-  dept String
-  role String
+  dept      String
+  role      String
   /// `{ purpose, duties[], needs[] }`. The screen has always edited those three
   /// fields; the column used to be a single string, so every save from that
   /// screen was rejected by the body schema before it reached here.
-  jd   Json
+  jd        Json
   updatedBy String   @default("")
   updatedAt DateTime @updatedAt
 

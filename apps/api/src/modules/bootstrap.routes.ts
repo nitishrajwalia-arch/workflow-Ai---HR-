@@ -80,6 +80,7 @@ export const bootstrapRoutes: FastifyPluginAsyncZod = async (app) => {
         docs,
         jds,
         holidays,
+        payRuns,
         offices,
         hrLog,
         health,
@@ -108,6 +109,14 @@ export const bootstrapRoutes: FastifyPluginAsyncZod = async (app) => {
           : Promise.resolve([]),
         db.jobDescription.findMany(),
         db.holiday.findMany({ orderBy: { onDate: 'asc' } }),
+        // Payroll is money, so it travels with the salaries: a desk that may not
+        // see what somebody earns is not sent what they were paid either.
+        canSeeMoney
+          ? db.payRun.findMany({
+              orderBy: [{ monthOn: 'desc' }, { companyId: 'asc' }],
+              include: { lines: { orderBy: { name: 'asc' } } },
+            })
+          : Promise.resolve([]),
         db.office.findMany({ orderBy: { id: 'asc' } }),
         db.hrLog.findMany({ orderBy: { createdAt: 'desc' }, take: 200 }),
         ledgerHealth(db),
@@ -341,6 +350,29 @@ export const bootstrapRoutes: FastifyPluginAsyncZod = async (app) => {
           (acc[j.dept] ??= {})[j.role] = readJd(j.jd);
           return acc;
         }, {}),
+        payRuns: payRuns.map((r) => ({
+          id: r.id,
+          month: r.month,
+          company: r.companyId,
+          monthDays: r.monthDays,
+          status: r.status,
+          source: r.source,
+          note: r.note,
+          createdBy: r.createdBy,
+          releasedBy: r.releasedBy,
+          releasedAt: r.releasedAt ? r.releasedAt.toISOString() : null,
+          lines: r.lines.map((l) => ({
+            id: l.id, pid: l.personId, name: l.name, designation: l.designation,
+            days: l.days, gross: l.gross, basic: l.basic, hra: l.hra, travel: l.travel,
+            medical: l.medical, special: l.special,
+            eBasic: l.eBasic, eHra: l.eHra, eTravel: l.eTravel, eMedical: l.eMedical,
+            eSpecial: l.eSpecial, eGross: l.eGross,
+            dEsi: l.dEsi, dPf: l.dPf, dTds: l.dTds, dAdvance: l.dAdvance,
+            dOther: l.dOther, dTotal: l.dTotal, erEsi: l.erEsi, erPf: l.erPf,
+            extraDays: l.extraDays, extraAmount: l.extraAmount, arrear: l.arrear,
+            net: l.net, payable: l.net + l.extraAmount, remark: l.remark,
+          })),
+        })),
         holidays: holidays.map((h) => ({
           id: h.id,
           name: h.name,

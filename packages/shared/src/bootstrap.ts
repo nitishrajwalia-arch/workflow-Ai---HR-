@@ -171,6 +171,60 @@ export interface BootstrapHoliday {
   note: string;
 }
 
+export interface BootstrapPayLine {
+  id: string;
+  /** Null for somebody on the company's salary book who is not on the register. */
+  pid: string | null;
+  name: string;
+  designation: string;
+  days: number;
+  gross: number;
+  basic: number;
+  hra: number;
+  travel: number;
+  medical: number;
+  special: number;
+  eBasic: number;
+  eHra: number;
+  eTravel: number;
+  eMedical: number;
+  eSpecial: number;
+  eGross: number;
+  dEsi: number;
+  dPf: number;
+  dTds: number;
+  dAdvance: number;
+  dOther: number;
+  dTotal: number;
+  erEsi: number;
+  erPf: number;
+  extraDays: number;
+  extraAmount: number;
+  arrear: number;
+  /** Earned, less deductions, plus arrear — what the salary sheet calls Net Payable. */
+  net: number;
+  /** Net plus days beyond the month. What actually goes out. */
+  payable: number;
+  remark: string;
+}
+
+export interface BootstrapPayRun {
+  id: string;
+  /** "Aug 2026". */
+  month: string;
+  company: string;
+  monthDays: number;
+  /** draft | released | paid. A released run does not move. */
+  status: string;
+  /** imported — from the company's own book. computed — worked out here. */
+  source: string;
+  note: string;
+  createdBy: string;
+  releasedBy: string;
+  releasedAt: string | null;
+  lines: BootstrapPayLine[];
+}
+
 export interface BootstrapDoc {
   id: string;
   at: string;
@@ -219,6 +273,8 @@ export interface BootstrapPayload {
   jds: Record<string, Record<string, BootstrapJd>>;
   /** Soonest first. Attendance cannot tell a day off from an absence without these. */
   holidays: BootstrapHoliday[];
+  /** Newest month first. Empty for any desk that may not see money. */
+  payRuns: BootstrapPayRun[];
   offices: BootstrapOffice[];
   hrLog: Array<{ at: string; who: string; what: string }>;
   /** Server's verdict on the chain. The browser re-checks it independently. */
