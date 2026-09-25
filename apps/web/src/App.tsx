@@ -22,7 +22,7 @@ import {
   Shell,
   ThemeCtx,
   Toaster,
-  applyPassport,
+  applyTheme,
   toast,
 } from './legacy/MarbellaProcurementOS.jsx';
 
@@ -30,13 +30,13 @@ function SignedIn() {
   const { user, signOut } = useAuth();
   const [themeKey, setThemeKeyRaw] = useState('marbella');
   const setThemeKey = (k: string) => {
-    applyPassport(k);
+    applyTheme(k);
     setThemeKeyRaw(k);
   };
 
   return (
     // The legacy default is `setThemeKey: () => {}`, so TypeScript infers a
-    // zero-argument function from it. The real one takes the passport key.
+    // zero-argument function from it. The real one takes the theme key.
     <ThemeCtx.Provider value={{ themeKey, setThemeKey } as never}>
       <ProcurementProvider toast={toast as (m: string, tone?: string) => void}>
         <div key={themeKey} style={{ minHeight: '100vh' }}>
