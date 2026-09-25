@@ -18,6 +18,8 @@ Three rules the sheet is built around, each learned from a real import:
 
     python3 scripts/make-intake-sheet.py [out.xlsx]
 """
+import os
+import subprocess
 import sys
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
@@ -31,11 +33,46 @@ GOLD = 'B08D3F'
 PAPER = 'F4F1EA'
 LINE = 'D9D2C4'
 
-DEPARTMENTS = ['Accounts', 'Admin', 'CRM', 'HR', 'Horticulture', 'IT', 'Maintenance',
-               'Marketing', 'Pantry', 'Project', 'Purchase', 'Sales']
-SITES = ['Marbella Grand', 'Twin Tower', 'Marbella Royce', 'New Marbella']
-COMPANIES = ['SRG Developers & Promoters', 'SRG Marbella Developers And Promoters LLP',
-             'Garg Builders And Promoters LLP', 'New Marbella Developers And Promoters LLP']
+# The lists come OUT OF THE DATABASE, not out of this file. A project added on
+# the Companies screen brings a site office with it, and a sheet that still
+# offers last quarter's four sites is a sheet that sends HR to a dropdown which
+# does not contain the answer. The literals below are only what to fall back to
+# when there is no database to ask — building the sheet should not need one.
+FALLBACK_DEPARTMENTS = ['Accounts', 'Admin', 'CRM', 'HR', 'Horticulture', 'IT', 'Maintenance',
+                        'Marketing', 'Pantry', 'Project', 'Purchase', 'Sales']
+FALLBACK_SITES = ['Marbella Grand', 'Twin Tower', 'Marbella Royce', 'New Marbella']
+FALLBACK_COMPANIES = ['SRG Developers & Promoters', 'SRG Marbella Developers And Promoters LLP',
+                      'Garg Builders And Promoters LLP', 'New Marbella Developers And Promoters LLP']
+
+
+def ask(sql, fallback):
+    """One column out of the database, or the fallback if it cannot be reached."""
+    url = os.environ.get('DATABASE_URL') or ''
+    if not url:
+        try:
+            for line in open('apps/api/.env'):
+                if line.startswith('DATABASE_URL'):
+                    url = line.split('=', 1)[1].strip().strip('"')
+        except OSError:
+            return fallback
+    if not url:
+        return fallback
+    # Prisma writes ?schema=public on the end; psql refuses a parameter it does
+    # not know and the refusal reads like a connection failure.
+    try:
+        out = subprocess.run(['psql', url.split('?')[0], '-At', '-c', sql],
+                             capture_output=True, text=True, check=True).stdout
+    except (OSError, subprocess.CalledProcessError):
+        return fallback
+    rows = [r.strip() for r in out.splitlines() if r.strip()]
+    return rows or fallback
+
+
+DEPARTMENTS = ask('select distinct dept from person order by dept', FALLBACK_DEPARTMENTS)
+# The SHORT name, because that is what somebody writes in a Site column, and the
+# importer matches a site on its short name as well as its id.
+SITES = ask('select short from office order by short', FALLBACK_SITES)
+COMPANIES = ask('select name from company order by name', FALLBACK_COMPANIES)
 TYPES = ['Staff', 'Site']
 GENDERS = ['Male', 'Female', 'Other', 'Prefers not to say']
 

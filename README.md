@@ -259,6 +259,33 @@ seeded switched off**, with the Act named on it, because no August payslip
 deducts it: a head that is missing looks like nobody thought about it, and a head
 that is off with the rule on it says somebody looked.
 
+### 9. Who is at which project
+
+People are posted to a **site office**; a project has one. The workforce filter
+says **All projects** or one at a time, and every chip carries its own headcount,
+so "how many of our people are at Royce" is answered on the bar rather than two
+screens further in. A project with nobody on it says zero rather than being left
+out: a site with no staff is a fact worth seeing.
+
+Two things were wrong underneath it. The site list was a **hard-coded four** in
+the browser, so a fifth project's people would all have been drawn as sitting at
+Grand; it comes from the server now. And every screen decided "is this person on
+this project" by comparing the person's office id to the project id — true of
+the four sites the company started with, and of nothing added since. The office
+now carries its project and there is one rule, used everywhere.
+
+Creating a project creates its **site office** in the same transaction. A project
+without one accepts nobody and does it silently: it appears in every list, the
+headcount reads zero for ever, and nothing says why.
+
+**Marbella Manifest** is seeded as a project with its site office, ready for
+people. It is in `seed.ts` rather than the generated `real-data.ts`, because that
+file is derived from the employee register and a project with nobody on it cannot
+be derived from a list of people. **Which company signs for it is an assumption**
+— every other project has its own entity — so it sits under SRG Developers &
+Promoters and an HR task says exactly that, in one click of the screen that
+changes it.
+
 ### 9. What has gone out, and the sheet that brings people in
 
 The Payroll screen does two jobs and they are kept apart, because a screen where

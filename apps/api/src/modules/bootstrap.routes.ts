@@ -462,7 +462,13 @@ export const bootstrapRoutes: FastifyPluginAsyncZod = async (app) => {
           closure: h.closure,
           note: h.note,
         })),
-        offices: offices.map((o) => ({ id: o.id, name: o.name, short: o.short, tint: o.tint })),
+        offices: offices.map((o) => ({
+          id: o.id,
+          name: o.name,
+          short: o.short,
+          tint: o.tint,
+          project: o.projectId,
+        })),
         hrLog: hrLog.map((h) => ({ at: h.at, who: h.who, what: h.what })),
         ledgerHealth: health,
         me: {

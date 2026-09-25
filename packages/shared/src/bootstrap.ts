@@ -294,6 +294,14 @@ export interface BootstrapOffice {
   name: string;
   short: string;
   tint: string;
+  /**
+   * The project this site belongs to, or null for an office that is not on one.
+   * People are posted to an OFFICE; a project's headcount is everybody at any
+   * office belonging to it. Without this the browser had to assume the two ids
+   * were spelled the same, which is true of the four sites the company started
+   * with and not of the next one.
+   */
+  project: string | null;
 }
 
 /** Exactly the shape `ProcCtx.Provider` is given, minus the action functions. */

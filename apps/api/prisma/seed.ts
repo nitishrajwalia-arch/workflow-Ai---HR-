@@ -97,7 +97,33 @@ async function main() {
 
   /* ------------------------------------------------- projects and offices */
 
-  for (const p of REAL_PROJECTS) {
+  /**
+   * Projects the management has asked for that the employee register does not
+   * know about, because nobody is posted to them yet. They are seeded here
+   * rather than in real-data.ts, which is GENERATED from the registers: a
+   * project with no people on it cannot be derived from a list of people.
+   *
+   * THE COMPANY IS AN ASSUMPTION, and it is flagged as one below. Every other
+   * project has its own entity — Grand is SRG, Royce is Garg, Twin is SRG
+   * Marbella, New Marbella its own LLP — and nobody has said which entity signs
+   * for Manifest.
+   */
+  const ASKED_FOR = [
+    {
+      id: 'manifest',
+      name: 'Marbella Manifest',
+      short: 'Manifest',
+      firm: 'SRG Developers & Promoters',
+      companyId: 'srg',
+      assumption:
+        'Marbella Manifest has been added as a project with its own site office, so people ' +
+        'can be posted to it. It is under SRG Developers & Promoters because nobody has said ' +
+        'which company signs for it — every other project has its own entity. Change it on ' +
+        'Companies & projects, or tell the management it is right.',
+    },
+  ];
+
+  for (const p of [...REAL_PROJECTS, ...ASKED_FOR]) {
     await prisma.project.upsert({
       where: { id: p.id },
       create: { id: p.id, name: p.name, short: p.short, companyId: p.companyId },
@@ -116,7 +142,17 @@ async function main() {
       update: { short: p.short, name: p.name, firm: p.firm },
     });
   }
-  console.log(`  projects    ${REAL_PROJECTS.length} (with a site office each)`);
+  for (const p of ASKED_FOR) {
+    const text = p.assumption;
+    const have = await prisma.hrTask.findFirst({ where: { text } });
+    if (!have) await prisma.hrTask.create({ data: { text, who: 'HR', due: '' } });
+  }
+  console.log(
+    `  projects    ${REAL_PROJECTS.length + ASKED_FOR.length} (with a site office each)` +
+      (ASKED_FOR.length
+        ? ` — ${ASKED_FOR.map((p) => p.name).join(', ')} added with an assumed company`
+        : ''),
+  );
 
   /* --------------------------------------------------------------- people */
 

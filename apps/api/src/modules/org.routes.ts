@@ -154,10 +154,27 @@ export const orgRoutes: FastifyPluginAsyncZod = async (app) => {
           create: { id, ...rest, companyId: company },
           update: { ...rest, companyId: company },
         });
+
+        // A project with no site office is a project nobody can be posted to:
+        // people are posted to an OFFICE, and a project without one silently
+        // accepts nobody. Every project the company already has was seeded with
+        // one; a project added here gets the same, so the next one works
+        // without somebody noticing this a month later.
+        const hasOffice = await tx.office.findFirst({ where: { projectId: id } });
+        if (!hasOffice) {
+          await tx.office.upsert({
+            where: { id },
+            create: { id, name: `${row.name} — Site Office`, short: row.short, projectId: id },
+            update: { projectId: id },
+          });
+        }
+
         await appendInTx(tx, {
           kind: 'project',
           subject: id,
-          detail: existing ? `${row.name} details updated.` : `${row.name} added as a project.`,
+          detail: existing
+            ? `${row.name} details updated.`
+            : `${row.name} added as a project, with a site office people can be posted to.`,
           who: me.name,
         });
         return row;

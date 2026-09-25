@@ -752,8 +752,10 @@ function MasterSearch() {
   );
 }
 function FirmSwitcher({ compact }) {
-  const { firms, activeFirm, setFirm } = useProc();
+  const { firms, activeFirm, setFirm, people = [], offices = [] } = useProc();
   const [open, setOpen] = useState(false);
+  const active = people.filter(p => (p.status || "active") === "active");
+  const headOf = (pid) => active.filter(p => officesOnProject(offices, pid).includes(p.office)).length;
   return (
     <div style={{ position: "relative" }}>
       <button onClick={() => setOpen(o => !o)} style={{ cursor: "pointer", display: "flex", alignItems: "center", gap: 8, border: `1px solid ${C.line}`, background: "#fff", borderRadius: 20, padding: compact ? "6px 10px" : "7px 12px", font: `600 12px ${sans}`, color: C.ink, maxWidth: compact ? 130 : 240 }}>
@@ -764,11 +766,20 @@ function FirmSwitcher({ compact }) {
       {open && (<>
         <div onClick={() => setOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 55 }} />
         <div style={{ position: "absolute", top: 40, left: compact ? 0 : "auto", right: compact ? "auto" : 0, width: 300, maxWidth: "calc(100vw - 32px)", background: "#fff", border: `1px solid ${C.line}`, borderRadius: 10, boxShadow: "0 12px 34px rgba(22,52,95,.16)", zIndex: 60, overflow: "hidden" }}>
-          <div style={{ font: `600 10px ${sans}`, letterSpacing: "0.1em", textTransform: "uppercase", color: C.stone, padding: "12px 14px 6px" }}>Working project · RERA</div>
+          <div style={{ padding: "12px 14px 8px" }}>
+            <div style={{ font: `600 10px ${sans}`, letterSpacing: "0.1em", textTransform: "uppercase", color: C.stone }}>Working project · RERA</div>
+            {/* People kept asking this for a headcount. It is not that switch —
+                it decides whose letterhead and RERA number go on a document —
+                so it says so, and points at the one that is. */}
+            <div style={{ font: `11px ${sans}`, color: C.stone, marginTop: 5, lineHeight: 1.5 }}>
+              Decides whose letterhead and RERA number go on what you send out.
+              To see <b style={{ color: C.inkSoft }}>who is posted where</b>, use the project filter on Population.
+            </div>
+          </div>
           {firms.map(f => { const on = f.id === activeFirm.id; return (
             <button key={f.id} onClick={() => { setFirm(f.id); setOpen(false); toast(`Now working on ${f.short}`, "gold"); }} style={{ cursor: "pointer", display: "block", width: "100%", textAlign: "left", border: "none", borderTop: `1px solid ${C.lineSoft}`, background: on ? C.goldTint : "#fff", padding: "11px 14px" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}><div style={{ font: `600 13px ${sans}`, color: C.ink }}>{f.name}</div>{f.stage === "pre" && <Pill tone="amber">pre-launch</Pill>}{on && <Check size={14} color={C.green} style={{ marginLeft: "auto", flexShrink: 0 }} />}</div>
-              <div style={{ font: `11px ${sans}`, color: C.stone, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.firm} · {f.rera}</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}><div style={{ font: `600 13px ${sans}`, color: C.ink }}>{f.name}</div>{f.stage === "pre" && <Pill tone="amber">pre-launch</Pill>}<span style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 6, flexShrink: 0 }}><span style={{ font: `11px ${mono}`, color: C.stone }}>{headOf(f.id)} posted</span>{on && <Check size={14} color={C.green} />}</span></div>
+              <div style={{ font: `11px ${sans}`, color: C.stone, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.firm}{f.rera ? ` · ${f.rera}` : " · no RERA number yet"}</div>
             </button>
           ); })}
         </div>
@@ -9673,13 +9684,33 @@ function ConnectionsView() {
    else's screen. It is NOT access control — anyone who can open the file can read the code.
    Real enforcement belongs on the server that talks to the printer, and that is a backend job.  */
 
+/* The four sites the company had when this was written. They are a FALLBACK for
+   the self-contained demo provider only — the real list comes from the server,
+   because a fifth project added on the Companies screen has a site office of its
+   own and everybody posted to it would otherwise be shown as sitting at Grand. */
 const OFFICES = [
   { id: "grand",       name: "Marbella Grand · Site Office", short: "Grand",        tint: "#3E7C55" },
   { id: "newmarbella", name: "New Marbella · Site Office",   short: "New Marbella", tint: "#224A85" },
   { id: "twin",        name: "Twin Tower · Site Office",     short: "Twin Tower",   tint: "#8A6224" },
   { id: "royce",       name: "Marbella Royce · Site Office", short: "Royce",        tint: "#B0503C" },
 ];
-const officeById = (id) => OFFICES.find(o => o.id === id) || OFFICES[0];
+/* A colour per site, for the ones the server does not carry one for. Stable by
+   position so a site does not change colour when another is added. */
+const SITE_TINTS = ["#3E7C55", "#224A85", "#8A6224", "#B0503C", "#5B4B8A", "#2E6F79"];
+/* Posted to a site that BELONGS TO the chosen project — not "whose office id
+   reads the same as the project id", which is true of the four sites the
+   company started with and of nothing added since. */
+const onProject = (office, scope) => (office.project ? office.project === scope : office.id === scope);
+const officesOnProject = (offices, scope) =>
+  (offices && offices.length ? offices : OFFICES).filter(o => onProject(o, scope)).map(o => o.id);
+
+const officeIn = (offices, id) => {
+  const list = (offices && offices.length ? offices : OFFICES);
+  const at = list.findIndex(o => o.id === id);
+  const found = at >= 0 ? list[at] : null;
+  if (!found) return { id, short: id || "—", name: id || "Not posted anywhere", tint: C.stone };
+  return { ...found, tint: found.tint || SITE_TINTS[at % SITE_TINTS.length] };
+};
 
 /* zones a card can open — printed on the back, and the reason a lost card matters */
 const ZONES = ["Main gate", "Site office", "Sales office", "Store & yard", "Accounts room", "Server room", "Basement plant", "Club house", "Tower floors"];
@@ -10241,9 +10272,10 @@ function CardBureauView() {
 
 /* ---------- the org, drawn ---------- */
 function OrgNode({ p, all, depth, expanded, toggle }) {
+  const { offices = [] } = useProc();
   const kids = all.filter(x => x.reportsTo === p.id && x.id !== p.id);
   const open = expanded.includes(p.id);
-  const office = officeById(p.office);
+  const office = officeIn(offices, p.office);
   const count = (() => {
     const seen = new Set();
     const walk = (id) => all.filter(x => x.reportsTo === id && x.id !== id).forEach(c => { if (!seen.has(c.id)) { seen.add(c.id); walk(c.id); } });
@@ -10384,9 +10416,11 @@ function WorkforceShape({ people = [], all = [] }) {
               total={ages.length} />
           ))}
           <div style={{ font: `11px ${sans}`, color: noDob ? C.amber : C.stone, marginTop: 10, lineHeight: 1.55 }}>
-            {noDob
-              ? `${noDob} of ${people.length} have no usable date of birth, so they are not in any band. Add it on their record and they appear here.`
-              : `Every one of the ${people.length} has a date of birth on file, so nobody is missing from these bands.`}
+            {!people.length
+              ? "Nobody is posted here yet, so there is no shape to show."
+              : noDob
+                ? `${noDob} of ${people.length} have no usable date of birth, so they are not in any band. Add it on their record and they appear here.`
+                : `Every one of the ${people.length} has a date of birth on file, so nobody is missing from these bands.`}
           </div>
         </>
       )}
@@ -10436,20 +10470,26 @@ function WorkforceShape({ people = [], all = [] }) {
 
 function PopulationView() {
   const mob = useIsMobile();
-  const { people, deptRules, companies, projects, scope } = useProc();
+  const { people, deptRules, companies, projects, offices = [], scope } = useProc();
+  const ourSites = officesOnProject(offices, scope);
   const [office, setOffice] = useState("all");
   const [dept, setDept] = useState("all");
   const [q, setQ] = useState("");
   const coName = (id) => (companies.find(c => c.id === id) || {}).name || "—";
 
-  const inScope = (p) => scope === "group" || p.office === scope;
+  const inScope = (p) => scope === "group" || ourSites.includes(p.office);
   const active = people.filter(p => p.status === "active" && inScope(p));
   const rows = active.filter(p =>
     (office === "all" || p.office === office) &&
     (dept === "all" || p.dept === dept) &&
     (!q.trim() || (p.name + p.id + p.designation).toLowerCase().includes(q.trim().toLowerCase()))
   );
-  const byOffice = OFFICES.filter(o => scope === "group" || o.id === scope).map(o => ({ ...o, n: active.filter(p => p.office === o.id).length }));
+  /* Every site the company has, from the server — not the four this file was
+     written with. A project added on the Companies screen brings a site office
+     with it and appears here the moment somebody is posted to it. */
+  const sites = (offices.length ? offices : OFFICES).map((o, i) => ({ ...o, tint: o.tint || SITE_TINTS[i % SITE_TINTS.length] }));
+  const byOffice = sites.filter(o => scope === "group" || onProject(o, scope))
+    .map(o => ({ ...o, n: active.filter(p => p.office === o.id).length }));
   const depts = [...new Set(active.map(p => p.dept))].sort();
 
   return (
@@ -10479,6 +10519,12 @@ function PopulationView() {
           <Building2 size={15} color={C.gold} /><Eyebrow>On whose payroll</Eyebrow>
           <span style={{ marginLeft: "auto", font: `11px ${sans}`, color: C.stone }}>{active.length} in view</span>
         </div>
+        {!active.length && (
+          <div style={{ font: `12px ${sans}`, color: C.stone, lineHeight: 1.6 }}>
+            Nobody is posted to this project yet. Post somebody here when you enrol them, or move
+            somebody across on their own record.
+          </div>
+        )}
         {companies.map(c => {
           const n = active.filter(p => p.employer === c.id).length;
           if (!n) return null;
@@ -10522,7 +10568,7 @@ function PopulationView() {
             </thead>
             <tbody>
               {rows.map(p => {
-                const o = officeById(p.office);
+                const o = officeIn(sites, p.office);
                 const r = deptRules[p.dept];
                 return (
                   <tr key={p.id}>
@@ -12105,38 +12151,69 @@ function CompaniesView() {
   );
 }
 
-/* ---------- the scope bar: whole group, or one project ---------- */
+/* ---------- the scope bar: every project, or one at a time ---------- */
+/**
+ * The one place a project is chosen.
+ *
+ * It says ALL PROJECTS rather than "the group", because that is the question
+ * being asked — how many of our people are at each site, and who. Every chip
+ * carries its own headcount, so the answer is on the bar itself and not two
+ * screens further in. A project with nobody on it says so rather than being
+ * left out: a site with no staff is a fact worth seeing, not an empty row.
+ */
 function ScopeBar() {
   const mob = useIsMobile();
-  const { projects, companies, scope, setScope, people } = useProc();
+  const { projects, companies, offices = [], scope, setScope, people } = useProc();
   const active = people.filter(p => p.status === "active");
   const all = scope === "group";
   const cur = projects.find(p => p.id === scope);
   const co = cur && companies.find(c => c.id === cur.company);
-  const n = all ? active.length : active.filter(p => p.office === scope).length;
+  /* People are posted to a SITE OFFICE; a project has one. So a project's
+     headcount is everybody at any office belonging to it — not everybody whose
+     office id happens to read the same as the project id. */
+  const officesOf = (pid) => officesOnProject(offices, pid);
+  const headOf = (pid) => active.filter(p => officesOf(pid).includes(p.office)).length;
+  const n = all ? active.length : headOf(scope);
+  const placed = new Set(projects.flatMap(p => officesOf(p.id)));
+  const nowhere = active.filter(p => !placed.has(p.office)).length;
+
+  const chip = (on, tone) => ({
+    cursor: "pointer", borderRadius: 20, padding: "8px 14px", font: `600 12px ${sans}`,
+    border: `1.5px solid ${on ? tone : C.line}`, background: on ? (tone === C.gold ? C.goldTint : tone) : "#fff",
+    color: on ? (tone === C.gold ? C.goldDeep : "#fff") : C.inkSoft,
+    display: "inline-flex", alignItems: "center", gap: 7,
+  });
+
   return (
     <div style={{ marginBottom: 16 }}>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-        <button onClick={() => setScope("group")} style={{ cursor: "pointer", border: `1.5px solid ${all ? C.gold : C.line}`,
-          background: all ? C.goldTint : "#fff", color: all ? C.goldDeep : C.inkSoft, borderRadius: 20,
-          padding: "8px 15px", font: `600 12px ${sans}`, display: "inline-flex", alignItems: "center", gap: 7 }}>
-          <Crown size={14} /> Marbella Group — all
+        <button onClick={() => setScope("group")} style={chip(all, C.gold)}>
+          <Crown size={14} /> All projects
+          <span style={{ font: `700 11px ${mono}`, color: all ? C.goldDeep : C.stone }}>{active.length}</span>
         </button>
         {projects.map(p => {
           const on = scope === p.id;
+          const h = headOf(p.id);
           return (
-            <button key={p.id} onClick={() => setScope(p.id)} style={{ cursor: "pointer", border: `1.5px solid ${on ? C.ink : C.line}`,
-              background: on ? C.ink : "#fff", color: on ? "#fff" : C.inkSoft, borderRadius: 20, padding: "8px 14px", font: `600 12px ${sans}` }}>
+            <button key={p.id} onClick={() => setScope(p.id)} style={chip(on, C.ink)}>
               {p.short}
+              <span style={{ font: `700 11px ${mono}`, color: on ? "#E8CE96" : h ? C.inkSoft : C.stone }}>{h}</span>
             </button>
           );
         })}
       </div>
       <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginTop: 10, font: `12px ${sans}`, color: C.inkSoft }}>
         {all ? (
-          <>Every listed project — <b style={{ color: C.ink }}>{projects.length}</b> across <b style={{ color: C.ink }}>{companies.length}</b> companies, <b style={{ color: C.ink }}>{n}</b> people.</>
+          <>
+            <b style={{ color: C.ink }}>{active.length}</b> people on the rolls across
+            {" "}<b style={{ color: C.ink }}>{projects.length}</b> projects and
+            {" "}<b style={{ color: C.ink }}>{companies.length}</b> companies.
+            {nowhere > 0 && <span style={{ color: C.amber }}> {nowhere} are not posted to any of them.</span>}
+          </>
         ) : cur ? (
           <>
+            <span><b style={{ color: C.ink }}>{n}</b> {n === 1 ? "person is" : "people are"} posted here</span>
+            <span style={{ color: C.stone }}>·</span>
             <span>Employed by <b style={{ color: C.ink }}>{co ? co.name : "—"}</b></span>
             <span style={{ color: C.stone }}>·</span>
             <span style={{ font: `11px ${mono}`, color: C.goldDeep }}>{co && co.gstin ? co.gstin : "no GSTIN"}</span>
@@ -13945,8 +14022,8 @@ function OrgCard({ p, all, depth, tilt, onOpen, selected, expanded, toggle, reve
 
 function OrgView() {
   const mob = useIsMobile();
-  const { people, companies, projects, scope, track, jds } = useProc();
-  const inScope = (p) => scope === "group" || p.office === scope;
+  const { people, companies, projects, offices = [], scope, track, jds } = useProc();
+  const inScope = (p) => scope === "group" || officesOnProject(offices, scope).includes(p.office);
   const active = people.filter(p => p.status === "active" && inScope(p));
   const isRoot = (p) => !p.reportsTo || p.reportsTo === p.id || !active.some(x => x.id === p.reportsTo);
   const roots = active.filter(isRoot);
@@ -14086,7 +14163,7 @@ function OrgView() {
 
               <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 14 }}>
                 <Pill tone="stone">{p.dept}</Pill>
-                <Pill tone="stone">{officeById(p.office).short}</Pill>
+                <Pill tone="stone">{officeIn(offices, p.office).short}</Pill>
                 <Pill tone="gold">{ten.text} in</Pill>
                 <Pill tone={p.perf >= 85 ? "green" : p.perf >= 70 ? "amber" : "red"}>perf {p.perf}</Pill>
                 {kids.length > 0 && <Pill tone="gold">{kids.length} report directly</Pill>}
