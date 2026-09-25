@@ -145,7 +145,7 @@ export const importsRoutes: FastifyPluginAsyncZod = async (app) => {
         if (!/^\d{2} [A-Z][a-z]{2} \d{4}$/.test(joinedDisplay)) {
           return reject(
             'joined',
-            `"${r.joined}" is not a date I can read. Try 05/06/2020 or 2020-06-05.`,
+            `"${r.joined}" is not a date I can read. Type it as 12 Aug 2026, or 12/08/2026.`,
           );
         }
 
@@ -341,7 +341,10 @@ export const importsRoutes: FastifyPluginAsyncZod = async (app) => {
         if (r.dob?.trim()) {
           const d = normDate(r.dob);
           if (!/^\d{2} [A-Z][a-z]{2} \d{4}$/.test(d)) {
-            return reject('dob', `"${r.dob}" is not a date I can read. Try 15/08/1995.`);
+            return reject(
+              'dob',
+              `"${r.dob}" is not a date I can read. Type it as 15 Aug 1995, or 15/08/1995.`,
+            );
           }
         }
         if (r.gender?.trim() && !readGender(r.gender)) {

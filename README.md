@@ -259,6 +259,43 @@ seeded switched off**, with the Act named on it, because no August payslip
 deducts it: a head that is missing looks like nobody thought about it, and a head
 that is off with the rule on it says somebody looked.
 
+### 9. What has gone out, and the sheet that brings people in
+
+The Payroll screen works out **one month of one company**, which is how a payroll
+is done. The other question — *how much went out in August?* — was not
+answerable anywhere: you had to open each company in turn and add the four
+numbers up yourself. **What has gone out**, at the foot of the Payroll screen,
+answers it: every month, newest first, with each company under it, and only
+released runs counted towards the total. A draft is listed separately and marked,
+because adding it would report money that has not left.
+
+Building it found a real defect. `PayRunLine` was unique on `(runId, name)`, and
+two different people called **Parveen Kumar** are paid by SRG on the same August
+book — an AGM - Accounts on ₹98,000 and an MEP Supervisor on ₹35,000, each
+correctly matched to their own employee ID. The key collapsed them into one line,
+so ₹98,000 of August's payroll was simply not in the system and nothing said so.
+The key is gone, a run is rebuilt whole rather than merged row by row, and a test
+asserts both men are there.
+
+**Bulk intake takes a file now.** The screen had always said "or drop a CSV" and
+had nowhere to drop one. It reads `.xlsx` directly — `packages/shared/src/xlsx.ts`
+unzips the workbook and parses the XML in about two hundred lines rather than
+with a dependency, because the readers on npm are large, have had
+prototype-pollution advisories, and the one everybody reaches for is no longer
+published to the registry at all. A date entered as a real Excel date and one
+typed as "12 Aug 2026" come back the same, so one sheet cannot import two ways.
+
+`scripts/make-intake-sheet.py` builds the master workbook HR is handed
+(`docs/Marbella-Bulk-Intake-Master.xlsx`): a tab for new people, a tab for filling
+in blanks on people already on the roster, dropdowns from the real departments
+and sites, date columns formatted as text, and **no example rows** — a sample row
+of invented employees is exactly the thing that gets uploaded by accident, so the
+example lives on the instructions tab where it cannot be. The column names are
+the ones the importer matches on, and `intake-sheet.test.ts` reads the file that
+is actually handed out, pushes it through the real import endpoint and checks
+every row is accepted — so a column renamed in one place fails a test rather than
+somebody's Monday morning.
+
 ### 9. Enrolling somebody works, and takes their salary
 
 It did not. The form never asked who employed a person, so the server refused

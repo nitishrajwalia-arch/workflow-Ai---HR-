@@ -321,8 +321,29 @@ export function normDate(s: unknown): string {
     if (mo >= 1 && mo <= 12 && d >= 1 && d <= 31)
       return `${String(d).padStart(2, '0')} ${MONTHS[mo - 1]} ${y}`;
   }
-  m = t.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (m) return `${m[3]} ${MONTHS[Number(m[2]) - 1]} ${m[1]}`;
+  m = t.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (m) {
+    return `${String(Number(m[3])).padStart(2, '0')} ${MONTHS[Number(m[2]) - 1]} ${m[1]}`;
+  }
+  // "1 Nov 2026", "1 November 2026", "01-Nov-2026", "Nov 1 2026".
+  //
+  // This is the shape the master intake sheet asks people to type, and a
+  // single-digit day is what half of them type. It used to fall through
+  // unchanged and be refused a line later for having one digit too few, which
+  // reads as "the date is wrong" when the date is perfectly clear.
+  m = t.match(/^(\d{1,2})[ \-/]([A-Za-z]{3,})[ \-/](\d{4})$/);
+  if (!m) {
+    const flipped = t.match(/^([A-Za-z]{3,})[ \-/](\d{1,2}),?[ \-/]?[ ]?(\d{4})$/);
+    if (flipped) m = [flipped[0], flipped[2], flipped[1], flipped[3]] as RegExpMatchArray;
+  }
+  if (m) {
+    const needle = (m[2] as string).slice(0, 3).toLowerCase();
+    const mi = MONTHS.findIndex((x) => x.toLowerCase() === needle);
+    const d = Number(m[1]);
+    if (mi >= 0 && d >= 1 && d <= 31) {
+      return `${String(d).padStart(2, '0')} ${MONTHS[mi]} ${m[3]}`;
+    }
+  }
   return t;
 }
 

@@ -20,6 +20,7 @@ import {
   type PayStructure,
 } from '@marbella/shared';
 import { describe, expect, it } from 'vitest';
+import { makeApp } from './helpers.js';
 import { PAY_AUGUST, PAY_HEADS, PAY_POLICIES } from '../../prisma/real-pay.js';
 
 const policy = (c: string): PayPolicy =>
@@ -503,5 +504,38 @@ describe('what comes off a payslip', () => {
     expect(one?.label).toBe('Canteen — June and July');
     expect(one?.amount).toBe(1_200);
     expect(g.dOther).toBe(1_200);
+  });
+});
+
+/* ------------------------------------------------- two people, one name */
+
+describe('a month, as it lands in the database', () => {
+  it('keeps both people who share a name on one book', async () => {
+    // Two different Parveen Kumars are paid by SRG in August — an AGM on 98,000
+    // and an MEP Supervisor on 35,000, each matched to their own employee ID.
+    // A unique key on (run, name) collapsed them into one line and 35,000 of
+    // that month simply was not there. This is the test that says a pay run is
+    // keyed on nothing but itself.
+    const shared = PAY_AUGUST.filter((l) => l.name === 'Parveen Kumar');
+    expect(shared).toHaveLength(2);
+    expect(new Set(shared.map((l) => l.personId)).size).toBe(2);
+    expect(new Set(shared.map((l) => l.company)).size).toBe(1);
+
+    const { app, db } = await makeApp();
+    try {
+      const lines = await db.payRunLine.findMany({
+        where: { run: { month: 'Aug 2026' } },
+        select: { name: true, gross: true },
+      });
+      expect(lines, 'every line of the month is in the database').toHaveLength(PAY_AUGUST.length);
+      const both = lines
+        .filter((l) => l.name === 'Parveen Kumar')
+        .map((l) => l.gross)
+        .sort();
+      expect(both).toEqual([35_000, 98_000]);
+    } finally {
+      await app.close();
+      await db.$disconnect();
+    }
   });
 });

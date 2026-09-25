@@ -655,49 +655,48 @@ async function main() {
     });
     runs.set(companyId, run.id);
   }
+  // Rebuilt whole, not merged row by row. Upserting on the name lost one of the
+  // two Parveen Kumars on the SRG book — see the note on the model.
+  await prisma.payRunLine.deleteMany({ where: { runId: { in: [...runs.values()] } } });
   for (const l of PAY_AUGUST) {
     const runId = runs.get(l.company)!;
-    const data = {
-      // Null where the person is on the salary book and not on the employee
-      // register. Thirteen are, and dropping them would hide it.
-      personId: l.personId ?? null,
-      designation: l.designation,
-      days: l.days,
-      gross: l.gross,
-      basic: l.basic,
-      hra: l.hra,
-      travel: l.travel,
-      medical: l.medical,
-      special: l.special,
-      eBasic: l.eBasic,
-      eHra: l.eHra,
-      eTravel: l.eTravel,
-      eMedical: l.eMedical,
-      eSpecial: l.eSpecial,
-      eGross: l.eGross,
-      dEsi: l.dEsi,
-      dPf: l.dPf,
-      dTds: l.dTds,
-      dAdvance: l.dAdvance,
-      dOther: l.dOther,
-      dTotal: l.dTotal,
-      erEsi: l.erEsi,
-      erPf: l.erPf,
-      erOther: 0,
-      // The book gives the totals; this says which head each one is and under
-      // which rule, so an imported month reads the same way as one worked out
-      // here rather than showing a figure with nothing behind it.
-      reductions: bookReductions(l),
-      extraDays: l.extraDays,
-      extraAmount: l.extraAmount,
-      arrear: l.arrear,
-      net: l.net,
-      remark: l.personId ? '' : 'On the salary book, not on the employee register.',
-    };
-    await prisma.payRunLine.upsert({
-      where: { runId_name: { runId, name: l.name } },
-      create: { runId, name: l.name, ...data },
-      update: data,
+    await prisma.payRunLine.create({
+      data: {
+        runId,
+        name: l.name,
+        // Null where the person is on the salary book and not on the employee
+        // register. Thirteen are, and dropping them would hide it.
+        personId: l.personId ?? null,
+        designation: l.designation,
+        days: l.days,
+        gross: l.gross,
+        basic: l.basic,
+        hra: l.hra,
+        travel: l.travel,
+        medical: l.medical,
+        special: l.special,
+        eBasic: l.eBasic,
+        eHra: l.eHra,
+        eTravel: l.eTravel,
+        eMedical: l.eMedical,
+        eSpecial: l.eSpecial,
+        eGross: l.eGross,
+        dEsi: l.dEsi,
+        dPf: l.dPf,
+        dTds: l.dTds,
+        dAdvance: l.dAdvance,
+        dOther: l.dOther,
+        dTotal: l.dTotal,
+        erEsi: l.erEsi,
+        erPf: l.erPf,
+        erOther: 0,
+        reductions: bookReductions(l),
+        extraDays: l.extraDays,
+        extraAmount: l.extraAmount,
+        arrear: l.arrear,
+        net: l.net,
+        remark: l.personId ? '' : 'On the salary book, not on the employee register.',
+      },
     });
   }
   const orphans = PAY_AUGUST.filter((l) => !l.personId);

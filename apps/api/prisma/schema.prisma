@@ -537,7 +537,12 @@ model PayRunLine {
   /// are, why there is an advance, anything Accounts should see.
   remark String @default("")
 
-  @@unique([runId, name])
+  // NOT unique on (runId, name). Two different people called Parveen Kumar are
+  // paid by SRG on the same August book — an AGM on 98,000 and an MEP Supervisor
+  // on 35,000 — and a unique key on the name silently collapsed them into one
+  // line, dropping 35,000 of that month's payroll. A pay run is rebuilt whole
+  // rather than merged row by row, so it does not need the key.
+  @@index([runId])
   @@index([personId])
   @@map("pay_run_line")
 }

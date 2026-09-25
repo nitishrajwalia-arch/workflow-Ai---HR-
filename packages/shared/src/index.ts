@@ -14,6 +14,8 @@ export * from './ledger.js';
 export * from './bootstrap.js';
 export * from './pay.js';
 export * from './paysheet.js';
+export * from './intake.js';
+export * from './xlsx.js';
 export * as schemas from './schemas.js';
 export { readJd } from './schemas.js';
 export type {

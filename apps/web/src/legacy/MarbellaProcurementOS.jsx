@@ -1,6 +1,9 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { ProcCtx, useProc } from "../proc/context.js";
-import { proposeBreakUp, reductionsFor, rollOutSheet } from "@marbella/shared";
+import {
+  INTAKE_FIELDS, INTAKE_UPDATE_FIELDS, matchColumns, proposeBreakUp, reductionsFor,
+  rollOutSheet, xlsxToSheet,
+} from "@marbella/shared";
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, ResponsiveContainer, Cell, Tooltip,
 } from "recharts";
@@ -10824,27 +10827,11 @@ const LEAVE_SEED = {
 };
 
 /* ============================== BULK INTAKE ============================== */
-const IMP_FIELDS = [
-  { k: "name",   label: "Full name",        req: true,  aliases: ["name", "employee name", "full name", "staff name", "emp name", "नाम"] },
-  { k: "id",     label: "Employee ID",      req: false, aliases: ["id", "employee id", "emp id", "code", "empcode", "employee code", "emp no"] },
-  { k: "desig",  label: "Designation",      req: true,  aliases: ["designation", "role", "post", "title", "job title", "position"] },
-  { k: "dept",   label: "Department",       req: true,  aliases: ["department", "dept", "division", "section"] },
-  { k: "office", label: "Office / site",    req: false, aliases: ["office", "site", "location", "posting", "branch", "place"] },
-  { k: "joined", label: "Date of joining",  req: true,  aliases: ["doj", "date of joining", "joining date", "joined", "start date", "date joined"] },
-  { k: "dob",    label: "Date of birth",     req: false, aliases: ["dob", "date of birth", "birth date", "birthday", "born"] },
-  { k: "gender", label: "Gender",            req: false, aliases: ["gender", "sex", "m/f", "male/female"] },
-  { k: "phone",  label: "Personal mobile",  req: true,  aliases: ["mobile", "phone", "personal mobile", "contact", "cell", "personal number", "mobile no"] },
-  { k: "email",  label: "Personal email",   req: false, aliases: ["email", "personal email", "e-mail", "mail", "email id"] },
-  { k: "basic",  label: "Basic pay",        req: false, aliases: ["basic", "basic pay", "basic salary"] },
-  { k: "hra",    label: "HRA",              req: false, aliases: ["hra", "house rent", "house rent allowance"] },
-  { k: "special",label: "Other allowances", req: false, aliases: ["special", "special allowance", "other", "allowance", "allowances", "conveyance"] },
-  { k: "imei",   label: "Device IMEI",      req: false, aliases: ["imei", "imei no", "device imei", "handset imei"] },
-  { k: "sim",    label: "SIM number",       req: false, aliases: ["sim", "sim no", "sim number", "company number", "official number"] },
-];
+/* The columns and their aliases live in @marbella/shared so that the matcher
+   here, the master workbook HR is handed and the test that proves the one reads
+   the other cannot drift apart. */
+const IMP_FIELDS = INTAKE_FIELDS;
 
-/* The sheet HR is asked to fill in. It carries the header row and nothing else:
-   the point is to show which columns the importer reads, and a sample row of
-   invented employees is exactly the thing that ends up imported by accident. */
 const SAMPLE_CSV = `Employee Name,Designation,Department,Site,DOJ,Date of Birth,Gender,Personal Mobile,Personal Email,Basic,HRA,Conveyance,IMEI,Official Number`;
 
 /* The same screen does a second job: filling in the blanks on people who are
@@ -10853,34 +10840,13 @@ const SAMPLE_CSV = `Employee Name,Designation,Department,Site,DOJ,Date of Birth,
    the only column that must be there — it is what each row is matched on. A
    BLANK CELL LEAVES THAT FIELD ALONE, so a sheet of nothing but emails cannot
    wipe the phone numbers somebody else collected. */
-const UPD_FIELDS = [
-  { k: "id",        label: "Employee ID",     req: true,  aliases: ["id", "employee id", "emp id", "code", "empcode", "employee code", "emp no"] },
-  { k: "gender",    label: "Gender",          req: false, aliases: ["gender", "sex", "m/f", "male/female"] },
-  { k: "dob",       label: "Date of birth",   req: false, aliases: ["dob", "date of birth", "birth date", "birthday", "born"] },
-  { k: "email",     label: "Personal email",  req: false, aliases: ["email", "personal email", "e-mail", "mail", "email id"] },
-  { k: "phone",     label: "Personal mobile", req: false, aliases: ["mobile", "phone", "personal mobile", "contact", "cell", "personal number", "mobile no"] },
-  { k: "reportsTo", label: "Reports to (ID)", req: false, aliases: ["reports to", "reporting to", "manager", "manager id", "reports to id", "supervisor"] },
-  { k: "imei",      label: "Device IMEI",     req: false, aliases: ["imei", "imei no", "device imei", "handset imei"] },
-  { k: "sim",       label: "SIM number",      req: false, aliases: ["sim", "sim no", "sim number", "company number", "official number"] },
-  { k: "basic",     label: "Basic pay",       req: false, aliases: ["basic", "basic pay", "basic salary"] },
-  { k: "hra",       label: "HRA",             req: false, aliases: ["hra", "house rent", "house rent allowance"] },
-  { k: "special",   label: "Other allowances", req: false, aliases: ["special", "special allowance", "other", "allowance", "allowances", "conveyance"] },
-];
+const UPD_FIELDS = INTAKE_UPDATE_FIELDS;
 const UPDATE_SAMPLE_CSV = `Employee ID,Gender,Personal Email,Reports To`;
 const GENDER_WORDS = { f: 1, female: 1, woman: 1, women: 1, m: 1, male: 1, man: 1, men: 1,
   o: 1, other: 1, others: 1, "non-binary": 1, nb: 1, transgender: 1,
   "prefer not to say": 1, "prefers not to say": 1, undisclosed: 1, "not disclosed": 1, declined: 1 };
 
-const guessMap = (head, fields = IMP_FIELDS) => {
-  const m = {};
-
-  head.forEach((h, i) => {
-    const s = h.toLowerCase().replace(/[^a-z ]/g, "").trim();
-    const f = fields.find(f => f.aliases.some(a => s === a || s.includes(a)));
-    if (f && m[f.k] === undefined) m[f.k] = i;
-  });
-  return m;
-};
+const guessMap = (head, fields = IMP_FIELDS) => matchColumns(head, fields);
 
 /**
  * Read a pasted sheet.
@@ -10954,6 +10920,34 @@ function BulkImportView() {
   const [rows, setRows] = useState([]);
   const [map, setMap] = useState({});
   const [done, setDone] = useState(null);
+  const [reading, setReading] = useState(false);
+
+  /* A file, not a paste. A workbook is unzipped and read straight off — the tab
+     is picked by which job she is doing, so the "Fill in blanks" tab cannot be
+     uploaded as new joiners by mistake. Anything else is read as text. */
+  const onFile = async (e) => {
+    const f = e.target.files && e.target.files[0];
+    e.target.value = "";
+    if (!f) return;
+    setReading(true);
+    try {
+      if (/\.xlsx$/i.test(f.name)) {
+        const bytes = new Uint8Array(await f.arrayBuffer());
+        const tab = mode === "add" ? "New people" : "Fill in blanks";
+        let text = "";
+        try { text = await xlsxToSheet(bytes, tab); }
+        catch { text = await xlsxToSheet(bytes); }   // not our master sheet — take the first tab
+        setRaw(text); read(text);
+      } else {
+        const text = await f.text();
+        setRaw(text); read(text);
+      }
+      toast(`${f.name} read`, "green");
+    } catch (err) {
+      toast(String((err && err.message) || "That file could not be read"), "red");
+    }
+    setReading(false);
+  };
 
   const read = (text) => {
     const { head, rows, skipped } = parseSheet(text, FIELDS);
@@ -11044,8 +11038,9 @@ function BulkImportView() {
         {mode === "add" ? "Bring an existing list in." : "Fill in what's missing."}
       </h1>
       <p style={{ font: `13px ${sans}`, color: C.inkSoft, maxWidth: 660, margin: "0 0 14px", lineHeight: 1.55 }}>
-        Paste a sheet or drop a CSV. The columns get matched for you — you check the matching, then the rows are
-        validated one by one. Anything that fails is held back with a reason, not quietly dropped.
+        Upload the master sheet, drop a CSV, or paste straight out of Excel. The columns get matched for you —
+        you check the matching, then the rows are validated one by one. Anything that fails is held back with a
+        reason, not quietly dropped.
       </p>
 
       <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
@@ -11098,7 +11093,22 @@ function BulkImportView() {
             <GoldButton onClick={() => read(raw)}>
               <span style={{ display: "inline-flex", alignItems: "center", gap: 7 }}><Upload size={15} /> Read this sheet</span>
             </GoldButton>
+            {/* The screen has always said "or drop a CSV" and had nowhere to drop
+                one. It takes a file now — and takes the workbook itself, because
+                asking HR to save as CSV first is asking her to do a thing that
+                goes wrong: the wrong tab, the wrong encoding, a comma inside
+                somebody's designation. */}
+            <label style={{ ...softBtn, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6 }}>
+              <Upload size={14} /> {reading ? "Reading…" : "Upload a file"}
+              <input type="file" accept=".xlsx,.csv,.tsv,.txt" onChange={onFile} style={{ display: "none" }} />
+            </label>
             <GoldButton ghost small onClick={() => { setRaw(mode === "add" ? SAMPLE_CSV : UPDATE_SAMPLE_CSV); toast("Sample loaded — press Read", "gold"); }}>Use a sample</GoldButton>
+            <GoldButton ghost small onClick={() => {
+              const cols = (mode === "add" ? IMP_FIELDS : UPD_FIELDS);
+              downloadFile(`Marbella-${mode === "add" ? "new-people" : "fill-in-blanks"}.csv`,
+                cols.map(f => f.label).join(",") + "\n", "text/csv");
+              toast("Template downloaded — fill it in and upload it back", "green");
+            }}>Get the blank template</GoldButton>
             {mode === "fill" && (
               <GoldButton ghost small onClick={() => {
                 /* The whole roster, ID and name, with the columns to fill left
@@ -11114,7 +11124,7 @@ function BulkImportView() {
           <div style={{ display: "flex", alignItems: "flex-start", gap: 7, marginTop: 14, font: `12px ${sans}`, color: C.stone, lineHeight: 1.55 }}>
             <Info size={14} color={C.goldDeep} style={{ flexShrink: 0, marginTop: 1 }} />
             Column names don't have to match ours — "DOJ", "Joining Date" and "Date of Joining" all land in the same place.
-            Excel: save as CSV first, or copy the cells and paste straight in.
+            An .xlsx is read straight off: {mode === "add" ? '"New people"' : '"Fill in blanks"'} is the tab it takes.
           </div>
         </Card>
       )}
@@ -13058,6 +13068,7 @@ function PayrollView() {
         and what the company's policy says — the same arithmetic as your own salary books, checked
         line by line against August. You set the days, an advance, an extra day, and why. Release it
         and it stops moving: Accounts pays from these figures, so they are the figures that stay.
+        What has already gone out, month by month, is at the bottom of this screen.
       </p>
 
       <div style={{ display: "flex", gap: 9, flexWrap: "wrap", alignItems: "center", marginBottom: 16 }}>
@@ -13192,7 +13203,119 @@ function PayrollView() {
         </>
       )}
 
+      <PayHistory payRuns={payRuns} companies={companies}
+        onOpen={(r) => { setCompany(r.company); setMonth(r.month); window.scrollTo({ top: 0, behavior: "smooth" }); }} />
+
       {openLine && <PayLineEditor line={openLine} run={run} onClose={() => setOpenLine(null)} onSave={setPayLine} />}
+    </div>
+  );
+}
+
+/**
+ * What has gone out, month by month.
+ *
+ * The rest of the screen is about ONE month of ONE company, which is how a
+ * payroll is worked out. This is the other question — "how much went out in
+ * August?" — and it was not answerable anywhere: you had to pick each company
+ * in turn and add the four numbers up yourself.
+ *
+ * Only RELEASED and PAID runs count towards a month's total. A draft is a
+ * working figure; adding it to what has gone out would report money that has
+ * not left, and it is listed separately so it is not mistaken for one.
+ */
+function PayHistory({ payRuns, companies, onOpen }) {
+  const mob = useIsMobile();
+  const nameOf = (id) => (companies.find(c => c.id === id) || {}).name || id;
+  const months = useMemo(() => {
+    const by = new Map();
+    for (const r of payRuns) {
+      if (!by.has(r.month)) by.set(r.month, []);
+      by.get(r.month).push(r);
+    }
+    return [...by.entries()].map(([month, runs]) => {
+      const out = runs.filter(r => r.status !== "draft");
+      const sum = (rs, pick) => rs.reduce((a, r) => a + r.lines.reduce((b, l) => b + pick(l), 0), 0);
+      return {
+        month, runs,
+        people: out.reduce((a, r) => a + r.lines.length, 0),
+        gross: sum(out, l => l.eGross),
+        deducted: sum(out, l => l.dTotal),
+        paid: sum(out, l => l.payable),
+        employer: sum(out, l => (l.erEsi || 0) + (l.erPf || 0) + (l.erOther || 0)),
+        drafts: runs.filter(r => r.status === "draft").length,
+      };
+    });
+  }, [payRuns, companies]);
+
+  if (!months.length) return null;
+
+  const cell = { padding: "9px 10px", font: `12px ${sans}`, borderTop: `1px solid ${C.lineSoft}`, whiteSpace: "nowrap" };
+  const num = { ...cell, textAlign: "right", fontFamily: mono };
+  const th = { padding: "9px 10px", font: `600 10px ${sans}`, letterSpacing: ".06em", textTransform: "uppercase", color: "#fff", background: C.ink, whiteSpace: "nowrap", textAlign: "right" };
+
+  return (
+    <div style={{ marginTop: 26 }}>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap", marginBottom: 6 }}>
+        <Eyebrow>What has gone out</Eyebrow>
+        <span style={{ font: `12px ${sans}`, color: C.stone }}>
+          Every month that has been released, newest first. Tap a company to open that month.
+        </span>
+      </div>
+      <Card pad={0}>
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: mob ? 620 : 0 }}>
+            <thead>
+              <tr>
+                <th style={{ ...th, textAlign: "left" }}>Month</th>
+                <th style={th}>People</th>
+                <th style={th}>Earned</th>
+                <th style={th}>Reductions</th>
+                <th style={th}>Paid out</th>
+                <th style={th}>Company's own share</th>
+              </tr>
+            </thead>
+            <tbody>
+              {months.map(m => (
+                <React.Fragment key={m.month}>
+                  <tr style={{ background: C.paper }}>
+                    <td style={{ ...cell, font: `600 12.5px ${sans}`, color: C.ink }}>
+                      {m.month}
+                      {m.drafts > 0 && <span style={{ font: `10px ${sans}`, color: C.amber, marginLeft: 8 }}>
+                        {m.drafts} still a draft — not counted
+                      </span>}
+                    </td>
+                    <td style={{ ...num, fontWeight: 600 }}>{m.people || "—"}</td>
+                    <td style={{ ...num, fontWeight: 600 }}>{m.gross ? inr(m.gross) : "—"}</td>
+                    <td style={{ ...num, fontWeight: 600, color: C.amber }}>{m.deducted ? inr(m.deducted) : "—"}</td>
+                    <td style={{ ...num, fontWeight: 700, color: C.ink }}>{m.paid ? inr(m.paid) : "—"}</td>
+                    <td style={{ ...num, color: C.inkSoft }}>{m.employer ? inr(m.employer) : "—"}</td>
+                  </tr>
+                  {m.runs.map(r => (
+                    <tr key={r.id} onClick={() => onOpen(r)} style={{ cursor: "pointer" }}>
+                      <td style={{ ...cell, paddingLeft: 26, color: C.inkSoft }}>
+                        {nameOf(r.company)}
+                        {r.status === "draft" && <Pill tone="gold" style={{ marginLeft: 7 }}>draft</Pill>}
+                        {r.source === "imported" && <span style={{ font: `10px ${sans}`, color: C.stone, marginLeft: 7 }}>from their own book</span>}
+                      </td>
+                      <td style={num}>{r.lines.length}</td>
+                      <td style={num}>{inr(r.lines.reduce((a, l) => a + l.eGross, 0))}</td>
+                      <td style={{ ...num, color: C.amber }}>{inr(r.lines.reduce((a, l) => a + l.dTotal, 0))}</td>
+                      <td style={{ ...num, color: C.ink }}>{inr(r.lines.reduce((a, l) => a + l.payable, 0))}</td>
+                      <td style={{ ...num, color: C.stone }}>
+                        {inr(r.lines.reduce((a, l) => a + (l.erEsi || 0) + (l.erPf || 0) + (l.erOther || 0), 0))}
+                      </td>
+                    </tr>
+                  ))}
+                </React.Fragment>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+      <div style={{ font: `11px ${sans}`, color: C.stone, marginTop: 9, lineHeight: 1.6 }}>
+        "Paid out" is what left as salary — earned, less every reduction, plus days beyond the month.
+        The company's own share of E.S.I. and P.F. is on top of that and does not reach anybody's bank account.
+      </div>
     </div>
   );
 }
