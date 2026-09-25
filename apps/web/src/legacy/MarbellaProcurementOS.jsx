@@ -772,14 +772,27 @@ function FirmSwitcher({ compact }) {
                 it decides whose letterhead and RERA number go on a document —
                 so it says so, and points at the one that is. */}
             <div style={{ font: `11px ${sans}`, color: C.stone, marginTop: 5, lineHeight: 1.5 }}>
-              Decides whose letterhead and RERA number go on what you send out.
-              To see <b style={{ color: C.inkSoft }}>who is posted where</b>, use the project filter on Population.
+              What you are looking at, and whose letterhead goes on what you send out.
+              <b style={{ color: C.inkSoft }}> Marbella Group</b> shows every project at once — a letter
+              or a gate pass still needs a project, because the group is not an entity that signs anything.
             </div>
           </div>
-          {firms.map(f => { const on = f.id === activeFirm.id; return (
-            <button key={f.id} onClick={() => { setFirm(f.id); setOpen(false); toast(`Now working on ${f.short}`, "gold"); }} style={{ cursor: "pointer", display: "block", width: "100%", textAlign: "left", border: "none", borderTop: `1px solid ${C.lineSoft}`, background: on ? C.goldTint : "#fff", padding: "11px 14px" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}><div style={{ font: `600 13px ${sans}`, color: C.ink }}>{f.name}</div>{f.stage === "pre" && <Pill tone="amber">pre-launch</Pill>}<span style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 6, flexShrink: 0 }}><span style={{ font: `11px ${mono}`, color: C.stone }}>{headOf(f.id)} posted</span>{on && <Check size={14} color={C.green} />}</span></div>
-              <div style={{ font: `11px ${sans}`, color: C.stone, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.firm}{f.rera ? ` · ${f.rera}` : " · no RERA number yet"}</div>
+          {firms.map(f => { const on = f.id === activeFirm.id; const grp = isGroup(f); return (
+            <button key={f.id} onClick={() => { setFirm(f.id); setOpen(false); toast(grp ? "Showing every project" : `Now working on ${f.short}`, "gold"); }} style={{ cursor: "pointer", display: "block", width: "100%", textAlign: "left", border: "none", borderTop: `1px solid ${C.lineSoft}`, background: on ? C.goldTint : "#fff", padding: "11px 14px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                {grp && <Crown size={14} color={C.gold} style={{ flexShrink: 0 }} />}
+                <div style={{ font: `600 13px ${sans}`, color: C.ink }}>{grp ? "Marbella Group" : f.name}</div>
+                {f.stage === "pre" && <Pill tone="amber">pre-launch</Pill>}
+                <span style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+                  <span style={{ font: `11px ${mono}`, color: C.stone }}>{grp ? active.length : headOf(f.id)} posted</span>
+                  {on && <Check size={14} color={C.green} />}
+                </span>
+              </div>
+              <div style={{ font: `11px ${sans}`, color: C.stone, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {grp
+                  ? `Every project — ${firms.length - 1} of them`
+                  : `${f.firm}${f.rera ? ` · ${f.rera}` : " · no RERA number yet"}`}
+              </div>
             </button>
           ); })}
         </div>
@@ -802,7 +815,7 @@ function FirmsView() {
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
               <div style={{ width: 38, height: 38, borderRadius: 10, background: C.goldTint, display: "grid", placeItems: "center", flexShrink: 0 }}><HardHat size={18} color={C.goldDeep} /></div>
               <div style={{ flex: 1, minWidth: 0 }}><div style={{ font: `600 14px ${sans}`, display: "flex", alignItems: "center", gap: 6 }}>{f.name}{f.stage === "pre" && <Pill tone="amber">pre-launch</Pill>}</div><div style={{ font: `12px ${sans}`, color: C.stone }}>{f.firm}</div></div>
-              {on ? <Pill tone="gold">Active</Pill> : <button onClick={() => { setFirm(f.id); toast(`Now working on ${f.short}`, "gold"); }} style={softBtn}>Switch to</button>}
+              {on ? <Pill tone="gold">Active</Pill> : <button onClick={() => { setFirm(f.id); toast(isGroup(f) ? "Showing every project" : `Now working on ${f.short}`, "gold"); }} style={softBtn}>Switch to</button>}
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
               {[["RERA no.", f.rera], ["GSTIN", f.gstin]].map(([k, v]) => (
@@ -925,11 +938,15 @@ function ExportPanel({ title, filterNote, cols, rows, trail, userKey, onClose, r
   const fileBase = `Marbella-${title.replace(/[^A-Za-z0-9]+/g, "-")}-${period}${withTrail ? "-trail" : ""}`;
   const dupe = (registry || []).find(r => r.key === fileBase + "-" + fmt);
 
+  // An export covering the whole group is a true thing and says so. Naming an
+  // entity that did not produce it, or printing "GSTIN · RERA" with nothing
+  // after either, would not be.
+  const group = isGroup(activeFirm);
   const head = [
     ["MARBELLA GROUP", ""],
-    [activeFirm.firm, ""],
-    [activeFirm.name + " · " + activeFirm.addr, ""],
-    ["GSTIN " + activeFirm.gstin + " · RERA " + activeFirm.rera, ""],
+    [group ? "Every project" : activeFirm.firm, ""],
+    [group ? "" : activeFirm.name + " · " + activeFirm.addr, ""],
+    [group ? "" : "GSTIN " + activeFirm.gstin + " · RERA " + activeFirm.rera, ""],
     ["", ""],
     [title.toUpperCase(), ""],
     ["Filter applied", filterNote || "none"],
@@ -969,7 +986,7 @@ function ExportPanel({ title, filterNote, cols, rows, trail, userKey, onClose, r
         .ft{margin-top:16px;padding-top:8px;border-top:1px solid #E1E7F0;font-size:9px;color:#8892A6}
       </style></head><body>
       <div class="hd"><div><b>MARBELLA GROUP</b><div style="font-size:9px;color:#A0803C;letter-spacing:.2em">EMBRACE THE LUXE!</div></div>
-      <div class="r">${esc(activeFirm.firm)}<br>${esc(activeFirm.name)} · ${esc(activeFirm.addr)}<br>GSTIN ${esc(activeFirm.gstin)} · RERA ${esc(activeFirm.rera)}</div></div>
+      <div class="r">${group ? "Every project" : `${esc(activeFirm.firm)}<br>${esc(activeFirm.name)} · ${esc(activeFirm.addr)}<br>GSTIN ${esc(activeFirm.gstin)} · RERA ${esc(activeFirm.rera)}`}</div></div>
       <h1>${esc(title)}</h1>
       <div class="meta">Filter: <b>${esc(filterNote || "none")}</b> · Period: ${esc((PERIODS.find(p => p[0] === period) || [])[1])} · ${nRows} rows<br>
       Generated ${esc(stampStr)} · Exported by ${esc(u.name)}, ${esc(u.role)} — ${esc(empId)}</div>
@@ -1044,8 +1061,8 @@ function ExportPanel({ title, filterNote, cols, rows, trail, userKey, onClose, r
         <div style={{ background: "#fff", border: `1px solid ${C.line}`, borderRadius: 11, padding: 12, marginTop: 12 }}>
           <div style={{ font: `600 9px ${sans}`, letterSpacing: "0.06em", textTransform: "uppercase", color: C.stone, marginBottom: 7 }}>Every page will carry</div>
           <div style={{ font: `12px ${sans}`, color: C.inkSoft, lineHeight: 1.7 }}>
-            <b style={{ color: C.ink }}>MARBELLA GROUP</b> · {activeFirm.firm}<br />
-            {activeFirm.name} · GSTIN {activeFirm.gstin} · RERA {activeFirm.rera}<br />
+            <b style={{ color: C.ink }}>MARBELLA GROUP</b>{group ? " · every project" : ` · ${activeFirm.firm}`}<br />
+            {group ? "No single entity — this covers all of them" : `${activeFirm.name} · GSTIN ${activeFirm.gstin} · RERA ${activeFirm.rera}`}<br />
             Generated {stampStr} · Exported by {u.name}, {u.role} — <b style={{ color: C.goldDeep, fontFamily: mono }}>{empId}</b><br />
             <span style={{ font: `11px ${sans}`, color: C.stone }}>Marbella Group — internal. Do not forward outside the company.</span>
           </div>
@@ -1894,8 +1911,35 @@ function wordsIN(n) {
   return p.join(" ");
 }
 /* ===== SHARED DOCUMENT FURNITURE — one letterhead / signature / send panel for the whole app ===== */
+/**
+ * "Marbella Group" is a real answer to what am I LOOKING AT, and not to whose
+ * letterhead this GOES OUT ON — the group is not the entity that signs
+ * anything, and has no GSTIN and no RERA number. So every surface that prints
+ * one asks for a project instead of printing two blanks where a registration
+ * number should be.
+ *
+ * An export is the exception and is handled where it is built: a spreadsheet of
+ * the whole group is a true thing, and says so rather than naming an entity.
+ */
+const isGroup = (f) => Boolean(f && f.group);
+const PICK_A_PROJECT =
+  "Pick a project at the top — a document goes out on one project's letterhead, " +
+  "and Marbella Group is not an entity that can sign one.";
+
+function GroupNotice({ compact }) {
+  return (
+    <div style={{ border: `1px solid ${C.amber}`, background: C.amberSoft || "#FFF9E0", borderRadius: 10,
+      padding: compact ? "9px 11px" : "11px 14px", display: "flex", gap: 8, alignItems: "flex-start",
+      font: `12px ${sans}`, color: C.ink, lineHeight: 1.55, marginBottom: 14 }}>
+      <TriangleAlert size={14} color={C.amber} style={{ flexShrink: 0, marginTop: 2 }} />
+      <span>{PICK_A_PROJECT}</span>
+    </div>
+  );
+}
+
 function DocHead({ firm, title, docId, when, compact }) {
   const f = firm || FIRMS[0];
+  if (isGroup(f)) return <GroupNotice compact={compact} />;
   const stamp = when || new Date().toLocaleString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
   return (
     <div style={{ borderBottom: `2px solid ${C.gold}`, paddingBottom: 12, marginBottom: 14 }}>
@@ -1914,6 +1958,7 @@ function DocHead({ firm, title, docId, when, compact }) {
 }
 function SignBlock({ user, firm, when }) {
   const u = user || USERS.purchase; const f = firm || FIRMS[0];
+  if (isGroup(f)) return <GroupNotice />;
   const stamp = when || new Date().toLocaleString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
   return (
     <div style={{ marginTop: 18, display: "flex", justifyContent: "flex-end" }}>
@@ -7993,6 +8038,7 @@ function LetterForm({ tmpl, person, onBack }) {
   return (
     <div>
       <button onClick={onBack} style={{ ...softBtn, marginBottom: 14, display: "inline-flex", alignItems: "center", gap: 6 }}><ArrowLeft size={14} /> All templates</button>
+      {isGroup(activeFirm) && <GroupNotice />}
       <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr" : "1fr 1fr", gap: 18 }}>
         <Card pad={20}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}><tmpl.icon size={16} color={C.gold} /><Eyebrow>{tmpl.name}</Eyebrow></div>
@@ -8007,14 +8053,27 @@ function LetterForm({ tmpl, person, onBack }) {
             <div style={{ background: "#fff", padding: mob ? 18 : 24 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 10, paddingBottom: 12, borderBottom: `2px solid ${C.gold}` }}>
                 <img src={LOGO_FULL} alt="Marbella Group" style={{ height: 52, display: "block" }} />
-                <div style={{ marginLeft: "auto", textAlign: "right", font: `10px ${sans}`, color: C.stone, lineHeight: 1.6, maxWidth: 300 }}>{activeFirm.firm}<br />{activeFirm.addr}<br />GSTIN {activeFirm.gstin} · RERA {activeFirm.rera}<br />marbellagroup.in</div>
+                <div style={{ marginLeft: "auto", textAlign: "right", font: `10px ${sans}`, color: C.stone, lineHeight: 1.6, maxWidth: 300 }}>
+                  {isGroup(activeFirm)
+                    ? <span style={{ color: C.amber }}>No company chosen — pick a project at the top</span>
+                    : <>{activeFirm.firm}<br />{activeFirm.addr}<br />GSTIN {activeFirm.gstin} · RERA {activeFirm.rera}</>}
+                  <br />marbellagroup.in
+                </div>
               </div>
               <div style={{ font: `13px/1.7 ${sans}`, color: C.ink, whiteSpace: "pre-wrap", marginTop: 16, minHeight: 220 }}>{body}</div>
               <SignBlock user={{ ...USERS.hr, ...(me ? { name: me.name, role: me.title || USERS.hr.role } : {}) }} firm={activeFirm} />
             </div>
           </Card>
           <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
-            <GoldButton onClick={() => { downloadFile(`${tmpl.name.replace(/\s+/g, "-")}${v.name ? "-" + v.name.replace(/\s+/g, "-") : ""}.txt`, `MARBELLA GROUP\n${activeFirm.firm}\n${activeFirm.addr}\nGSTIN ${activeFirm.gstin} · RERA ${activeFirm.rera}\n\n${body}\n\n${hrSignature}`); toast("Letter downloaded", "green"); }}><span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Download size={14} /> Download</span></GoldButton>
+            {/* A letter goes out on ONE company's letterhead. With the group
+                selected there is no GSTIN and no RERA number to put on it, so
+                the button says which project to pick rather than sending a
+                letter with two blanks where a registration should be. */}
+            <GoldButton disabled={isGroup(activeFirm)} onClick={() => {
+              if (isGroup(activeFirm)) { toast(PICK_A_PROJECT, "amber"); return; }
+              downloadFile(`${tmpl.name.replace(/\s+/g, "-")}${v.name ? "-" + v.name.replace(/\s+/g, "-") : ""}.txt`, `MARBELLA GROUP\n${activeFirm.firm}\n${activeFirm.addr}\nGSTIN ${activeFirm.gstin} · RERA ${activeFirm.rera}\n\n${body}\n\n${hrSignature}`);
+              toast("Letter downloaded", "green");
+            }}><span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Download size={14} /> Download</span></GoldButton>
             <GoldButton ghost onClick={() => { setIssued(true); logHR(`Issued ${tmpl.name}${v.name ? " — " + v.name : ""}`); toast("Marked as issued — logged", "gold"); }}>{issued ? "Issued ✓" : "Mark as issued"}</GoldButton>
           </div>
         </div>
@@ -12163,7 +12222,11 @@ function CompaniesView() {
  */
 function ScopeBar() {
   const mob = useIsMobile();
-  const { projects, companies, offices = [], scope, setScope, people } = useProc();
+  /* setFirm, not setScope: choosing here also sets what the switcher at the top
+     says, because they are the same question and two controls that can disagree
+     is how somebody reports one project's headcount under another's name. */
+  const { projects, companies, offices = [], scope, setFirm, setScope, people } = useProc();
+  const pick = (id) => (setFirm ? setFirm(id) : setScope(id));
   const active = people.filter(p => p.status === "active");
   const all = scope === "group";
   const cur = projects.find(p => p.id === scope);
@@ -12187,15 +12250,15 @@ function ScopeBar() {
   return (
     <div style={{ marginBottom: 16 }}>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-        <button onClick={() => setScope("group")} style={chip(all, C.gold)}>
-          <Crown size={14} /> All projects
+        <button onClick={() => pick("group")} style={chip(all, C.gold)}>
+          <Crown size={14} /> Marbella Group
           <span style={{ font: `700 11px ${mono}`, color: all ? C.goldDeep : C.stone }}>{active.length}</span>
         </button>
         {projects.map(p => {
           const on = scope === p.id;
           const h = headOf(p.id);
           return (
-            <button key={p.id} onClick={() => setScope(p.id)} style={chip(on, C.ink)}>
+            <button key={p.id} onClick={() => pick(p.id)} style={chip(on, C.ink)}>
               {p.short}
               <span style={{ font: `700 11px ${mono}`, color: on ? "#E8CE96" : h ? C.inkSoft : C.stone }}>{h}</span>
             </button>

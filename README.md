@@ -274,6 +274,20 @@ this project" by comparing the person's office id to the project id — true of
 the four sites the company started with, and of nothing added since. The office
 now carries its project and there is one rule, used everywhere.
 
+The switcher in the top bar and the filter on Population were **two controls
+asking the same question**, and either could disagree with the other. They are
+one now: choosing a project in either narrows both, and the top of the list is
+**Marbella Group** — every project at once, which is what people kept opening it
+looking for.
+
+The group is a true answer to *what am I looking at* and not to *whose letterhead
+does this go out on*: it is not an entity, and has no GSTIN and no RERA number.
+So `DocHead`, `SignBlock`, the letter preview and the letter download all ask for
+a project instead of printing two blanks where a registration should be, and the
+Download button is disabled until one is picked. An **export** is the exception
+and says so — a spreadsheet covering the whole group is a true thing, and it
+prints "Every project" rather than naming an entity that did not produce it.
+
 Creating a project creates its **site office** in the same transaction. A project
 without one accepts nobody and does it silently: it appears in every list, the
 headcount reads zero for ever, and nothing says why.

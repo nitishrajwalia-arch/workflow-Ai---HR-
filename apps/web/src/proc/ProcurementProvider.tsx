@@ -32,6 +32,30 @@ interface Props {
   toast: Toast;
 }
 
+/**
+ * Marbella Group — every project at once.
+ *
+ * A synthetic entry, because the group is not a row in any table: it is the
+ * four companies and their projects taken together. It carries NO GSTIN and NO
+ * RERA number on purpose. Those belong to an entity that can sign something,
+ * and the group cannot; a letterhead that printed them blank would be worse
+ * than one that refuses.
+ */
+export const GROUP_FIRM = {
+  id: 'group',
+  short: 'Marbella Group',
+  // Short on purpose: it is what the switcher in the top bar prints, and a
+  // longer one truncates to "Marbell…" on a phone.
+  name: 'Marbella Group',
+  firm: 'Marbella Group',
+  addr: '',
+  gstin: '',
+  rera: '',
+  stage: '',
+  /** What every screen that prints a document checks. */
+  group: true,
+} as const;
+
 export function ProcurementProvider({ children, toast }: Props) {
   const [world, setWorld] = useState<World | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -42,7 +66,7 @@ export function ProcurementProvider({ children, toast }: Props) {
   // Screen-local state: these were never persisted and should not be. Which
   // firm you are looking at, which vendor card is open, whether the coach is
   // running — none of that is anyone else's business or worth a round trip.
-  const [firmId, setFirmId] = useState<string>('grand');
+  const [firmId, setFirmId] = useState<string>(GROUP_FIRM.id);
   const [openVendor, setOpenVendor] = useState<string | null>(null);
   const [scope, setScope] = useState<string>('group');
   const [coachOn, setCoachOn] = useState(true);
@@ -188,14 +212,36 @@ export function ProcurementProvider({ children, toast }: Props) {
       grants: w.grants,
 
       /* --------------------------------------------------- screen-local ---- */
-      firms: w.firms,
+      /**
+       * The switcher's list, with MARBELLA GROUP at the top.
+       *
+       * People kept opening this looking for the whole group and finding only
+       * one project at a time. The group is a real answer to "what am I looking
+       * at" — it is not a real answer to "whose letterhead does this go out on",
+       * because the group is not the entity that signs anything. So it is in the
+       * list, it carries no GSTIN and no RERA number, and every surface that
+       * prints a letterhead asks for a project instead of printing blanks.
+       */
+      firms: [GROUP_FIRM, ...(w.firms ?? [])],
       // Never undefined. The shell reads `activeFirm.name` on every render, so a
       // server that returns no projects — a brand new database, or a company
       // that has not created one yet — would white-page the whole application
       // rather than showing an empty switcher.
-      activeFirm: (w.firms ?? []).find((f: any) => f.id === firmId) ??
-        w.firms?.[0] ?? { id: '', short: 'No project', name: 'No project set up yet' },
-      setFirm: setFirmId,
+      activeFirm:
+        firmId === GROUP_FIRM.id
+          ? GROUP_FIRM
+          : ((w.firms ?? []).find((f: any) => f.id === firmId) ??
+            w.firms?.[0] ?? { id: '', short: 'No project', name: 'No project set up yet' }),
+      /**
+       * One control, not two. Choosing a project here also narrows who is being
+       * looked at; choosing the group widens it back. They were separate, and a
+       * screen showing one project's people under a header naming another is
+       * how somebody reports the wrong headcount.
+       */
+      setFirm: (id: string) => {
+        setFirmId(id);
+        setScope(id === GROUP_FIRM.id ? 'group' : id);
+      },
       openVendor,
       setOpenVendor,
       scope,
