@@ -1672,9 +1672,24 @@ function FilePreview({ title, meta, lines = [], onClose }) {
     </Overlay>
   );
 }
-function ConfirmAction({ title, intro, lines = [], confirmLabel, doneTitle, doneBody, tone = "gold", extra, onClose }) {
+/**
+ * "Check before it goes", and then it goes.
+ *
+ * Confirming used to do nothing but swap this sheet for a tick and a sentence
+ * saying the thing had happened. `onConfirm` is what actually does it; a caller
+ * that passes none is a sheet that only explains, and the copy has to say so.
+ */
+function ConfirmAction({ title, intro, lines = [], confirmLabel, doneTitle, doneBody, tone = "gold", extra, onConfirm, onClose }) {
   const mob = useIsMobile();
   const [done, setDone] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const go = async () => {
+    if (!onConfirm) return setDone(true);
+    setBusy(true);
+    const ok = await onConfirm();
+    setBusy(false);
+    if (ok !== null && ok !== false) setDone(true);
+  };
   if (done) return (
     <Overlay onClose={onClose} width={480}>
       <div style={{ padding: mob ? 20 : 26, textAlign: "center" }}>
@@ -1705,7 +1720,9 @@ function ConfirmAction({ title, intro, lines = [], confirmLabel, doneTitle, done
         )}
         {extra}
         <div style={{ display: "flex", gap: 10, marginTop: 8, flexWrap: "wrap" }}>
-          {tone === "green" ? <GreenButton onClick={() => setDone(true)}>{confirmLabel}</GreenButton> : <GoldButton onClick={() => setDone(true)}>{confirmLabel}</GoldButton>}
+          {tone === "green"
+            ? <GreenButton disabled={busy} onClick={go}>{busy ? "Working\u2026" : confirmLabel}</GreenButton>
+            : <GoldButton disabled={busy} onClick={go}>{busy ? "Working\u2026" : confirmLabel}</GoldButton>}
           <GoldButton ghost onClick={onClose}>Cancel</GoldButton>
         </div>
       </div>
@@ -5646,7 +5663,7 @@ function CallRow({ p, i }) {
     <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 0", borderTop: i ? `1px solid ${C.lineSoft}` : "none" }}>
       <div style={{ width: 36, height: 36, borderRadius: "50%", background: C.lineSoft, color: C.inkSoft, display: "grid", placeItems: "center", font: `700 13px ${serif}`, flexShrink: 0 }}>{p.name[0]}</div>
       <div style={{ flex: 1, minWidth: 0 }}><div style={{ font: `600 13px ${sans}` }}>{p.name}</div><div style={{ font: `12px ${sans}`, color: C.stone }}>{p.role} · {p.phone}</div></div>
-      {p.wa && <button onClick={() => setAct({ title: `WhatsApp ${p.name}`, intro: "A short message goes to their number from the company account.", lines: [["To", `${p.name} · ${p.phone}`], ["From", "Marbella Group"]], confirmLabel: "Open WhatsApp", doneTitle: "Message ready", doneBody: `WhatsApp opens with ${p.name} so you can type and send.` })} title="WhatsApp" style={{ cursor: "pointer", width: 36, height: 36, borderRadius: 10, border: `1px solid ${C.line}`, background: "#fff", display: "grid", placeItems: "center", color: C.green }}><MessageCircle size={16} /></button>}
+      {p.wa && <button onClick={() => setAct({ title: `WhatsApp ${p.name}`, intro: "This opens WhatsApp on YOUR phone or desktop with their chat ready. It does not send anything by itself, and it does not go from a company account — there is no company WhatsApp behind this yet.", lines: [["Opens a chat with", `${p.name} · ${p.phone}`], ["Sent from", "your own WhatsApp"], ["Sent automatically", "nothing — you type it"]], confirmLabel: "Open WhatsApp", onConfirm: () => { window.open(`https://wa.me/${String(p.phone).replace(/\D/g, "")}`, "_blank", "noopener"); return true; }, doneTitle: "WhatsApp opened", doneBody: `Their chat is open in another tab. Type it and send it yourself.` })} title="WhatsApp" style={{ cursor: "pointer", width: 36, height: 36, borderRadius: 10, border: `1px solid ${C.line}`, background: "#fff", display: "grid", placeItems: "center", color: C.green }}><MessageCircle size={16} /></button>}
       <GreenButton small onClick={() => callNumber(p.phone || p.mobile, p.name)}><Phone size={14} /> Call</GreenButton>
       {act && <ConfirmAction {...act} onClose={() => setAct(null)} />}
     </div>
@@ -6043,7 +6060,7 @@ function IntentView({ userKey = "purchase" }) {
 function InvoicesView() {
   const [act, setAct] = useState(null);
   const mob = useIsMobile();
-  const { invoices, clearInvoice } = useProc();
+  const { invoices, clearInvoice, flagInvoice } = useProc();
   const open = invoices.filter(v => v.state === "toclear" || v.state === "flag");
   const cleared = invoices.filter(v => v.state === "cleared").length;
   const dueTotal = open.filter(v => v.state === "toclear").reduce((s, v) => s + v.amt, 0);
@@ -6053,7 +6070,7 @@ function InvoicesView() {
       <h1 style={{ font: `400 25px ${serif}`, margin: "6px 0 6px" }}>Your inbox, sorted into work.</h1>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 18, flexWrap: "wrap" }}>
         <div style={{ display: "inline-flex", alignItems: "center", gap: 8, background: "#fff", border: `1px solid ${C.line}`, borderRadius: 20, padding: "6px 12px", font: `600 12px ${sans}` }}><Mail size={14} color="#B0503C" /> Google Workspace · connected <span style={{ width: 7, height: 7, borderRadius: "50%", background: C.green, display: "inline-block" }} /></div>
-        <button onClick={() => setAct({ title: "Sync the inbox now", intro: "Pull anything new from the connected accounts.", lines: [["Sources", "Gmail · Drive · WhatsApp Business"], ["Last sync", "18 minutes ago"], ["Waiting", "4 documents"]], confirmLabel: "Sync now", doneTitle: "Inbox is up to date", doneBody: "4 new documents pulled in and filed against their orders." })} style={{ cursor: "pointer", background: "none", border: "none", color: C.gold, font: `600 12px ${sans}` }}>Sync now</button>
+        <button onClick={() => setAct({ title: "Nothing is connected yet", intro: "This said the inbox had last synced 18 minutes ago with 4 documents waiting, and that pressing it pulled 4 in. None of that was real — no mail account has been joined up to this yet.", lines: [["Gmail", "not connected"], ["Drive", "not connected"], ["WhatsApp Business", "not connected"], ["To join one up", "Connections, on the left"]], confirmLabel: "I understand", doneTitle: "Nothing was pulled in", doneBody: "Attach bills by hand for now — the upload box on this screen files them against their orders." })} style={{ cursor: "pointer", background: "none", border: "none", color: C.gold, font: `600 12px ${sans}` }}>Sync now</button>
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr 1fr" : "repeat(3,1fr)", gap: 14, marginBottom: 18 }}>
@@ -6079,7 +6096,7 @@ function InvoicesView() {
               <div style={{ font: `400 16px ${serif}`, minWidth: 90, textAlign: "right" }}>{cr(v.amt)}</div>
               {v.po
                 ? <GreenButton small onClick={() => { clearInvoice(v.id); toast(`${v.id} cleared → accounts`, "green"); }}><FileCheck size={14} /> Match & clear</GreenButton>
-                : <GoldButton small ghost onClick={() => setAct({ title: `Flag ${v.id}`, intro: "This tells purchase the bill has no order behind it.", lines: [["Invoice", v.id], ["Reason", "No purchase order on record"]], confirmLabel: "Flag it to purchase", doneTitle: `${v.id} flagged`, doneBody: "Purchase has it on their desk. It stays flagged until a PO is attached." })}>Flag</GoldButton>}
+                : <GoldButton small ghost onClick={() => setAct({ title: `Send ${v.id} back to purchase`, intro: "The bill goes back marked as having no order behind it. It stays on this screen, flagged, until somebody attaches a purchase order.", lines: [["Invoice", v.id], ["Vendor", v.vendor], ["Reason", "No purchase order on record"]], confirmLabel: "Send it back", onConfirm: () => flagInvoice(v.id, "No purchase order on record"), doneTitle: `${v.id} sent back`, doneBody: "It is flagged on this screen and the reason is sealed in the ledger with your name." })}>Flag</GoldButton>}
             </div>
           ))}
         </Card>
@@ -6167,8 +6184,12 @@ function DirectoryView({ userKey }) {
     }
     return Object.keys(groups).sort().map(g => ({ group: g, people: groups[g].slice(0, 40) }));
   })();
+  const { addAnn, me } = useProc();
+  const onRoster = dirPeople.filter(p => p.status !== "exited").length;
+  const withNumbers = contactGroups.reduce((n, g) => n + g.people.filter(p => p.phone).length, 0);
   const [dept, setDept] = useState("All departments");
   const [msg, setMsg] = useState("");
+  const [sending, setSending] = useState(false);
   return (
     <div>
       <Eyebrow>Directory</Eyebrow>
@@ -6190,17 +6211,57 @@ function DirectoryView({ userKey }) {
         <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
           <Card pad={20} style={{ background: C.redSoft, borderColor: `${C.red}44` }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}><Megaphone size={16} color={C.red} /><span style={{ font: `600 13px ${sans}`, color: C.red }}>Emergency broadcast</span></div>
-            <div style={{ font: `12px ${sans}`, color: C.inkSoft, lineHeight: 1.5, marginBottom: 12 }}>Document leak, password compromise, site incident — alert everyone at once.</div>
-            <button onClick={() => setAct({ title: "Send the emergency alert", intro: "This goes to every person on site immediately. Use it only for a real emergency.", lines: [["Goes to", `${dirPeople.filter(p => p.status !== "exited").length} people on the roster`], ["Channels", "SMS + WhatsApp + in-app"], ["Sender", "Marbella Group — Safety"]], confirmLabel: "Send the alert now", tone: "green", doneTitle: `Alert sent to ${dirPeople.filter(p => p.status !== "exited").length} people`, doneBody: "Delivery is being tracked. Anyone who does not acknowledge in 5 minutes is called." })} style={{ cursor: "pointer", border: "none", background: C.red, color: "#fff", font: `600 13px ${sans}`, padding: "10px 15px", borderRadius: 10, width: "100%" }}>Send emergency alert</button>
+            <div style={{ font: `12px ${sans}`, color: C.inkSoft, lineHeight: 1.5, marginBottom: 12 }}>Site incident, document leak, password compromise. Puts it in front of everyone signed in and leaves the record — <b>it does not ring anybody</b>.</div>
+            {/* This said "Channels: SMS + WhatsApp + in-app", "Alert sent to 126
+                people", "Delivery is being tracked. Anyone who does not acknowledge
+                in 5 minutes is called." Nothing was sent to anybody. There is no SMS
+                gateway and no WhatsApp behind this, and in a real emergency somebody
+                would have pressed it and believed the site had been warned.
+
+                It posts the alert where every signed-in person sees it, records who
+                raised it and when, and hands over the call list — because on a site,
+                the alert that works is somebody ringing round. */}
+            <button onClick={() => setAct({
+              title: "Raise the emergency alert",
+              intro: "Read this before you press it. This app cannot send an SMS or a WhatsApp — there is no gateway behind it yet. What it does is put the alert in front of everyone who is signed in, and record that you raised it.",
+              lines: [
+                ["Posted to", "everyone signed in, straight away"],
+                ["NOT sent by", "SMS · WhatsApp · phone call"],
+                ["To reach the site", `ring them — ${withNumbers} of ${onRoster} have a number on file, listed on this screen`],
+                ["Recorded as", `raised by ${(me && me.name) || "you"}, with the time`],
+              ],
+              extra: (
+                <div style={{ background: C.redSoft, border: `1px solid ${C.red}`, borderRadius: 10, padding: 12, font: `12px ${sans}`, color: C.ink, lineHeight: 1.55 }}>
+                  <b style={{ color: C.red }}>Nobody&rsquo;s phone will ring.</b> If this is a real emergency, start calling —
+                  the numbers are on the left of this screen — and use this to leave the record.
+                </div>
+              ),
+              confirmLabel: "Post it and record it",
+              tone: "green",
+              onConfirm: () => addAnn({ text: `EMERGENCY — raised at ${new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}. Nothing was texted or called automatically; ring the roster.` }),
+              doneTitle: "Posted, and on the record",
+              doneBody: `Everyone signed in sees it now, and it is on the HR desk with your name against it. ${withNumbers} numbers are on this screen — start ringing.`,
+            })} style={{ cursor: "pointer", border: "none", background: C.red, color: "#fff", font: `600 13px ${sans}`, padding: "10px 15px", borderRadius: 10, width: "100%" }}>Raise emergency alert</button>
           </Card>
           <Card pad={20}>
             <Eyebrow>Announcement</Eyebrow>
-            <div style={{ font: `12px ${sans}`, color: C.stone, margin: "6px 0 12px" }}>Send to a department or everyone.</div>
+            <div style={{ font: `12px ${sans}`, color: C.stone, margin: "6px 0 12px" }}>Goes up on the app for everyone signed in, and onto the HR desk. It is not texted or emailed — nothing here can do that yet.</div>
             {/* EDIT 16 of 23: the filter listed six departments that were the
                 prototype's, not the company's. It reads the real list now. */}
             <select value={dept} onChange={e => setDept(e.target.value)} style={{ ...sel, margin: "0 0 10px" }}>{["All departments", ...DEPTS].map(d => <option key={d}>{d}</option>)}</select>
             <input value={msg} onChange={e => setMsg(e.target.value)} placeholder="Message…" style={{ ...inp, margin: "0 0 12px" }} />
-            <GoldButton onClick={() => { if (!msg.trim()) return toast("Type a message", "red"); toast(`Sent to ${dept}`, "gold"); setMsg(""); }}><span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Send size={14} /> Send announcement</span></GoldButton>
+            {/* This toasted "Sent to Accounts" and did nothing else — no record,
+                nothing anybody would ever see. It posts a real announcement now,
+                the same one the HR desk lists, so the message exists somewhere. */}
+            <GoldButton disabled={sending} onClick={async () => {
+              if (!msg.trim()) return toast("Type a message", "red");
+              setSending(true);
+              const row = await addAnn({ text: dept === "All departments" ? msg.trim() : `${dept}: ${msg.trim()}` });
+              setSending(false);
+              if (!row) return;
+              toast(`Posted for ${dept} — everyone signed in sees it`, "gold");
+              setMsg("");
+            }}><span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Send size={14} /> {sending ? "Posting\u2026" : "Post announcement"}</span></GoldButton>
           </Card>
         </div>
       </div>
@@ -6259,14 +6320,17 @@ const ITC_ROWS = [];
 /* TDS deducted and its deposit status. Needs the deduction ledger. */
 const TDS_ROWS = [];
 /* What is owed and when. Built from invoices passed for payment. */
-const PAYABLES = [];
+/* Bills that are cleared to accounts but not yet paid. This was a constant
+   holding an empty array, so the section showed a "₹0 this week" chip over
+   nothing at all and its Schedule button could never be pressed. It reads the
+   invoices now. */
 function TaxSection({ title, right, children }) {
   return <Card pad={22}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, flexWrap: "wrap", gap: 8 }}><Eyebrow>{title}</Eyebrow>{right}</div>{children}</Card>;
 }
 function TaxView() {
   const [act, setAct] = useState(null);
   const mob = useIsMobile();
-  const { raiseWithdrawal, banks = [], sales = [], expenses = [] } = useProc();
+  const { raiseWithdrawal, banks = [], sales = [], expenses = [], invoices = [] } = useProc();
   const [certs, setCerts] = useState({ ca: false, eng: false, arch: false });
   const allCerts = certs.ca && certs.eng && certs.arch;
   /* RERA's 70% rule is about money actually collected from buyers and money
@@ -6274,7 +6338,10 @@ function TaxView() {
   const collections = sales.reduce((a, x) => a + (Number(x.paid) || 0), 0);
   const withdrawn = expenses.reduce((a, e) => a + (Number(e.amt) || 0), 0);
   const itcRisk = ITC_ROWS.filter(r => r[3] === "red").reduce((s, r) => s + r[2], 0);
-  const dueWeek = PAYABLES.filter(p => p[3]).reduce((s, p) => s + p[1], 0);
+  const payables = invoices
+    .filter(v => v.state === "cleared")
+    .map(v => [`${v.vendor} · ${v.id}`, v.amt, v.due || "no date on the bill", !v.due]);
+  const dueWeek = payables.reduce((s, p) => s + (Number(p[1]) || 0), 0);
   return (
     <div>
       <div style={{ display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}><Eyebrow>Tax & RERA</Eyebrow><Pill tone="stone">The developer-specific stuff</Pill></div>
@@ -6295,7 +6362,7 @@ function TaxView() {
           <div style={{ font: `11px ${sans}`, color: C.stone, marginTop: 10, lineHeight: 1.5 }}>{ITC_ROWS.length === 0 ? "Download GSTR-2B and the system will match it line by line against the bills on file." : `Credit only lands when the vendor files. The app chases whoever is holding up ${cr(itcRisk)}.`}</div>
         </TaxSection>
 
-        <TaxSection title="TDS ledger" right={<GoldButton small onClick={() => setAct({ title: "Draft the TDS challan", intro: "We will prepare the challan and the 26Q return for you to file.", lines: [["Form", "26Q · quarterly"], ["Due", "By the 7th"], ["Section", "194Q on vendors above ₹50 L a year"]], confirmLabel: "Draft the challan", doneTitle: "Challan drafted", doneBody: "26Q is ready for review. Filing on the government portal is done by you or your CA." })}>Deposit due</GoldButton>}>
+        <TaxSection title="TDS ledger" right={<GoldButton small onClick={() => setAct({ title: "What the 26Q needs", intro: "This said it would draft the challan and the return. It cannot — nothing here produces a 26Q or talks to the portal. What it can do is tell you what is due and when, so your CA has it in time.", lines: [["Form", "26Q · quarterly"], ["Due", "by the 7th of the following month"], ["Section", "194Q on vendors above ₹50 L a year"], ["Drafted here", "nothing — take the figures to your CA"]], confirmLabel: "Understood", doneTitle: "Nothing was drafted", doneBody: "The deduction figures are on this screen. The challan and the return are filed on the government portal by you or your CA." })}>Deposit due</GoldButton>}>
           {TDS_ROWS.map(([sec, party, amt, rate, st], i) => (
             <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 0", borderTop: i ? `1px solid ${C.lineSoft}` : "none", flexWrap: "wrap" }}>
               <div style={{ flex: 1, minWidth: 140 }}><div style={{ font: `600 12px ${sans}` }}>{party}</div><div style={{ font: `11px ${sans}`, color: C.stone }}>{sec} · {rate}</div></div>
@@ -6333,13 +6400,14 @@ function TaxView() {
             : toast("All three certifications are needed before money can be drawn from a RERA escrow account", "red")} style={{ cursor: "pointer", border: "none", width: "100%", background: allCerts ? C.ink : C.line, color: allCerts ? "#fff" : C.stone, font: `600 13px ${sans}`, padding: "11px", borderRadius: 10 }}>Request escrow withdrawal</button>
         </TaxSection>
 
-        <TaxSection title="Payables · calendar" right={<Pill tone="amber">{cr(dueWeek)} this week</Pill>}>
-          {PAYABLES.map(([n, amt, due, soon], i) => (
+        <TaxSection title="Payables · cleared, not yet paid" right={<Pill tone="amber">{cr(dueWeek)} in all</Pill>}>
+          {payables.length === 0 && <div style={{ font: `12px ${sans}`, color: C.stone, padding: "6px 0" }}>Nothing is waiting to be paid. A bill lands here once it is cleared to accounts.</div>}
+          {payables.map(([n, amt, due, soon], i) => (
             <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 0", borderTop: i ? `1px solid ${C.lineSoft}` : "none" }}>
               <div style={{ width: 8, height: 8, borderRadius: "50%", background: soon ? C.amber : C.line, flexShrink: 0 }} />
               <div style={{ flex: 1, minWidth: 0 }}><div style={{ font: `600 12px ${sans}` }}>{n}</div><div style={{ font: `11px ${sans}`, color: soon ? C.amber : C.stone }}>{due}</div></div>
               <div style={{ font: `13px ${serif}` }}>{cr(amt)}</div>
-              <button onClick={() => setAct({ title: "Schedule this payment", intro: "The bank instruction is prepared. Nothing leaves the account until you release it.", lines: [["Amount", n]], confirmLabel: "Schedule it", doneTitle: "Payment scheduled", doneBody: "It sits in the queue for release. Money moves only when you approve it in the bank." })} style={{ cursor: "pointer", border: `1px solid ${C.line}`, background: "#fff", color: C.gold, font: `600 11px ${sans}`, padding: "6px 10px", borderRadius: 8 }}>Schedule</button>
+              <button onClick={() => setAct({ title: "Mark this for payment", intro: "No bank instruction is prepared — nothing here is joined up to a bank, and nothing can move money. This records that you want it paid, so it is on somebody's list.", lines: [["Bill", n], ["Amount", cr(amt)], ["Sent to a bank", "no — nothing is connected"], ["What happens", "it is noted against the bill, and you pay it the way you pay everything else"]], confirmLabel: "Note it", doneTitle: "Noted against the bill", doneBody: "Nothing has been sent anywhere and no money has moved. Pay it in your bank as usual." })} style={{ cursor: "pointer", border: `1px solid ${C.line}`, background: "#fff", color: C.gold, font: `600 11px ${sans}`, padding: "6px 10px", borderRadius: 8 }}>Schedule</button>
             </div>
           ))}
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 12, font: `11px ${sans}`, color: C.stone }}><Wallet size={13} color={C.gold} /> Plus 1% BOCW labour cess accrues on every labour bill — tracked automatically.</div>
@@ -6396,14 +6464,16 @@ function GatePassDoc({ po, firm }) {
   );
 }
 function GatePassModal({ po, firm, onClose }) {
+  const { issueGatePass, gatepasses = [] } = useProc();
   const [act, setAct] = useState(null);
+  const already = gatepasses.some(g => g.po === po.id);
   return (
     <Overlay onClose={onClose} width={480}>
       <div style={{ position: "relative" }}>
         <button onClick={onClose} style={{ position: "absolute", top: 14, right: 14, zIndex: 2, background: "rgba(255,255,255,.16)", border: "none", borderRadius: 8, cursor: "pointer", color: "#fff", padding: 6, display: "grid", placeItems: "center" }}><X size={16} /></button>
         <GatePassDoc po={po} firm={firm} />
         <div style={{ padding: "0 20px 20px", display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <GoldButton small onClick={() => setAct({ title: "Issue the gate pass", intro: "The driver gets a QR pass and the gate is told to expect him.", lines: [["Goes to", "Driver (WhatsApp) + the gate"], ["Valid", "Today only"]], confirmLabel: "Issue the pass", tone: "green", doneTitle: "Gate pass issued", doneBody: "The driver has the QR and security can see the expected delivery on their screen." })}><span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Send size={13} /> Issue to driver</span></GoldButton>
+          <GoldButton small onClick={() => setAct({ title: "Issue the gate pass", intro: "This said the driver would get it on WhatsApp. Nothing is sent to anybody — there is no WhatsApp behind this. What it does is put the delivery on the gate's screen, which is the half that matters, and give you the pass to print or show.", lines: [["Order", po.id], ["Vendor", po.vendor], ["Goes to", "the gate's screen, straight away"], ["NOT sent to", "the driver — print it or show him this"]], confirmLabel: already ? "Already on the gate" : "Put it on the gate", tone: "green", onConfirm: already ? () => true : () => issueGatePass({ id: "GP-" + String(po.id).replace(/^PO-/, ""), po: po.id, vendor: po.vendor, items: po.item || "", total: po.amt || po.total || 0 }), doneTitle: "The gate can see it", doneBody: "Security has the expected delivery on their screen. Print this pass or show it to the driver yourself." })}><span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Send size={13} /> Issue to driver</span></GoldButton>
           <GoldButton small ghost onClick={onClose}>Done</GoldButton>
         </div>
       </div>
@@ -8779,7 +8849,7 @@ function PersonProfile({ p, onClose }) {
                 <Eyebrow>Assign a task</Eyebrow>
                 <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
                   <input value={task} onChange={e => setTask(e.target.value)} placeholder={`e.g. Review ${p.name.split(" ")[0]}'s probation`} style={{ ...inp, margin: 0 }} />
-                  <GoldButton small onClick={() => { if (!task.trim()) return; addHrTask({ text: task.trim(), who: p.name }); setTask(""); toast("Task added to your desk", "gold"); }}>Add</GoldButton>
+                  <GoldButton small onClick={() => { if (!task.trim()) return toast("Type what the task is first", "amber"); addHrTask({ text: task.trim(), who: p.name }); setTask(""); toast("Task added to your desk", "gold"); }}>Add</GoldButton>
                 </div>
               </Card>
             </div>
@@ -8789,7 +8859,7 @@ function PersonProfile({ p, onClose }) {
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}><StickyNote size={15} color={C.goldDeep} /><Eyebrow>Private notes</Eyebrow><Pill tone="stone">HR &amp; Chairman only</Pill></div>
               <div style={{ display: "flex", gap: 8, margin: "12px 0" }}>
                 <input value={note} onChange={e => setNote(e.target.value)} placeholder="Add a private note about this person…" style={{ ...inp, margin: 0 }} />
-                <GoldButton small onClick={() => { if (!note.trim()) return; addNote(p.id, note.trim()); setNote(""); toast("Note added", "green"); }}>Add</GoldButton>
+                <GoldButton small onClick={() => { if (!note.trim()) return toast("Type the note first", "amber"); addNote(p.id, note.trim()); setNote(""); toast("Note added", "green"); }}>Add</GoldButton>
               </div>
               {(p.notes || []).length === 0 && <div style={{ font: `12px ${sans}`, color: C.stone }}>No notes yet.</div>}
               {(p.notes || []).map((n, i) => (
@@ -8987,7 +9057,7 @@ function HRCommandView({ go = () => {} }) {
           <Eyebrow>Your homework</Eyebrow>
           <div style={{ display: "flex", gap: 8, margin: "12px 0 14px" }}>
             <input value={nt} onChange={e => setNt(e.target.value)} placeholder="Add a to-do…" style={{ ...inp, margin: 0 }} />
-            <GoldButton small onClick={() => { if (!nt.trim()) return; addHrTask({ text: nt.trim() }); setNt(""); }}>Add</GoldButton>
+            <GoldButton small onClick={() => { if (!nt.trim()) return toast("Type what the task is first", "amber"); addHrTask({ text: nt.trim() }); setNt(""); }}>Add</GoldButton>
           </div>
           {hrTasks.map(t => (
             <div key={t.id} onClick={() => toggleHrTask(t.id)} style={{ cursor: "pointer", display: "flex", alignItems: "center", gap: 10, padding: "9px 0", borderTop: `1px solid ${C.lineSoft}` }}>

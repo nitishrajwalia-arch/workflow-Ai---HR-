@@ -413,6 +413,55 @@ describe('a request the store has accepted', () => {
   });
 });
 
+/**
+ * A bill with no order behind it.
+ *
+ * The invoices screen has always filtered on `state === 'flag'` and there was no
+ * way to reach that state: the Flag button opened a sheet saying "purchase has
+ * it on their desk" and closed again, and nothing was written anywhere.
+ */
+describe('sending a bill back to purchase', () => {
+  it('flags it, with the reason, and seals who sent it back', async () => {
+    // A previous run that died mid-test must not fail the next one. The ledger
+    // is NOT cleaned up: a database trigger refuses to delete from it, which is
+    // the whole point of an append-only log and is worth leaning on here.
+    await db.vendorInvoice.deleteMany({ where: { id: 'INV-TEST-0001' } });
+    const inv = await db.vendorInvoice.create({
+      // amt is paise, 64-bit, like every other money column here.
+      data: {
+        id: 'INV-TEST-0001',
+        vendor: 'Test Traders',
+        subj: 'Shuttering ply',
+        amt: BigInt(12_500_00),
+        state: 'toclear',
+      },
+    });
+    try {
+      const res = await post(`/invoices/${inv.id}/flag`, {
+        reason: 'No purchase order on record',
+      });
+      expect(res.statusCode).toBe(200);
+      expect(res.json<{ state: string }>().state).toBe('flag');
+
+      const seal = await db.ledgerEntry.findFirst({
+        where: { kind: 'doc', subject: inv.id },
+        orderBy: { seq: 'desc' },
+      });
+      expect(seal?.detail).toContain('sent back to purchase');
+      expect(seal?.detail).toContain('No purchase order on record');
+      expect(seal?.who).not.toBe('');
+
+      // A bill already cleared to accounts cannot be pulled back this way.
+      await db.vendorInvoice.update({ where: { id: inv.id }, data: { state: 'cleared' } });
+      const late = await post(`/invoices/${inv.id}/flag`, { reason: 'Changed my mind' });
+      expect(late.statusCode).toBe(409);
+      expect(message(late)).toMatch(/already cleared/);
+    } finally {
+      await db.vendorInvoice.delete({ where: { id: inv.id } });
+    }
+  });
+});
+
 describe('none of it is readable without signing in', () => {
   it.each(['/inventory', '/holds', '/caps', '/purchase-orders', '/vendors', '/banks'])(
     '%s refuses an anonymous request',

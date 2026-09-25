@@ -77,6 +77,32 @@ with the reason beside it.
 | `PUT /salaries/:pid` | dropped travelling, medical, `esiOn` and `pfOn`, and re-derived the gross from three of the five parts | stores what it is given; the test proves the parts add to the gross |
 | Access, "Add them — an OTP goes to their mobile and email" | pushed a name into a local array; no account, no message, gone on reload | creates the account through `POST /auth/users`, and says plainly that nothing is emailed |
 
+Then the sweep itself was run — every button on every screen of the HR desk,
+pressed, with the console watched. No crash, no console error, and twelve
+buttons that changed nothing on screen. Three were a tab that was already
+selected, which is correct. Three were an Add button beside an empty box,
+failing silently; they say what is missing now. The other six were the
+"check before it goes" sheet, and every one of them was a claim:
+
+| It said | It did |
+| --- | --- |
+| "This goes to every person on site immediately… Channels: SMS + WhatsApp + in-app", then "Alert sent to 126 people. Delivery is being tracked. Anyone who does not acknowledge in 5 minutes is called." | nothing. In a real emergency somebody would have pressed it and believed the site had been warned |
+| "Sent to Accounts" | nothing was recorded anywhere; nobody would ever see it |
+| "Last sync 18 minutes ago · 4 documents waiting", then "4 new documents pulled in" | no mail account has ever been connected |
+| "Purchase has it on their desk. It stays flagged until a PO is attached." | the screen filters on `state === 'flag'`, the model's own comment said `query`, and no route set either |
+| "We will prepare the challan and the 26Q return for you to file." | nothing here produces a 26Q or talks to the portal |
+| "The bank instruction is prepared… it sits in the queue for release." | no bank is connected, and the payables list came from a constant holding an empty array |
+| "The driver gets a QR pass… Driver (WhatsApp) + the gate" | no gate pass was created and nothing reached the driver |
+
+The confirm sheet now takes an `onConfirm` and runs it, so the tick at the end
+means the thing happened. The emergency alert posts where everyone signed in
+sees it, records who raised it, and says in the sheet — in red — that nobody's
+phone will ring and how many numbers are on the screen to ring instead. The
+announcement posts for real. The gate pass is created. A bill is flagged
+through a new `POST /invoices/:id/flag`, sealed with the reason. Payables reads
+the invoices. The two that genuinely cannot be done — the inbox sync and the
+26Q — say so plainly and stop pretending.
+
 Two more things came out of it. `ProcProvider.tsx` (546 lines) and the
 self-contained `App` that used to close this file (244 lines) were both second
 providers that nothing mounted — two answers to "what is true", only one of them

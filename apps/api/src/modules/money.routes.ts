@@ -75,6 +75,49 @@ export const moneyRoutes: FastifyPluginAsyncZod = async (app) => {
     },
   );
 
+  /**
+   * Send a bill back to purchase.
+   *
+   * The invoices screen has always filtered on `state === 'flag'` and there was
+   * no way to reach it: the Flag button opened a sheet that said "purchase has
+   * it on their desk" and closed again. The state existed, the route did not.
+   */
+  app.post(
+    '/invoices/:id/flag',
+    {
+      preHandler: app.requireRole('MANAGER'),
+      schema: {
+        tags: ['money'],
+        summary: 'Send an invoice back to purchase',
+        params: z.object({ id: z.string() }),
+        body: z.object({ reason: z.string().trim().min(2).max(500) }),
+        response: { 200: z.any(), 404: z.any(), 409: z.any() },
+      },
+    },
+    async (req) => {
+      const me = requireUser(req);
+      const inv = await db.vendorInvoice.findUnique({ where: { id: req.params.id } });
+      if (!inv) throw notFound(`Invoice ${req.params.id}`);
+      if (inv.state === 'cleared') throw conflict(`${inv.id} was already cleared to accounts.`);
+
+      return db.$transaction(async (tx) => {
+        const row = await tx.vendorInvoice.update({
+          where: { id: inv.id },
+          data: { state: 'flag' },
+        });
+        await appendInTx(tx, {
+          kind: 'doc',
+          subject: inv.id,
+          detail:
+            `${inv.id} from ${inv.vendor} (₹${toRupees(inv.amt).toLocaleString('en-IN')}) ` +
+            `sent back to purchase — ${req.body.reason}.`,
+          who: me.name,
+        });
+        return { ...row, amt: toRupees(row.amt) };
+      });
+    },
+  );
+
   /* -------------------------------------------------------------- expenses */
 
   app.get(

@@ -1111,7 +1111,9 @@ model VendorInvoice {
   po        String   @default("")
   gstin     Boolean  @default(false)
   age       String   @default("")
-  /// toclear | cleared | query
+  /// toclear | cleared | flag. `flag` is a bill sent back to purchase because
+  /// nothing on file orders it; the invoices screen has always filtered on that
+  /// word, while this line said "query" and no route set either.
   state     String   @default("toclear")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

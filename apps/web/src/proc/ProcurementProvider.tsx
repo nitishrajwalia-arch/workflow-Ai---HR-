@@ -543,6 +543,15 @@ export function ProcurementProvider({ children, toast }: Props) {
           }),
           () => api.post(`/invoices/${id}/clear`, {}),
         ),
+      /** Send a bill back to purchase, with the reason. */
+      flagInvoice: (id: string, reason: string) =>
+        optimistic(
+          (x) => ({
+            ...x,
+            invoices: x.invoices.map((v: any) => (v.id === id ? { ...v, state: 'flag' } : v)),
+          }),
+          () => api.post(`/invoices/${id}/flag`, { reason }),
+        ),
       queueReminder: (r: any) =>
         server(
           () =>
