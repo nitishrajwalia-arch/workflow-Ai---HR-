@@ -29,6 +29,82 @@ for p in POLICY.values():
              pfPct=12, pfWageCap=15000, extraDayDivisor=30,
              setBy='Taken from the August 2026 salary books', setOn='31 Aug 2026')
 
+# WHAT COMES OFF A PAYSLIP, AND UNDER WHICH RULE.
+#
+# The two rates the books actually use, plus the two things HR types each month,
+# plus one the law provides for and Marbella does not apply. That last one is
+# kept and switched OFF rather than left out: a head that is missing looks like
+# nobody thought about it, and a head that is off with the rule written on it
+# says somebody looked and decided.
+HEADS = [
+    dict(code='pf', label='P.F.', basis='wagePct', rate=12, employerRate=12,
+         wage=15000, personWage=True, ceiling=0, proRate=True, requires='pfOn',
+         rounding='nearest', sort=10,
+         authority='EPF & MP Act 1952 — 12% of wages, on wages up to 15,000 a month, '
+                   'matched by the employer.',
+         note='One man is on 12% of his whole salary rather than the capped wage. '
+              'That is recorded against him, not here.',
+         active=True),
+    dict(code='esi', label='E.S.I.', basis='earnedPct', rate=0.75, employerRate=3.25,
+         wage=0, personWage=False, ceiling=0, proRate=False, requires='esiOn',
+         rounding='nearest', sort=20,
+         authority='ESI Act 1948 — 0.75% from the employee and 3.25% from the employer, '
+                   'on what was earned. The statutory wage ceiling is 21,000 a month.',
+         note='NO CEILING IS SET HERE, deliberately. The August books deduct ESI from '
+              'people on 22,500, 23,000, 24,000, 25,000 and 29,000 a month. The software '
+              'does what the company does; setting the ceiling would change six people\'s '
+              'take-home and that is for the management to decide, not for software.',
+         active=True),
+    dict(code='tds', label='T.D.S.', basis='entered', rate=0, employerRate=0,
+         wage=0, personWage=False, ceiling=0, proRate=False, requires='',
+         rounding='nearest', sort=30,
+         authority='Income Tax Act 1961 — deducted at source against the person\'s own '
+                   'liability. HR enters the figure each month.',
+         note='', active=True),
+    dict(code='advance', label='Advance recovered', basis='entered', rate=0, employerRate=0,
+         wage=0, personWage=False, ceiling=0, proRate=False, requires='',
+         rounding='nearest', sort=40,
+         authority='Money the company has already paid the person and is taking back. '
+                   'HR enters the figure each month.',
+         note='', active=True),
+    dict(code='pt', label='Professional tax', basis='flat', rate=0, employerRate=0,
+         wage=200, personWage=False, ceiling=0, proRate=False, requires='',
+         rounding='nearest', sort=50,
+         authority='Punjab State Development Tax Act 2018 — 200 a month from salaried '
+                   'persons liable to income tax. Chandigarh levies no such tax.',
+         note='SWITCHED OFF because no August payslip deducts it. Whether it is due turns '
+              'on where each person is employed and taxed; that is a question for the '
+              'management and the auditors, and this stays off until they answer it.',
+         active=False),
+]
+for h in HEADS:
+    h.update(setBy='Read off the August 2026 salary books', setOn='31 Aug 2026')
+
+
+def heads_for(company):
+    """The heads as THAT company's book actually applies them.
+
+    New Marbella rounds ESI up to the next rupee on all eighteen of its lines
+    where the paise matter, which is what the ESI regulation says. The three SRG
+    books have one such line between them and it is not rounded up. So the two
+    are set differently and both are written down, because assuming either would
+    be a rupee a head a month that nobody chose."""
+    out = []
+    for h in HEADS:
+        h = dict(h)
+        if h['code'] == 'esi':
+            if company == 'newmarb':
+                h['rounding'] = 'up'
+                h['note'] += (' This book ROUNDS UP to the next rupee, on all eighteen lines '
+                              'where the paise matter, which is what the regulation says.')
+            else:
+                h['note'] += (' This book rounds to the NEAREST rupee. The regulation says round '
+                              'up, and New Marbella\'s book does; there is one line in the three '
+                              'SRG books where the difference shows and it is not rounded up. It '
+                              'is a rupee a head a month and somebody should decide which is right.')
+        out.append(h)
+    return out
+
 def pf_wage(dpf, days, gross):
     """The FULL-MONTH wage PF was worked out on, recovered from the deduction.
 
@@ -111,6 +187,15 @@ open('apps/api/prisma/real-pay.ts', 'w').write(f'''/**
 
 /** What each company's payslip arithmetic is. Two of them, and they differ. */
 export const PAY_POLICIES = {ts(POLICY)} as const;
+
+/**
+ * What comes off a payslip at each company, and under which rule.
+ *
+ * The same five heads everywhere, because the same four books were read. They
+ * are rows rather than code so that a change in the law is an edit somebody
+ * makes and signs. `pt` is switched off: no August payslip deducts it.
+ */
+export const PAY_HEADS = {ts({c: heads_for(c) for c in POLICY})} as const;
 
 /** What each person is on per month. The same every month until somebody changes it. */
 export const PAY_STRUCTURES = {ts(sorted(structures.values(), key=lambda x: x['id']))} as const;

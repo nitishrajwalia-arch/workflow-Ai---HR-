@@ -232,6 +232,53 @@ and the screen cannot drift; `paysheet.test.ts` parses it back out and checks
 every figure against the engine. Anybody being paid who is **not on the employee
 register** is named on the sheet rather than left for somebody to notice.
 
+### 8. The rates are not in the software
+
+PF is 12% of wages up to ₹15,000. ESI is 0.75% from the person and 3.25% from
+the company. Punjab charges a State Development Tax of ₹200 a month. Every one
+of those figures has been changed by a government before and will be changed
+again, so none of them is written into the code. They are **rows** — a
+`DeductionHead` per company carrying the arithmetic (a percentage of what was
+earned, a percentage of a capped wage, a flat sum, or a figure HR types), the
+rule it comes from in words, and the name and date of whoever set it. A change
+in the law is then an edit somebody makes and signs.
+
+Each reduction on a payslip is stored with the rule behind it, and that
+explanation travels: to the line editor, to the Payroll screen under "What comes
+off a payslip", and to its own column on the sheet Accounts reads —
+`P.F. — ₹1,800 (12% of ₹15,000 wage) · E.S.I. — ₹218 (0.75% of ₹29,000 earned)`.
+A head that does not apply is left out rather than shown at zero, because a
+payslip listing ESI at ₹0 against somebody not covered by it reads as though
+somebody forgot.
+
+Reading the books this way found two things. **New Marbella rounds ESI up to the
+next rupee** — on all eighteen of its lines where the paise matter, which is what
+the regulation says — while the three SRG books round to nearest. Both are
+written down rather than assumed. And the **Punjab State Development Tax is
+seeded switched off**, with the Act named on it, because no August payslip
+deducts it: a head that is missing looks like nobody thought about it, and a head
+that is off with the rule on it says somebody looked.
+
+### 9. Enrolling somebody works, and takes their salary
+
+It did not. The form never asked who employed a person, so the server refused
+every enrolment; the Terms step called a function that had never been written, so
+it threw the moment it rendered; and the final step was a four-digit OTP with the
+code printed underneath it, verifying nothing. The personal mobile and email it
+collected were thrown away.
+
+Now the form asks who pays them, where they are posted and who they answer to —
+and takes the salary at the same moment as the employee ID, because that is the
+moment it is agreed. HR types **one figure**, the monthly gross, and the paying
+company's own policy splits it on screen before she saves it, with the statutory
+reductions and the take-home worked out underneath. The last step reads the
+details back instead of pretending to send a code.
+
+`proposeBreakUp` will not produce a negative part: 70% plus 30% of that plus 10%
+of that is already 98% of the gross, so a flat ₹500 of medical against a salary of
+₹21,500 leaves Special at minus 70. Medical is capped at the room there is —
+which lands exactly on what the company's own low earners are on.
+
 ---
 
 ## How the old UI runs against a live server

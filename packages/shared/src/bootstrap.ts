@@ -198,6 +198,20 @@ export interface BootstrapPayLine {
   dTotal: number;
   erEsi: number;
   erPf: number;
+  erOther: number;
+  /**
+   * Every reduction on this line, one by one, with the rule behind each. The
+   * totals above are what the salary sheet has always shown; this is what the
+   * person is owed an explanation of.
+   */
+  reductions: Array<{
+    code: string;
+    label: string;
+    amount: number;
+    employer: number;
+    why: string;
+    statutory: boolean;
+  }>;
   extraDays: number;
   extraAmount: number;
   arrear: number;
@@ -206,6 +220,45 @@ export interface BootstrapPayLine {
   /** Net plus days beyond the month. What actually goes out. */
   payable: number;
   remark: string;
+}
+
+/** How a company turns a monthly gross into the parts of a payslip. */
+export interface BootstrapSalaryPolicy {
+  kind: string;
+  basicPct: number;
+  hraPctOfBasic: number;
+  travelPctOfBasic: number;
+  esiEmployeePct: number;
+  esiEmployerPct: number;
+  esiCeiling: number;
+  pfPct: number;
+  pfWageCap: number;
+  extraDayDivisor: number;
+  setBy: string;
+  setOn: string;
+}
+
+/** One reduction head — what comes off a payslip, and under which rule. */
+export interface BootstrapDeductionHead {
+  code: string;
+  label: string;
+  basis: string;
+  rate: number;
+  employerRate: number;
+  wage: number;
+  personWage: boolean;
+  ceiling: number;
+  proRate: boolean;
+  requires: string;
+  /** 'nearest' or 'up'. The ESI regulation says up; most of the books say nearest. */
+  rounding: string;
+  /** The rule it comes from, in words. */
+  authority: string;
+  note: string;
+  active: boolean;
+  sort: number;
+  setBy: string;
+  setOn: string;
 }
 
 export interface BootstrapPayRun {
@@ -275,6 +328,18 @@ export interface BootstrapPayload {
   holidays: BootstrapHoliday[];
   /** Newest month first. Empty for any desk that may not see money. */
   payRuns: BootstrapPayRun[];
+  /**
+   * What comes off a payslip, keyed by company. Empty for any desk that may not
+   * see money: what is being deducted from somebody is as private as what they
+   * are paid.
+   */
+  deductionHeads: Record<string, BootstrapDeductionHead[]>;
+  /**
+   * How each company splits a gross. Empty for any desk that may not see money.
+   * The browser needs it to show HR what a salary she is about to agree will
+   * look like broken up, before she saves it rather than after.
+   */
+  salaryPolicies: Record<string, BootstrapSalaryPolicy>;
   offices: BootstrapOffice[];
   hrLog: Array<{ at: string; who: string; what: string }>;
   /** Server's verdict on the chain. The browser re-checks it independently. */

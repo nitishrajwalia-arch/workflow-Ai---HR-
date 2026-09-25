@@ -14,11 +14,13 @@ import {
   computeLine,
   payableDays,
   proposeBreakUp,
+  reductionsFor,
+  type DeductionHead,
   type PayPolicy,
   type PayStructure,
 } from '@marbella/shared';
 import { describe, expect, it } from 'vitest';
-import { PAY_AUGUST, PAY_POLICIES } from '../../prisma/real-pay.js';
+import { PAY_AUGUST, PAY_HEADS, PAY_POLICIES } from '../../prisma/real-pay.js';
 
 const policy = (c: string): PayPolicy =>
   PAY_POLICIES[c as keyof typeof PAY_POLICIES] as unknown as PayPolicy;
@@ -72,7 +74,12 @@ describe('the monthly breakup', () => {
     const off: string[] = [];
     for (const l of PAY_AUGUST) {
       const m = breakUp(policy(l.company), structureOf(l));
-      if (m.basic !== l.basic || m.hra !== l.hra || m.travel !== l.travel || m.special !== l.special) {
+      if (
+        m.basic !== l.basic ||
+        m.hra !== l.hra ||
+        m.travel !== l.travel ||
+        m.special !== l.special
+      ) {
         off.push(key(l));
       }
     }
@@ -109,6 +116,33 @@ describe('the monthly breakup', () => {
       expect(m.basic + m.hra + m.travel + m.medical + m.special).toBe(gross);
     }
   });
+
+  it('never proposes a negative Special, however small the salary', () => {
+    // 70% + 30% of that + 10% of that is 98% of the gross. A flat medical of 500
+    // against 21,500 leaves minus 70, and a payslip with a negative line on it is
+    // a payslip somebody has to explain. The company's own low earners carry a
+    // medical of 440, 400 or nothing — which is exactly the room there is.
+    for (const gross of [8_000, 12_000, 18_000, 21_500, 24_000, 25_000, 40_000]) {
+      const m = proposeBreakUp(policy('srg'), gross, 500);
+      expect(m.special, `special at ${gross}`).toBeGreaterThanOrEqual(0);
+      expect(m.medical, `medical at ${gross}`).toBeGreaterThanOrEqual(0);
+      expect(m.basic + m.hra + m.travel + m.medical + m.special).toBe(gross);
+    }
+    // And it says so by giving back less than it was asked for.
+    expect(proposeBreakUp(policy('srg'), 21_500, 500).medical).toBeLessThan(500);
+    expect(proposeBreakUp(policy('srg'), 47_000, 500).medical).toBe(500);
+  });
+
+  it('matches what the books do for a low earner', () => {
+    // 22,000 with 440 of medical and nothing left over is a real person's real
+    // structure, and the proposal lands on it.
+    const m = proposeBreakUp(policy('srg'), 22_000, 1_000);
+    expect(m.basic).toBe(15_400);
+    expect(m.hra).toBe(4_620);
+    expect(m.travel).toBe(1_540);
+    expect(m.medical).toBe(440);
+    expect(m.special).toBe(0);
+  });
 });
 
 describe('a month, recomputed', () => {
@@ -128,8 +162,10 @@ describe('a month, recomputed', () => {
     for (const l of PAY_AUGUST) {
       const g = computeLine(policy(l.company), structureOf(l), { days: l.days, monthDays: 31 });
       for (const [k, mine, theirs] of [
-        ['basic', g.eBasic, l.eBasic], ['hra', g.eHra, l.eHra],
-        ['travel', g.eTravel, l.eTravel], ['medical', g.eMedical, l.eMedical],
+        ['basic', g.eBasic, l.eBasic],
+        ['hra', g.eHra, l.eHra],
+        ['travel', g.eTravel, l.eTravel],
+        ['medical', g.eMedical, l.eMedical],
         ['special', g.eSpecial, l.eSpecial],
       ] as const) {
         if (mine !== theirs) off.push(`${l.name} ${k}: ${mine} vs ${theirs}`);
@@ -142,8 +178,12 @@ describe('a month, recomputed', () => {
     const off: string[] = [];
     for (const l of PAY_AUGUST) {
       const g = computeLine(policy(l.company), structureOf(l), {
-        days: l.days, monthDays: 31,
-        tds: l.dTds, advance: l.dAdvance, other: l.dOther, arrear: l.arrear,
+        days: l.days,
+        monthDays: 31,
+        tds: l.dTds,
+        advance: l.dAdvance,
+        other: l.dOther,
+        arrear: l.arrear,
       });
       // ESI and PF are recomputed, not fed in — they are the rules being tested.
       const mine = g.eGross - (g.dEsi + g.dPf + l.dTds + l.dAdvance + l.dOther) + l.arrear;
@@ -160,7 +200,9 @@ describe('a month, recomputed', () => {
     const off: string[] = [];
     for (const l of withExtra) {
       const g = computeLine(policy(l.company), structureOf(l), {
-        days: l.days, monthDays: 31, extraDays: l.extraDays,
+        days: l.days,
+        monthDays: 31,
+        extraDays: l.extraDays,
       });
       // The books use a 30-day divisor even in a 31-day month. That is theirs.
       if (Math.abs(g.extraAmount - l.extraAmount) > 1) {
@@ -186,18 +228,36 @@ describe('what it refuses to do', () => {
     // for whoever sets one.
     const p = { ...policy('newmarb'), esiCeiling: 21_000 };
     const rich: PayStructure = {
-      gross: 40_000, basic: 25_000, hra: 10_000, special: 5_000, medical: 0, travel: 0,
-      esiOn: true, pfOn: false, pfWages: 0,
+      gross: 40_000,
+      basic: 25_000,
+      hra: 10_000,
+      special: 5_000,
+      medical: 0,
+      travel: 0,
+      esiOn: true,
+      pfOn: false,
+      pfWages: 0,
     };
     expect(computeLine(p, rich, { days: 31, monthDays: 31 }).dEsi).toBe(0);
   });
 
   it('caps PF at the policy wage however much somebody earns', () => {
     const p = policy('newmarb');
-    const big = computeLine(p, {
-      gross: 200_000, basic: 120_000, hra: 60_000, special: 20_000, medical: 0, travel: 0,
-      esiOn: false, pfOn: true, pfWages: 0,
-    }, { days: 31, monthDays: 31 });
+    const big = computeLine(
+      p,
+      {
+        gross: 200_000,
+        basic: 120_000,
+        hra: 60_000,
+        special: 20_000,
+        medical: 0,
+        travel: 0,
+        esiOn: false,
+        pfOn: true,
+        pfWages: 0,
+      },
+      { days: 31, monthDays: 31 },
+    );
     expect(big.dPf).toBe(1800);
   });
 });
@@ -211,8 +271,10 @@ describe('days to pay for', () => {
 
   it('takes off the days the machine recorded nothing', () => {
     const d = payableDays({
-      monthDays: 31, onMachine: true,
-      absentDates: ['03 Aug 2026', '04 Aug 2026', '05 Aug 2026'], holidayDates: [],
+      monthDays: 31,
+      onMachine: true,
+      absentDates: ['03 Aug 2026', '04 Aug 2026', '05 Aug 2026'],
+      holidayDates: [],
     });
     expect(d.days).toBe(28);
     expect(d.lost).toBe(3);
@@ -220,16 +282,21 @@ describe('days to pay for', () => {
 
   it('does not dock somebody for a day the company was shut', () => {
     const d = payableDays({
-      monthDays: 31, onMachine: true,
-      absentDates: ['15 Aug 2026', '16 Aug 2026'], holidayDates: ['15 Aug 2026'],
+      monthDays: 31,
+      onMachine: true,
+      absentDates: ['15 Aug 2026', '16 Aug 2026'],
+      holidayDates: ['15 Aug 2026'],
     });
     expect(d.days).toBe(30);
   });
 
   it('lets leave cover an absence', () => {
     const d = payableDays({
-      monthDays: 31, onMachine: true,
-      absentDates: ['03 Aug 2026', '04 Aug 2026'], holidayDates: [], paidLeave: 2,
+      monthDays: 31,
+      onMachine: true,
+      absentDates: ['03 Aug 2026', '04 Aug 2026'],
+      holidayDates: [],
+      paidLeave: 2,
     });
     expect(d.days).toBe(31);
     expect(d.why).toMatch(/covered by leave/);
@@ -241,12 +308,17 @@ describe('the six places the books disagree with themselves', () => {
     const found: string[] = [];
     for (const l of PAY_AUGUST) {
       const g = computeLine(policy(l.company), structureOf(l), {
-        days: l.days, monthDays: 31,
-        tds: l.dTds, advance: l.dAdvance, other: l.dOther, arrear: l.arrear,
+        days: l.days,
+        monthDays: 31,
+        tds: l.dTds,
+        advance: l.dAdvance,
+        other: l.dOther,
+        arrear: l.arrear,
       });
       const mine = g.eGross - (g.dEsi + g.dPf + l.dTds + l.dAdvance + l.dOther) + l.arrear;
       const parts = g.basic + g.hra + g.travel + g.medical + g.special;
-      if (Math.abs(mine - l.net) > 1 || g.eGross !== l.eGross || parts !== g.gross) found.push(key(l));
+      if (Math.abs(mine - l.net) > 1 || g.eGross !== l.eGross || parts !== g.gross)
+        found.push(key(l));
     }
     expect(found.sort()).toEqual(Object.keys(BOOK_DIFFERS).sort());
   });
@@ -257,8 +329,179 @@ describe('the six places the books disagree with themselves', () => {
     // The book paid him the gross. The engine takes the TDS off.
     expect(l.net).toBe(l.eGross);
     const g = computeLine(policy(l.company), structureOf(l), {
-      days: l.days, monthDays: 31, tds: l.dTds,
+      days: l.days,
+      monthDays: 31,
+      tds: l.dTds,
     });
     expect(l.net - g.net).toBe(20_000);
+  });
+});
+
+/* --------------------------------------------------------- reduction heads */
+
+const heads = (c: string): DeductionHead[] =>
+  (PAY_HEADS[c as keyof typeof PAY_HEADS] ?? []) as unknown as DeductionHead[];
+
+describe('what comes off a payslip', () => {
+  it('matches the deduction the company actually took, to the rupee, on every line', () => {
+    // The two rates on the policy get ESI within a rupee. The heads get it
+    // exactly, because they carry each book's own rounding — and a rupee a head
+    // a month is what an inspection asks about.
+    const off: string[] = [];
+    for (const l of PAY_AUGUST) {
+      const g = computeLine(
+        policy(l.company),
+        structureOf(l),
+        { days: l.days, monthDays: 31, tds: l.dTds, advance: l.dAdvance, arrear: l.arrear },
+        heads(l.company),
+      );
+      if (g.dEsi !== l.dEsi) off.push(`${key(l)} esi ${g.dEsi} vs ${l.dEsi}`);
+      if (g.dPf !== l.dPf) off.push(`${key(l)} pf ${g.dPf} vs ${l.dPf}`);
+      // Only where the BOOK carries an employer share. Three of the four do not
+      // print one at all — see below.
+      if (l.erEsi && g.erEsi !== l.erEsi) off.push(`${key(l)} er-esi ${g.erEsi} vs ${l.erEsi}`);
+      if (l.erPf && g.erPf !== l.erPf) off.push(`${key(l)} er-pf ${g.erPf} vs ${l.erPf}`);
+    }
+    expect(off, off.slice(0, 6).join(' | ')).toHaveLength(0);
+  });
+
+  it('works out the employer share even where the book does not print one', () => {
+    // Only one line in the four books carries an employer contribution. Thirty-
+    // seven people have PF or ESI taken off them and no matching company share
+    // written anywhere — the company pays it, on the challan, and the salary
+    // sheet has never shown it. It is money leaving the company, so it is worked
+    // out and shown, and this is the test that says the books do not have it.
+    const onBooks = PAY_AUGUST.filter((l) => l.erEsi > 0 || l.erPf > 0);
+    expect(onBooks).toHaveLength(1);
+
+    const deducted = PAY_AUGUST.filter((l) => l.dPf > 0 || l.dEsi > 0);
+    expect(deducted.length).toBeGreaterThan(30);
+    let share = 0;
+    for (const l of deducted) {
+      const g = computeLine(
+        policy(l.company),
+        structureOf(l),
+        { days: l.days, monthDays: 31 },
+        heads(l.company),
+      );
+      expect(g.erEsi + g.erPf, `${key(l)} has a share`).toBeGreaterThan(0);
+      share += g.erEsi + g.erPf;
+    }
+    expect(share).toBeGreaterThan(50_000);
+  });
+
+  it('knows that one of the four books rounds ESI differently, and it is one', () => {
+    // New Marbella rounds up to the next rupee on all eighteen of its lines
+    // where the paise matter, which is what the regulation says. The three SRG
+    // books round to nearest. Both are written down rather than assumed, and
+    // this holds the software to that until somebody at Marbella decides.
+    const up = Object.entries(PAY_HEADS)
+      .filter(([, hs]) => hs.some((h) => h.code === 'esi' && h.rounding === 'up'))
+      .map(([c]) => c);
+    expect(up).toEqual(['newmarb']);
+    for (const [, hs] of Object.entries(PAY_HEADS)) {
+      const esi = hs.find((h) => h.code === 'esi');
+      expect(esi?.note, 'the difference is explained on the head itself').toMatch(/round/i);
+    }
+  });
+
+  it('puts the rule on every reduction it produces', () => {
+    const person = PAY_AUGUST.find((l) => l.dPf > 0 && l.dEsi > 0);
+    expect(person, 'somebody on both PF and ESI').toBeTruthy();
+    const out = reductionsFor(heads(person!.company), structureOf(person!), {
+      gross: person!.gross,
+      eGross: person!.eGross,
+      days: person!.days,
+      monthDays: 31,
+    });
+    for (const x of out) {
+      expect(x.why, `${x.code} has no working`).not.toBe('');
+      expect(x.label).not.toBe('');
+    }
+    expect(out.map((x) => x.code).sort()).toEqual(['esi', 'pf']);
+  });
+
+  it('leaves a head out rather than showing it at zero', () => {
+    // A payslip that lists ESI at zero against somebody not covered by ESI reads
+    // as though somebody forgot to deduct it.
+    const noneOf = PAY_AUGUST.find((l) => l.dPf === 0 && l.dEsi === 0 && l.erEsi === 0);
+    const out = reductionsFor(heads(noneOf!.company), structureOf(noneOf!), {
+      gross: noneOf!.gross,
+      eGross: noneOf!.eGross,
+      days: noneOf!.days,
+      monthDays: 31,
+    });
+    expect(out).toHaveLength(0);
+  });
+
+  it('does not deduct the professional tax, because the company does not', () => {
+    const pt = heads('srg').find((h) => h.code === 'pt');
+    expect(pt, 'the head is kept so that the decision is visible').toBeTruthy();
+    expect(pt!.active, 'no August payslip deducts it').toBe(false);
+    expect(pt!.authority).toContain('Punjab');
+  });
+
+  it('applies a flat head to everybody the moment it is switched on', () => {
+    const on = heads('srg').map((h) => (h.code === 'pt' ? { ...h, active: true } : h));
+    const l = PAY_AUGUST[0]!;
+    const out = reductionsFor(on, structureOf(l), {
+      gross: l.gross,
+      eGross: l.eGross,
+      days: l.days,
+      monthDays: 31,
+    });
+    const tax = out.find((x) => x.code === 'pt');
+    expect(tax?.amount).toBe(200);
+    expect(tax?.why).toContain('200');
+  });
+
+  it('respects a ceiling, so a rise can take somebody out of a head', () => {
+    const capped = heads('srg').map((h) => (h.code === 'esi' ? { ...h, ceiling: 21_000 } : h));
+    const s: PayStructure = {
+      gross: 29_000,
+      basic: 20_300,
+      hra: 6_090,
+      travel: 2_030,
+      medical: 500,
+      special: 80,
+      esiOn: true,
+      pfOn: false,
+      pfWages: 0,
+    };
+    const out = reductionsFor(capped, s, {
+      gross: 29_000,
+      eGross: 29_000,
+      days: 31,
+      monthDays: 31,
+    });
+    expect(
+      out.find((x) => x.code === 'esi'),
+      'over the ceiling',
+    ).toBeUndefined();
+    const under = reductionsFor(
+      capped,
+      { ...s, gross: 18_000 },
+      {
+        gross: 18_000,
+        eGross: 18_000,
+        days: 31,
+        monthDays: 31,
+      },
+    );
+    expect(under.find((x) => x.code === 'esi')?.amount).toBe(135);
+  });
+
+  it('carries what a one-off reduction is FOR, not just how much', () => {
+    const l = PAY_AUGUST[0]!;
+    const g = computeLine(
+      policy(l.company),
+      structureOf(l),
+      { days: 31, monthDays: 31, others: [{ label: 'Canteen — June and July', amount: 1_200 }] },
+      heads(l.company),
+    );
+    const one = g.reductions.find((x) => x.code === 'other');
+    expect(one?.label).toBe('Canteen — June and July');
+    expect(one?.amount).toBe(1_200);
+    expect(g.dOther).toBe(1_200);
   });
 });

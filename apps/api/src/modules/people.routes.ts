@@ -11,7 +11,7 @@
  * into the ledger. Changing their office is an ordinary edit.
  */
 
-import { ACTIVATION_REQUIRES, schemas } from '@marbella/shared';
+import { ACTIVATION_REQUIRES, asPayPolicy, proposeBreakUp, schemas } from '@marbella/shared';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import { bothForms, nowStamp } from '../lib/dates.js';
@@ -135,12 +135,59 @@ export const peopleRoutes: FastifyPluginAsyncZod = async (app) => {
             officeId: b.office,
             employerId: b.employer,
             reportsToId: b.reportsTo ?? null,
+            reportsToNote: b.reportsToNote ?? '',
             ...(b.shift
               ? { shiftIn: b.shift.in, shiftOut: b.shift.out, shiftHours: b.shift.hours }
               : {}),
           },
           include: personInclude,
         });
+
+        // The salary is agreed at the same moment as the employee ID, so it is
+        // taken at the same moment. HR types ONE figure — the monthly gross —
+        // and the employer's own policy splits it; asking a new HR manager to
+        // type a Basic, an HRA and a Travelling Allowance that add up to the
+        // gross is asking her to get it wrong on somebody's first payslip.
+        if (b.salary && b.salary.gross > 0) {
+          const policy = await tx.salaryPolicy.findUnique({ where: { companyId: b.employer } });
+          const parts = policy
+            ? proposeBreakUp(asPayPolicy(policy), b.salary.gross, b.salary.medical)
+            : {
+                gross: b.salary.gross,
+                basic: b.salary.gross - b.salary.medical,
+                hra: 0,
+                travel: 0,
+                medical: b.salary.medical,
+                special: 0,
+              };
+          await tx.salary.create({
+            data: {
+              personId: person.id,
+              gross: parts.gross,
+              basic: parts.basic,
+              hra: parts.hra,
+              travel: parts.travel,
+              medical: parts.medical,
+              special: parts.special,
+              esiOn: b.salary.esiOn,
+              pfOn: b.salary.pfOn,
+              pfWages: b.salary.pfWages,
+              note:
+                b.salary.note ||
+                (policy
+                  ? ''
+                  : 'No salary policy for this company yet — the split is the gross less medical.'),
+            },
+          });
+          // The ledger records THAT pay was set and who set it, never the
+          // figures. An audit trail should not become a second copy of payroll.
+          await appendInTx(tx, {
+            kind: 'salary',
+            subject: person.id,
+            detail: `Salary agreed for ${person.name} at joining.`,
+            who: me.name,
+          });
+        }
 
         await appendInTx(tx, {
           kind: 'join',

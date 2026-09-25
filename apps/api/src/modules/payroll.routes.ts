@@ -19,17 +19,21 @@
  */
 
 import {
+  asPayPolicy,
   computeLine,
   imeiCheck,
   emailCheck,
   payableDays,
   phoneCheck,
+  readReductions,
   schemas,
-  type PayPolicy,
+  type DeductionHead,
   type PayStructure,
 } from '@marbella/shared';
+import type { Prisma } from '@prisma/client';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
+import { nowStamp } from '../lib/dates.js';
 import { notFound, unprocessable } from '../lib/errors.js';
 import { requireUser } from '../plugins/auth.js';
 import { appendInTx } from '../services/ledger.js';
@@ -41,6 +45,13 @@ function monthStart(month: string): Date {
   const [m, y] = month.split(' ');
   return new Date(Date.UTC(Number(y), Math.max(0, MONTHS.indexOf(m ?? '')), 1));
 }
+
+/**
+ * A list of reductions, in the shape Prisma wants for a JSON column. The cast is
+ * the whole of it: the value is already plain data, and Prisma's input type
+ * cannot see that an array of interfaces is one.
+ */
+const asJson = (v: unknown): Prisma.InputJsonValue => v as Prisma.InputJsonValue;
 
 export const payrollRoutes: FastifyPluginAsyncZod = async (app) => {
   const { db } = app;
@@ -276,19 +287,133 @@ export const payrollRoutes: FastifyPluginAsyncZod = async (app) => {
     },
   );
 
+  /* ----------------------------------------------------- reduction heads */
+
+  app.get(
+    '/deduction-heads',
+    {
+      preHandler: app.requireRole('HR'),
+      schema: {
+        tags: ['payroll'],
+        summary: 'What comes off a payslip, per company',
+        response: { 200: z.any() },
+      },
+    },
+    async () => {
+      const rows = await db.deductionHead.findMany({
+        orderBy: [{ companyId: 'asc' }, { sort: 'asc' }, { code: 'asc' }],
+      });
+      const out: Record<string, unknown[]> = {};
+      for (const h of rows) {
+        (out[h.companyId] ??= []).push({
+          code: h.code,
+          label: h.label,
+          basis: h.basis,
+          rate: h.rate,
+          employerRate: h.employerRate,
+          wage: h.wage,
+          personWage: h.personWage,
+          ceiling: h.ceiling,
+          proRate: h.proRate,
+          requires: h.requires,
+          rounding: h.rounding,
+          authority: h.authority,
+          note: h.note,
+          active: h.active,
+          sort: h.sort,
+          setBy: h.setBy,
+          setOn: h.setOn,
+        });
+      }
+      return out;
+    },
+  );
+
+  app.put(
+    '/deduction-heads/:company/:code',
+    {
+      preHandler: app.requireRole('HR'),
+      schema: {
+        tags: ['payroll'],
+        summary: 'Set or change a reduction head',
+        description:
+          'A rate is not checked against the law — the law is not in here, and a ' +
+          'company that is behind on a change needs to be able to say so. What is ' +
+          'required is the rule it comes from, and whoever saves it is named on it. ' +
+          'A head already used on a RELEASED run is not reworked: those figures are ' +
+          'what Accounts paid, and they stay as they were.',
+        params: z.object({ company: schemas.slug, code: z.string().trim().min(2).max(24) }),
+        body: schemas.deductionHeadBody,
+        response: { 200: z.any(), 404: schemas.errorBody },
+      },
+    },
+    async (req) => {
+      const me = requireUser(req);
+      const { company, code } = req.params;
+      const bd = req.body;
+      if (bd.code !== code.toLowerCase()) {
+        throw unprocessable('The key in the address and the key in the body must match.', [
+          { path: 'code', message: 'does not match the address' },
+        ]);
+      }
+      const co = await db.company.findUnique({ where: { id: company } });
+      if (!co) throw notFound(`Company ${company}`);
+
+      const saved = await db.$transaction(async (tx) => {
+        const row = await tx.deductionHead.upsert({
+          where: { companyId_code: { companyId: company, code: bd.code } },
+          create: { companyId: company, ...bd, setBy: me.name, setOn: nowStamp() },
+          update: { ...bd, setBy: me.name, setOn: nowStamp() },
+        });
+        await appendInTx(tx, {
+          kind: 'payroll',
+          subject: `${company} ${bd.code}`,
+          detail: `${bd.label} ${bd.active ? 'set' : 'switched off'} for ${co.name} — ${bd.authority}`,
+          who: me.name,
+        });
+        return row;
+      });
+      return { ...saved, updatedAt: undefined };
+    },
+  );
+
   /* ------------------------------------------------------------ pay runs */
 
   /** The policy and structure a person is paid on, ready for the engine. */
   const structureOf = (s: {
-    gross: number; basic: number; hra: number; travel: number; medical: number;
-    special: number; esiOn: boolean; pfOn: boolean; pfWages: number;
+    gross: number;
+    basic: number;
+    hra: number;
+    travel: number;
+    medical: number;
+    special: number;
+    esiOn: boolean;
+    pfOn: boolean;
+    pfWages: number;
   }): PayStructure => ({ ...s });
 
-  const asPolicy = (p: {
-    kind: string; basicPct: number; hraPctOfBasic: number; travelPctOfBasic: number;
-    esiEmployeePct: number; esiEmployerPct: number; esiCeiling: number;
-    pfPct: number; pfWageCap: number; extraDayDivisor: number;
-  }): PayPolicy => ({ ...p, kind: p.kind === 'stated' ? 'stated' : 'percent' });
+  /** What comes off a payslip at this company, in the order it is shown. */
+  const headsOf = async (companyId: string): Promise<DeductionHead[]> => {
+    const rows = await db.deductionHead.findMany({
+      where: { companyId },
+      orderBy: [{ sort: 'asc' }, { code: 'asc' }],
+    });
+    return rows.map((h) => ({
+      code: h.code,
+      label: h.label,
+      basis: h.basis as DeductionHead['basis'],
+      rate: h.rate,
+      employerRate: h.employerRate,
+      wage: h.wage,
+      personWage: h.personWage,
+      ceiling: h.ceiling,
+      proRate: h.proRate,
+      requires: h.requires,
+      rounding: h.rounding === 'up' ? 'up' : 'nearest',
+      authority: h.authority,
+      active: h.active,
+    }));
+  };
 
   /**
    * One shape for a pay run, everywhere it leaves this API.
@@ -304,20 +429,50 @@ export const payrollRoutes: FastifyPluginAsyncZod = async (app) => {
       include: { lines: { orderBy: { name: 'asc' } } },
     });
     return {
-      id: r.id, month: r.month, company: r.companyId, monthDays: r.monthDays,
-      status: r.status, source: r.source, note: r.note,
-      createdBy: r.createdBy, releasedBy: r.releasedBy,
+      id: r.id,
+      month: r.month,
+      company: r.companyId,
+      monthDays: r.monthDays,
+      status: r.status,
+      source: r.source,
+      note: r.note,
+      createdBy: r.createdBy,
+      releasedBy: r.releasedBy,
       releasedAt: r.releasedAt ? r.releasedAt.toISOString() : null,
       lines: r.lines.map((l) => ({
-        id: l.id, pid: l.personId, name: l.name, designation: l.designation, days: l.days,
-        gross: l.gross, basic: l.basic, hra: l.hra, travel: l.travel,
-        medical: l.medical, special: l.special,
-        eBasic: l.eBasic, eHra: l.eHra, eTravel: l.eTravel, eMedical: l.eMedical,
-        eSpecial: l.eSpecial, eGross: l.eGross,
-        dEsi: l.dEsi, dPf: l.dPf, dTds: l.dTds, dAdvance: l.dAdvance,
-        dOther: l.dOther, dTotal: l.dTotal, erEsi: l.erEsi, erPf: l.erPf,
-        extraDays: l.extraDays, extraAmount: l.extraAmount, arrear: l.arrear,
-        net: l.net, payable: l.net + l.extraAmount, remark: l.remark,
+        id: l.id,
+        pid: l.personId,
+        name: l.name,
+        designation: l.designation,
+        days: l.days,
+        gross: l.gross,
+        basic: l.basic,
+        hra: l.hra,
+        travel: l.travel,
+        medical: l.medical,
+        special: l.special,
+        eBasic: l.eBasic,
+        eHra: l.eHra,
+        eTravel: l.eTravel,
+        eMedical: l.eMedical,
+        eSpecial: l.eSpecial,
+        eGross: l.eGross,
+        dEsi: l.dEsi,
+        dPf: l.dPf,
+        dTds: l.dTds,
+        dAdvance: l.dAdvance,
+        dOther: l.dOther,
+        dTotal: l.dTotal,
+        erEsi: l.erEsi,
+        erPf: l.erPf,
+        erOther: l.erOther,
+        reductions: readReductions(l.reductions),
+        extraDays: l.extraDays,
+        extraAmount: l.extraAmount,
+        arrear: l.arrear,
+        net: l.net,
+        payable: l.net + l.extraAmount,
+        remark: l.remark,
       })),
     };
   };
@@ -326,8 +481,11 @@ export const payrollRoutes: FastifyPluginAsyncZod = async (app) => {
     '/pay-runs',
     {
       preHandler: app.requireRole('HR'),
-      schema: { tags: ['payroll'], summary: 'Every pay run, newest month first',
-                response: { 200: z.any() } },
+      schema: {
+        tags: ['payroll'],
+        summary: 'Every pay run, newest month first',
+        response: { 200: z.any() },
+      },
     },
     async () => {
       const ids = await db.payRun.findMany({
@@ -375,7 +533,8 @@ export const payrollRoutes: FastifyPluginAsyncZod = async (app) => {
           [{ path: 'company', message: 'no salary policy' }],
         );
       }
-      const policy = asPolicy(policyRow);
+      const policy = asPayPolicy(policyRow);
+      const heads = await headsOf(company);
 
       const people = await db.person.findMany({
         where: { employerId: company, status: 'active' },
@@ -409,39 +568,70 @@ export const payrollRoutes: FastifyPluginAsyncZod = async (app) => {
           ? await tx.payRun.update({ where: { id: existing.id }, data: { monthDays } })
           : await tx.payRun.create({
               data: {
-                month, companyId: company, monthDays,
-                monthOn: monthStart(month), status: 'draft', source: 'computed',
+                month,
+                companyId: company,
+                monthDays,
+                monthOn: monthStart(month),
+                status: 'draft',
+                source: 'computed',
                 createdBy: me.name,
               },
             });
         await tx.payRunLine.deleteMany({ where: { runId: r.id } });
 
         for (const p of people) {
-          if (!p.salary || p.salary.gross <= 0) continue;   // nobody without a salary on file
+          if (!p.salary || p.salary.gross <= 0) continue; // nobody without a salary on file
           const d = payableDays({
-            monthDays, onMachine: onMachine.has(p.id),
-            absentDates: absent.get(p.id) ?? [], holidayDates,
+            monthDays,
+            onMachine: onMachine.has(p.id),
+            absentDates: absent.get(p.id) ?? [],
+            holidayDates,
           });
-          const line = computeLine(policy, structureOf(p.salary), {
-            days: d.days, monthDays,
-          });
+          const line = computeLine(
+            policy,
+            structureOf(p.salary),
+            {
+              days: d.days,
+              monthDays,
+            },
+            heads,
+          );
           await tx.payRunLine.create({
             data: {
-              runId: r.id, personId: p.id, name: p.name, designation: p.designation,
+              runId: r.id,
+              personId: p.id,
+              name: p.name,
+              designation: p.designation,
               days: line.days,
-              gross: line.gross, basic: line.basic, hra: line.hra, travel: line.travel,
-              medical: line.medical, special: line.special,
-              eBasic: line.eBasic, eHra: line.eHra, eTravel: line.eTravel,
-              eMedical: line.eMedical, eSpecial: line.eSpecial, eGross: line.eGross,
-              dEsi: line.dEsi, dPf: line.dPf, dTotal: line.dTotal,
-              erEsi: line.erEsi, erPf: line.erPf, net: line.net,
+              gross: line.gross,
+              basic: line.basic,
+              hra: line.hra,
+              travel: line.travel,
+              medical: line.medical,
+              special: line.special,
+              eBasic: line.eBasic,
+              eHra: line.eHra,
+              eTravel: line.eTravel,
+              eMedical: line.eMedical,
+              eSpecial: line.eSpecial,
+              eGross: line.eGross,
+              dEsi: line.dEsi,
+              dPf: line.dPf,
+              dOther: line.dOther,
+              dTotal: line.dTotal,
+              erEsi: line.erEsi,
+              erPf: line.erPf,
+              erOther: line.erOther,
+              reductions: asJson(line.reductions),
+              net: line.net,
               remark: d.lost ? d.why : '',
             },
           });
         }
 
         await appendInTx(tx, {
-          kind: 'payroll', subject: `${company} ${month}`,
+          kind: 'payroll',
+          subject: `${company} ${month}`,
           detail: `Pay run drafted for ${people.length} people.`,
           who: me.name,
         });
@@ -491,42 +681,81 @@ export const payrollRoutes: FastifyPluginAsyncZod = async (app) => {
       const policyRow = await db.salaryPolicy.findUniqueOrThrow({
         where: { companyId: line.run.companyId },
       });
+      const heads = await headsOf(line.run.companyId);
       // Recomputed from the structure every time, never patched in place: an
       // earned gross that was arrived at by adding a delta to an old one is a
       // figure nobody can check.
       const s = line.person?.salary
         ? structureOf(line.person.salary)
         : {
-            gross: line.gross, basic: line.basic, hra: line.hra, travel: line.travel,
-            medical: line.medical, special: line.special,
-            esiOn: line.dEsi > 0, pfOn: line.dPf > 0, pfWages: 0,
+            gross: line.gross,
+            basic: line.basic,
+            hra: line.hra,
+            travel: line.travel,
+            medical: line.medical,
+            special: line.special,
+            esiOn: line.dEsi > 0,
+            pfOn: line.dPf > 0,
+            pfWages: 0,
           };
-      const g = computeLine(asPolicy(policyRow), s, {
-        days: b.days ?? line.days,
-        monthDays: line.run.monthDays,
-        extraDays: b.extraDays ?? line.extraDays,
-        tds: b.tds ?? line.dTds,
-        advance: b.advance ?? line.dAdvance,
-        other: b.other ?? line.dOther,
-        arrear: b.arrear ?? line.arrear,
-      });
+      // The one-off reductions HR named are re-sent whole rather than patched:
+      // a list edited by deltas is a list nobody can reconstruct six months on.
+      const storedOthers = (Array.isArray(line.reductions) ? line.reductions : [])
+        .filter((x) => (x as { code?: string }).code === 'other')
+        .map((x) => ({
+          label: String((x as { label?: string }).label ?? 'Other deduction'),
+          amount: Number((x as { amount?: number }).amount ?? 0),
+        }));
+      const others =
+        b.others ??
+        (b.other === undefined ? storedOthers : [{ label: 'Other deduction', amount: b.other }]);
+
+      const g = computeLine(
+        asPayPolicy(policyRow),
+        s,
+        {
+          days: b.days ?? line.days,
+          monthDays: line.run.monthDays,
+          extraDays: b.extraDays ?? line.extraDays,
+          tds: b.tds ?? line.dTds,
+          advance: b.advance ?? line.dAdvance,
+          others,
+          arrear: b.arrear ?? line.arrear,
+        },
+        heads,
+      );
 
       const row = await db.$transaction(async (tx) => {
         const updated = await tx.payRunLine.update({
           where: { id: lineId },
           data: {
             days: g.days,
-            eBasic: g.eBasic, eHra: g.eHra, eTravel: g.eTravel, eMedical: g.eMedical,
-            eSpecial: g.eSpecial, eGross: g.eGross,
-            dEsi: g.dEsi, dPf: g.dPf, dTds: g.dTds, dAdvance: g.dAdvance,
-            dOther: g.dOther, dTotal: g.dTotal, erEsi: g.erEsi, erPf: g.erPf,
-            extraDays: g.extraDays, extraAmount: g.extraAmount, arrear: g.arrear,
+            eBasic: g.eBasic,
+            eHra: g.eHra,
+            eTravel: g.eTravel,
+            eMedical: g.eMedical,
+            eSpecial: g.eSpecial,
+            eGross: g.eGross,
+            dEsi: g.dEsi,
+            dPf: g.dPf,
+            dTds: g.dTds,
+            dAdvance: g.dAdvance,
+            dOther: g.dOther,
+            dTotal: g.dTotal,
+            erEsi: g.erEsi,
+            erPf: g.erPf,
+            erOther: g.erOther,
+            reductions: asJson(g.reductions),
+            extraDays: g.extraDays,
+            extraAmount: g.extraAmount,
+            arrear: g.arrear,
             net: g.net,
             ...(b.remark === undefined ? {} : { remark: b.remark }),
           },
         });
         await appendInTx(tx, {
-          kind: 'payroll', subject: line.personId ?? line.name,
+          kind: 'payroll',
+          subject: line.personId ?? line.name,
           detail:
             `${line.run.month}: ${g.days} days, net ${g.net}` +
             (b.remark ? ` \u2014 ${b.remark}` : ''),
@@ -565,24 +794,26 @@ export const payrollRoutes: FastifyPluginAsyncZod = async (app) => {
         ]);
       }
       if (run.lines.length === 0) {
-        throw unprocessable(
-          'There is nothing on that run to release. Work the month out first.',
-          [{ path: 'id', message: 'no lines' }],
-        );
+        throw unprocessable('There is nothing on that run to release. Work the month out first.', [
+          { path: 'id', message: 'no lines' },
+        ]);
       }
-      return db.$transaction(async (tx) => {
-        const r = await tx.payRun.update({
-          where: { id: run.id },
-          data: { status: 'released', releasedAt: new Date(), releasedBy: me.name },
-        });
-        const net = run.lines.reduce((a, l) => a + l.net + l.extraAmount, 0);
-        await appendInTx(tx, {
-          kind: 'payroll', subject: `${run.companyId} ${run.month}`,
-          detail: `Released to Accounts: ${run.lines.length} people, ${net} payable.`,
-          who: me.name,
-        });
-        return { id: r.id, status: r.status, lines: run.lines.length, payable: net };
-      }).then(async (r) => ({ ...r, run: await fullRun(run.id) }));
+      return db
+        .$transaction(async (tx) => {
+          const r = await tx.payRun.update({
+            where: { id: run.id },
+            data: { status: 'released', releasedAt: new Date(), releasedBy: me.name },
+          });
+          const net = run.lines.reduce((a, l) => a + l.net + l.extraAmount, 0);
+          await appendInTx(tx, {
+            kind: 'payroll',
+            subject: `${run.companyId} ${run.month}`,
+            detail: `Released to Accounts: ${run.lines.length} people, ${net} payable.`,
+            who: me.name,
+          });
+          return { id: r.id, status: r.status, lines: run.lines.length, payable: net };
+        })
+        .then(async (r) => ({ ...r, run: await fullRun(run.id) }));
     },
   );
 };

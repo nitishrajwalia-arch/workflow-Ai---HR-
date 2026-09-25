@@ -153,6 +153,8 @@ export function ProcurementProvider({ children, toast }: Props) {
       jds: w.jds,
       holidays: w.holidays,
       payRuns: w.payRuns,
+      deductionHeads: w.deductionHeads,
+      salaryPolicies: w.salaryPolicies,
       offices: w.offices,
       hrLog: w.hrLog,
       hrTasks: w.hrTasks,
@@ -732,7 +734,8 @@ export function ProcurementProvider({ children, toast }: Props) {
 
       releasePayRun: (runId: string) =>
         server(
-          () => api.post<{ run: BootstrapPayRun; payable: number }>(`/pay-runs/${runId}/release`, {}),
+          () =>
+            api.post<{ run: BootstrapPayRun; payable: number }>(`/pay-runs/${runId}/release`, {}),
           (r, x) => spliceRun(r.run, x),
         ),
 

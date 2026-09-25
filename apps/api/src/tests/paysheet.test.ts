@@ -182,6 +182,49 @@ describe('the roll-out sheet', () => {
     }
   });
 
+  it('spells out each reduction with the rule behind it', () => {
+    const one: SheetLine = {
+      ...(lines[0] as SheetLine),
+      reductions: [
+        {
+          code: 'pf',
+          label: 'P.F.',
+          amount: 1800,
+          employer: 1800,
+          statutory: true,
+          why: '12% of \u20b915,000 wage',
+        },
+        {
+          code: 'advance',
+          label: 'Advance recovered',
+          amount: 5000,
+          employer: 0,
+          statutory: false,
+          why: 'Entered by HR for this month',
+        },
+      ],
+    };
+    const { csv: c } = rollOutSheet({ ...run, lines: [one] }, { at: AT });
+    const r = parseCsv(c);
+    const h = r.findIndex((x) => x[0] === 'Sr. No.');
+    const cell = (r[h + 1] as string[])[
+      (r[h] as string[]).indexOf('Salary Reductions — head by head')
+    ];
+    expect(cell).toContain('P.F.');
+    expect(cell).toContain('12% of \u20b915,000 wage');
+    expect(cell).toContain('Advance recovered');
+    expect(cell).toContain('\u20b95,000');
+  });
+
+  it('leaves the column empty rather than inventing one for an older line', () => {
+    const c = rollOutSheet({ ...run, lines: [{ ...(lines[0] as SheetLine) }] }, { at: AT }).csv;
+    const r = parseCsv(c);
+    const h = r.findIndex((x) => x[0] === 'Sr. No.');
+    expect(
+      (r[h + 1] as string[])[(r[h] as string[]).indexOf('Salary Reductions — head by head')],
+    ).toBe('');
+  });
+
   it('gives days beyond the month their own block, as the company book does', () => {
     const at = rows.findIndex((r) => r[0] === 'Days beyond the month — paid separately');
     expect(at).toBeGreaterThan(0);

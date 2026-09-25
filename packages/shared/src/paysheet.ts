@@ -23,6 +23,17 @@
  * checks. "E.S.I. (employee)" is true whatever the policy is set to.
  */
 
+import { inrWords } from './pay.js';
+
+export interface SheetReduction {
+  code: string;
+  label: string;
+  amount: number;
+  employer: number;
+  why: string;
+  statutory: boolean;
+}
+
 export interface SheetLine {
   pid: string | null;
   name: string;
@@ -54,6 +65,9 @@ export interface SheetLine {
   net: number;
   payable: number;
   remark: string;
+  /** Optional: older lines were stored before reductions were itemised. */
+  erOther?: number;
+  reductions?: readonly SheetReduction[];
 }
 
 export interface SheetRun {
@@ -128,8 +142,24 @@ const HEAD = [
   'E.S.I. (employer)',
   'P.F. (employer)',
   'Total Employer Share',
+  'Salary Reductions — head by head',
   'Remark',
 ];
+
+/**
+ * Every reduction on one line, spelled out with the rule behind it.
+ *
+ * The numeric columns say HOW MUCH. This says WHAT IT IS and UNDER WHAT RULE,
+ * which is the question Accounts is asked when somebody queries their payslip,
+ * and the one they currently have to come back to HR for.
+ */
+function spellOut(l: SheetLine): string {
+  const list = l.reductions ?? [];
+  if (!list.length) return '';
+  return list
+    .map((x) => `${x.label} — ${inrWords(x.amount)}${x.why ? ` (${x.why})` : ''}`)
+    .join(' · ');
+}
 
 /**
  * The roll-out sheet for one month of one company.
@@ -222,7 +252,8 @@ export function rollOutSheet(
         l.payable,
         l.erEsi,
         l.erPf,
-        l.erEsi + l.erPf,
+        l.erEsi + l.erPf + (l.erOther ?? 0),
+        spellOut(l),
         l.remark,
       ]),
     );
@@ -264,7 +295,8 @@ export function rollOutSheet(
       sum(lines, (l) => l.payable),
       sum(lines, (l) => l.erEsi),
       sum(lines, (l) => l.erPf),
-      sum(lines, (l) => l.erEsi + l.erPf),
+      sum(lines, (l) => l.erEsi + l.erPf + (l.erOther ?? 0)),
+      '',
       '',
     ]),
   );

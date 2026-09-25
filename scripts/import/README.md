@@ -29,7 +29,12 @@ across all remaining lines at once and accepting only pairs that are unique both
 ways — matching one line at a time let a weak rule fire before a strong one had
 taken its people out of the pool, and put an MEP Manager's salary against a
 pantry cook. Lines it cannot tie to a person firmly are KEPT, with no employee
-id, and the payroll screen and the sheet both say so.
+id, and the payroll screen and the sheet both say so. It also emits `PAY_HEADS`:
+what comes off a payslip at each company and under which rule, read off the same
+books — including the fact that New Marbella rounds ESI up to the next rupee and
+the three SRG books round to nearest, and that nobody is deducting the Punjab
+State Development Tax, which is therefore seeded switched off with the Act named
+on it.
 
 Give `05-gaps.py` every revision of the gap workbook HR has sent, **oldest
 first**. They are layered: a later file overrides the earlier answer for the

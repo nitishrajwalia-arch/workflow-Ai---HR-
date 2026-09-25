@@ -460,6 +460,8 @@ export function ProcProvider({ children, toast }: Props) {
       jds: state.jds,
       holidays: state.holidays,
       payRuns: state.payRuns,
+      deductionHeads: state.deductionHeads,
+      salaryPolicies: state.salaryPolicies,
       draftPayRun,
       setPayLine,
       releasePayRun,

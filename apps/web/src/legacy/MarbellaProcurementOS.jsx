@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { ProcCtx, useProc } from "../proc/context.js";
-import { rollOutSheet } from "@marbella/shared";
+import { proposeBreakUp, reductionsFor, rollOutSheet } from "@marbella/shared";
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, ResponsiveContainer, Cell, Tooltip,
 } from "recharts";
@@ -7481,20 +7481,71 @@ const INCENTIVE_BOOK = [
   ["Festival advance", "Interest-free", "One month's salary, recovered over 6 months."],
   ["Referral", "₹5,000", "Paid after the referred person clears probation."],
 ];
+/**
+ * The leave rules a new person lands on, with the reason beside each.
+ *
+ * This was called on the enrolment form and had never been written — the Terms
+ * step threw the moment it rendered, which is why nobody had enrolled anybody
+ * through this screen. Every figure comes from what HR went and asked; nothing
+ * is invented, and anything nobody has decided says so.
+ */
+function leaveLines(l, holidays = []) {
+  const num = (v, unit) => (v ? `${v} ${unit}` : "not decided");
+  const closed = holidays.filter(h => h.allSites).length;
+  return [
+    ["Casual leave", num(l.casual, "days a year"),
+      "Taken with notice, for whatever the person needs it for."],
+    ["Sick leave", num(l.sick, "days a year"),
+      "Separate from casual leave. A doctor's note is asked for beyond two days together."],
+    ["Earned leave", num(l.earned, "days a year"),
+      l.carryForward ? "Carries forward to next year." : "Does not carry forward — the balance lapses at year end."],
+    ["During probation", l.probation || "not decided",
+      "What they may take before they are confirmed."],
+    ["Encashable", l.encashable ? "yes" : "no",
+      l.encashable ? "Unused leave can be paid out." : "Unused leave is not paid out."],
+    ["Maternity", num(l.maternityWeeks, "weeks"), "Paid, as the law requires."],
+    ["Paternity", num(l.paternityDays, "days"), "The company's own rule, not a statutory one."],
+    ["Late mark after", num(l.lateAfter, "minutes"),
+      l.lateStrikes ? `${l.lateStrikes} late marks cost a day's pay.` : "How many late marks cost a day is not decided."],
+    ["Company holidays", closed ? `${closed} days` : "not set",
+      "Days every site is closed. They are not leave and are not deducted."],
+    ["Notice on resignation", l.notice || "not decided",
+      "Both ways — the company gives the same."],
+  ];
+}
+
+/** When they go home: the reporting time plus the hours agreed. Both are asked
+    for on the form, so the end of the shift is not a third thing to type. */
+function shiftOut(start, hours) {
+  const [h, m] = String(start || "09:00").split(":").map(n => parseInt(n, 10) || 0);
+  const end = (h * 60 + m + Math.round((Number(hours) || 9) * 60)) % (24 * 60);
+  return `${String(Math.floor(end / 60)).padStart(2, "0")}:${String(end % 60).padStart(2, "0")}`;
+}
+
 function EnrollPerson({ onClose }) {
   const mob = useIsMobile();
-  const { people, addPerson, leavePolicy = {}, holidays = [] } = useProc();
+  const { people, addPerson, setContact, leavePolicy = {}, holidays = [], companies = [], offices = [],
+    salaryPolicies = {}, deductionHeads = {} } = useProc();
   const [step, setStep] = useState(0);
   const [f, setF] = useState({
     name: "", designation: "", dept: DEPARTMENTS[0], type: "Staff", phone: "", email: "",
     face: false, pan: "", aadhaar: "", id1: "Voter ID", id1no: "", id2: "Passport", id2no: "",
     drives: false, dl: "", dlExp: "", address: "", addrMatch: "",
     joinDate: "", joinTime: "09:00", hours: "9", offDay: "Sunday", salary: "", probation: "3 months", conditions: "",
+    // Who pays them, where they are posted, and who they answer to. The server
+    // has always required all three; the form never asked, so every enrolment
+    // was refused. They are asked for here, and each one defaults to nothing so
+    // that nobody is quietly employed by whichever company sorted first.
+    employer: "", office: "", reportsTo: "", reportsToNote: "",
+    // What they are being paid, from the day the employee ID is issued.
+    medical: "500", esiOn: false, pfOn: false, salaryNote: "",
     exCo: "", exRole: "", exFrom: "", exTo: "",
   });
-  const [otpMob, setOtpMob] = useState(""); const [otpMail, setOtpMail] = useState("");
-  const [okMob, setOkMob] = useState(false); const [okMail, setOkMail] = useState(false);
-  const [sentOtp, setSentOtp] = useState(false);
+  /* There used to be a four-digit OTP here with the code printed underneath it.
+     It verified nothing — no message was ever sent — and it stood between HR and
+     a real enrolment. What is left is what is actually true: she reads the
+     details back to the person, and says she has. */
+  const [readBack, setReadBack] = useState(false);
   const [done, setDone] = useState(null);
   const set = (k, v) => setF(s => ({ ...s, [k]: v }));
   // The rules that will apply to THIS person's department, not a company-wide
@@ -7502,6 +7553,28 @@ function EnrollPerson({ onClose }) {
   // department carries the same set.
   const myLeave = leavePolicy[f.dept] || leavePolicy[DEPARTMENTS[0]] || {};
   const policySetBy = myLeave.setBy ? `${myLeave.setBy}${myLeave.setOn ? `, ${myLeave.setOn}` : ""}` : "";
+
+  /* What the salary she is agreeing will actually look like, worked out by the
+     paying company's own rule and shown BEFORE she saves it. She types one
+     figure; asking a new HR manager to type a Basic, an HRA and a Travelling
+     Allowance that add up to the gross is asking her to get it wrong on
+     somebody's first payslip. */
+  const gross = Number(f.salary) || 0;
+  const medical = Number(f.medical) || 0;
+  const payPolicy = salaryPolicies[f.employer] || null;
+  const split = gross > 0 && payPolicy ? proposeBreakUp(payPolicy, gross, medical) : null;
+  const myHeads = (deductionHeads[f.employer] || []).filter(h => h.active);
+  const esiHead = myHeads.find(h => h.code === "esi");
+  const pfHead = myHeads.find(h => h.code === "pf");
+  /* What the law says, not what the company happens to do. She sees both. */
+  const esiStatutory = 21000;
+  const monthly = split && myHeads.length
+    ? reductionsFor(myHeads, {
+        gross, basic: split.basic, hra: split.hra, travel: split.travel,
+        medical: split.medical, special: split.special,
+        esiOn: f.esiOn, pfOn: f.pfOn, pfWages: 0,
+      }, { gross, eGross: gross, days: 30, monthDays: 30 })
+    : [];
   const nextId = (dept) => {
     const code = DEPT_CODES[dept] || "GEN";
     const nums = people.filter(p => p.id.startsWith(`MB-${code}-`)).map(p => parseInt(p.id.split("-")[2], 10) || 0);
@@ -7512,23 +7585,45 @@ function EnrollPerson({ onClose }) {
   const L = ({ children }) => <label style={{ ...lbl, fontSize: 9 }}>{children}</label>;
   const two = { display: mob ? "block" : "grid", gridTemplateColumns: "1fr 1fr", gap: 10 };
   const gap = { marginBottom: mob ? 8 : 0 };
-  const STEPS = ["Identity", "Government ID", "Terms", "Incentives", "Previous job", "Verify"];
+  const STEPS = ["Identity", "Government ID", "Terms", "Incentives", "Previous job", "Confirm"];
 
   const guard = () => {
     if (step === 0 && (!f.name.trim() || !f.designation.trim())) return toast("Add a name and designation", "amber");
     if (step === 1 && (!f.pan.trim() || !f.aadhaar.trim())) return toast("PAN and Aadhaar are required", "amber");
     if (step === 1 && f.drives && !f.dl.trim()) return toast("Add the driving licence number", "amber");
     if (step === 2 && !f.joinDate.trim()) return toast("Add the joining date", "amber");
+    if (step === 2 && !f.employer) return toast("Pick the company that pays them", "amber");
+    if (step === 2 && !f.office) return toast("Pick where they are posted", "amber");
     setStep(s => s + 1);
   };
-  const finish = () => {
-    if (!okMob || !okMail) return toast("Both OTPs must be verified", "amber");
+  const [saving, setSaving] = useState(false);
+  const finish = async () => {
+    if (!readBack) return toast("Read the details back to them first, then tick the box", "amber");
+    setSaving(true);
+    /* Exactly what the server's own schema asks for. The old version sent a
+       `file` blob and no employer, and the server refused every one of them. */
     const p = {
-      id: nextId(f.dept), name: f.name.trim(), designation: f.designation.trim(), dept: f.dept, type: f.type,
-      phone: f.phone.trim(), email: f.email.trim(), joined: f.joinDate || fmtToday(), status: "active", perf: 75,
-      growth: "Newly enrolled.", notes: [], file: { ...f },
+      id: nextId(f.dept), name: f.name.trim(), designation: f.designation.trim(),
+      dept: f.dept, type: f.type, joined: f.joinDate || fmtToday(), status: "active", perf: 75,
+      growth: "Newly enrolled.", notes: [],
+      office: f.office, employer: f.employer,
+      reportsTo: f.reportsTo || null, reportsToNote: f.reportsTo ? "" : f.reportsToNote.trim(),
+      shift: { in: f.joinTime, out: shiftOut(f.joinTime, f.hours), hours: Number(f.hours) || 9 },
+      ...(gross > 0
+        ? { salary: { gross, medical, esiOn: f.esiOn, pfOn: f.pfOn, pfWages: 0, note: f.salaryNote.trim() } }
+        : {}),
     };
-    addPerson(p); setDone(p);
+    const saved = await addPerson(p);
+    /* Their personal number and email were collected on the first step and then
+       thrown away. They are the details the company needs the day the work
+       email stops working, so they are saved. */
+    if (saved && (f.phone.trim() || f.email.trim())) {
+      await setContact(saved.id, { phone: f.phone.trim(), email: f.email.trim() });
+    }
+    setSaving(false);
+    /* The provider answers null when the server refused and has already said
+       why. Nothing here claims somebody was enrolled who was not. */
+    if (saved) setDone({ ...saved, file: { ...f } });
   };
 
   if (done) return (
@@ -7536,7 +7631,7 @@ function EnrollPerson({ onClose }) {
       <div style={{ padding: mob ? 18 : 24, textAlign: "center" }}>
         <div style={{ width: 46, height: 46, borderRadius: "50%", background: C.greenSoft, display: "grid", placeItems: "center", margin: "0 auto 12px" }}><CheckCircle2 size={24} color={C.green} /></div>
         <h2 style={{ font: `400 22px ${serif}`, margin: "0 0 4px" }}>{done.name} is enrolled</h2>
-        <p style={{ font: `13px ${sans}`, color: C.stone, marginBottom: 14 }}>Marbella ID <b style={{ color: C.ink }}>{done.id}</b> issued — identity, documents, terms and both OTPs on file.</p>
+        <p style={{ font: `13px ${sans}`, color: C.stone, marginBottom: 14 }}>Marbella ID <b style={{ color: C.ink }}>{done.id}</b> issued — identity, documents and terms on file{done.file.salary ? `, on ${inr(Number(done.file.salary))} a month` : ""}.</p>
         <div style={{ display: "flex", justifyContent: "center", marginBottom: 16 }}><IdCardDigital p={done} /></div>
         <div style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 10, padding: 12, textAlign: "left", font: `12px ${sans}`, color: C.inkSoft, marginBottom: 16 }}>
           Joining {done.file.joinDate || "—"} · {done.file.joinTime} · {done.file.hours} hrs · off {done.file.offDay} · probation {done.file.probation}
@@ -7635,9 +7730,93 @@ function EnrollPerson({ onClose }) {
             <div><L>Weekly off</L><select value={f.offDay} onChange={e => set("offDay", e.target.value)} style={sel}>{["Sunday", "Saturday", "Rotational", "None — site roster"].map(x => <option key={x}>{x}</option>)}</select></div>
           </div>
           <div style={{ ...two, marginTop: 10 }}>
-            <div style={gap}><L>Salary (monthly ₹)</L><input value={f.salary} onChange={e => set("salary", e.target.value.replace(/[^\d]/g, ""))} placeholder="e.g. 42000" style={{ ...cell, marginTop: 5, fontFamily: mono }} />{f.salary ? <div style={{ font: `11px ${sans}`, color: C.stone, marginTop: 4 }}>{inr(Number(f.salary))} · {wordsIN(Number(f.salary))}</div> : null}</div>
+            <div style={gap}><L>Paid by *</L><select value={f.employer} onChange={e => set("employer", e.target.value)} style={sel}><option value="">Pick the company…</option>{companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
+            <div><L>Posted at *</L><select value={f.office} onChange={e => set("office", e.target.value)} style={sel}><option value="">Pick the site…</option>{offices.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}</select></div>
+          </div>
+          <div style={{ font: `11px ${sans}`, color: C.stone, marginTop: 6 }}>
+            Two different things. The company that pays them decides the letterhead their papers
+            go out on and which salary policy their payslip follows; the site is where they work.
+          </div>
+          <div style={{ ...two, marginTop: 10 }}>
+            <div style={gap}><L>Reports to</L><select value={f.reportsTo} onChange={e => set("reportsTo", e.target.value)} style={sel}><option value="">Not an employee…</option>{people.filter(p => p.status === "active").map(p => <option key={p.id} value={p.id}>{p.name} · {p.designation}</option>)}</select></div>
+            {!f.reportsTo && <div><L>Then who?</L><input value={f.reportsToNote} onChange={e => set("reportsToNote", e.target.value)} placeholder="e.g. Managing Director" style={{ ...cell, marginTop: 5 }} /></div>}
+          </div>
+
+          <div style={{ ...two, marginTop: 10 }}>
+            <div style={gap}><L>Salary (monthly ₹)</L><input value={f.salary} onChange={e => set("salary", e.target.value.replace(/[^\d]/g, ""))} placeholder="e.g. 42000" style={{ ...cell, marginTop: 5, fontFamily: mono }} />{f.salary ? <div style={{ font: `11px ${sans}`, color: C.stone, marginTop: 4 }}>{inr(gross)} · {wordsIN(gross)}</div> : null}</div>
             <div><L>Probation</L><select value={f.probation} onChange={e => set("probation", e.target.value)} style={sel}>{["None", "1 month", "3 months", "6 months"].map(x => <option key={x}>{x}</option>)}</select></div>
           </div>
+
+          {/* One figure in, the payslip out. She sees what she is agreeing to
+              before she saves it, worked out by the paying company's own rule. */}
+          {gross > 0 && (
+            <div style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 10, padding: 12, marginTop: 12 }}>
+              <div style={{ display: "flex", gap: 10, alignItems: "baseline", flexWrap: "wrap", marginBottom: 8 }}>
+                <div style={{ font: `600 11px ${sans}`, color: C.inkDeep }}>What their payslip will say</div>
+                <div style={{ font: `10px ${sans}`, color: C.stone, marginLeft: "auto" }}>
+                  {payPolicy ? `${(companies.find(c => c.id === f.employer) || {}).name}'s own rule${payPolicy.setOn ? ` · set ${payPolicy.setOn}` : ""}` : "Pick who pays them to see the split"}
+                </div>
+              </div>
+              {split ? (
+                <>
+                  <div style={{ ...two, gap: "0 14px", marginBottom: 6 }}>
+                    <div style={gap}><L>Medical (flat, per month)</L><input value={f.medical} onChange={e => set("medical", e.target.value.replace(/[^\d]/g, ""))} style={{ ...cell, marginTop: 5, fontFamily: mono }} /></div>
+                    <div style={{ display: "flex", gap: 14, alignItems: "flex-end", paddingBottom: 4 }}>
+                      {[["esiOn", "E.S.I.", esiHead], ["pfOn", "P.F.", pfHead]].map(([k, label, head]) => (
+                        <label key={k} style={{ display: "inline-flex", alignItems: "center", gap: 6, font: `12px ${sans}`, color: head ? C.ink : C.stone, cursor: head ? "pointer" : "not-allowed" }}>
+                          <input type="checkbox" disabled={!head} checked={f[k]} onChange={e => set(k, e.target.checked)} />
+                          {label}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                  {[["Basic", split.basic], ["H.R.A.", split.hra], ["Travelling", split.travel], ["Medical", split.medical], ["Special", split.special]].map(([k, v], i) => (
+                    <div key={k} style={{ display: "flex", justifyContent: "space-between", font: `12px ${sans}`, padding: "5px 0", borderTop: i ? `1px solid ${C.lineSoft}` : "none" }}>
+                      <span style={{ color: C.inkSoft }}>{k}</span><span style={{ fontFamily: mono, color: C.ink }}>{inr(v)}</span>
+                    </div>
+                  ))}
+                  <div style={{ display: "flex", justifyContent: "space-between", font: `600 12px ${sans}`, padding: "7px 0 0", borderTop: `1px solid ${C.line}`, marginTop: 4 }}>
+                    <span>Gross</span><span style={{ fontFamily: mono }}>{inr(split.gross)}</span>
+                  </div>
+                  {monthly.length > 0 && (
+                    <div style={{ marginTop: 10, paddingTop: 8, borderTop: `1px solid ${C.line}` }}>
+                      <div style={{ font: `600 11px ${sans}`, color: C.inkDeep, marginBottom: 4 }}>Reductions, in a full month</div>
+                      {monthly.map(x => (
+                        <div key={x.code} style={{ padding: "4px 0" }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", font: `12px ${sans}` }}>
+                            <span style={{ color: C.inkSoft }}>{x.label}</span><span style={{ fontFamily: mono, color: C.amber }}>−{inr(x.amount)}</span>
+                          </div>
+                          <div style={{ font: `10px ${sans}`, color: C.stone }}>{x.why}</div>
+                        </div>
+                      ))}
+                      <div style={{ display: "flex", justifyContent: "space-between", font: `600 12px ${sans}`, paddingTop: 6, marginTop: 4, borderTop: `1px solid ${C.lineSoft}` }}>
+                        <span>In hand, a full month</span>
+                        <span style={{ fontFamily: mono, color: C.green }}>{inr(gross - monthly.reduce((a, x) => a + x.amount, 0))}</span>
+                      </div>
+                    </div>
+                  )}
+                  {split.medical < medical && (
+                    <div style={{ font: `11px ${sans}`, color: C.amber, marginTop: 8, lineHeight: 1.5 }}>
+                      Medical has been brought down to {inr(split.medical)} — at {inr(gross)} a month that is
+                      all the room the split leaves, and the company's own low earners carry the same.
+                    </div>
+                  )}
+                  {f.esiOn && gross > esiStatutory && (
+                    <div style={{ font: `11px ${sans}`, color: C.amber, marginTop: 8, lineHeight: 1.5 }}>
+                      E.S.I. normally stops at {inr(esiStatutory)} a month. Marbella's own August books deduct
+                      it above that, so it is allowed here — but it is a decision, not an oversight.
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div style={{ font: `12px ${sans}`, color: C.stone }}>
+                  {f.employer
+                    ? "That company has no salary policy yet, so the gross is recorded as it is and nothing is split."
+                    : "Pick who pays them and the split appears here."}
+                </div>
+              )}
+            </div>
+          )}
           <div style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 10, padding: 12, marginTop: 14 }}>
             <div style={{ font: `600 11px ${sans}`, color: C.inkDeep, marginBottom: 8 }}>
               Leave — what's allowed, what isn't
@@ -7686,36 +7865,44 @@ function EnrollPerson({ onClose }) {
         </>)}
 
         {step === 5 && (<>
-          <div style={{ font: `13px ${sans}`, color: C.inkSoft, marginBottom: 12 }}>Both the personal mobile and the personal email must verify. Nothing is issued until both are green.</div>
-          {!sentOtp ? (
-            <div style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 12, padding: 14 }}>
-              <div style={{ font: `12px ${sans}`, color: C.inkSoft, marginBottom: 10 }}>Sending to <b style={{ color: C.ink }}>{f.phone || "— add a mobile"}</b> and <b style={{ color: C.ink }}>{f.email || "— add an email"}</b>.</div>
-              <GoldButton small onClick={() => { if (!f.phone.trim() || !f.email.trim()) return toast("Both mobile and email are needed", "amber"); setSentOtp(true); toast("OTPs sent to both", "gold"); }}>Send both OTPs</GoldButton>
-            </div>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {[["Mobile", f.phone, otpMob, setOtpMob, okMob, setOkMob], ["Email", f.email, otpMail, setOtpMail, okMail, setOkMail]].map(([label, dest, val, setVal, ok, setOk]) => (
-                <div key={label} style={{ background: ok ? C.greenSoft : "#fff", border: `1px solid ${ok ? C.green : C.line}`, borderRadius: 12, padding: 12 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                    <span style={{ font: `600 12px ${sans}`, color: C.ink, minWidth: 54 }}>{label}</span>
-                    <span style={{ font: `11px ${sans}`, color: C.stone, flex: 1, minWidth: 110 }}>{dest}</span>
-                    {ok ? <Pill tone="green"><Check size={10} style={{ verticalAlign: "-1px", marginRight: 3 }} />Verified</Pill> : (<>
-                      <input value={val} onChange={e => setVal(e.target.value.replace(/[^\d]/g, "").slice(0, 4))} placeholder="4-digit" style={{ ...cell, width: 92, fontFamily: mono, letterSpacing: "0.2em" }} />
-                      <GoldButton small onClick={() => { if (val === DEMO_OTP) { setOk(true); toast(`${label} verified`, "green"); } else toast("Wrong OTP", "red"); }}>Verify</GoldButton>
-                    </>)}
-                  </div>
-                </div>
-              ))}
-              <div style={{ font: `11px ${sans}`, color: C.stone }}>Demo OTP is {DEMO_OTP}. Real SMS and email delivery come with the backend.</div>
-            </div>
-          )}
+          <div style={{ font: `13px ${sans}`, color: C.inkSoft, marginBottom: 12, lineHeight: 1.6 }}>
+            Read this back to <b style={{ color: C.ink }}>{f.name || "them"}</b> before you issue the ID.
+            Everything here goes on their record and on their first payslip.
+          </div>
+          <div style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 12, padding: 14 }}>
+            {[
+              ["Employee ID to be issued", nextId(f.dept)],
+              ["Name and role", `${f.name || "—"} · ${f.designation || "—"} · ${f.dept}`],
+              ["Paid by", (companies.find(c => c.id === f.employer) || {}).name || "— not picked"],
+              ["Posted at", (offices.find(o => o.id === f.office) || {}).name || "— not picked"],
+              ["Reports to", f.reportsTo ? (people.find(p => p.id === f.reportsTo) || {}).name : (f.reportsToNote || "— nobody named")],
+              ["Joining", `${f.joinDate || "—"} · ${f.joinTime}–${shiftOut(f.joinTime, f.hours)} · ${f.hours} hrs · off ${f.offDay}`],
+              ["Salary", gross > 0 ? `${inr(gross)} a month` : "— none agreed"],
+              ["Reductions", monthly.length ? monthly.map(x => `${x.label} ${inr(x.amount)}`).join(" · ") : "none"],
+              ["Personal mobile", f.phone || "— none given"],
+              ["Personal email", f.email || "— none given"],
+            ].map(([k, v], i2) => (
+              <div key={k} style={{ display: "flex", justifyContent: "space-between", gap: 12, padding: "7px 0", borderTop: i2 ? `1px solid ${C.lineSoft}` : "none", font: `12px ${sans}` }}>
+                <span style={{ color: C.stone }}>{k}</span>
+                <span style={{ color: C.ink, fontWeight: 600, textAlign: "right" }}>{v}</span>
+              </div>
+            ))}
+          </div>
+          <label style={{ display: "flex", alignItems: "flex-start", gap: 9, marginTop: 14, font: `12.5px ${sans}`, color: C.ink, cursor: "pointer", lineHeight: 1.55 }}>
+            <input type="checkbox" checked={readBack} onChange={e => setReadBack(e.target.checked)} style={{ marginTop: 2 }} />
+            <span>I have read these details back to them and they agree, including the salary.</span>
+          </label>
+          <div style={{ font: `11px ${sans}`, color: C.stone, marginTop: 8, lineHeight: 1.55 }}>
+            Their mobile and email are saved against their record. Sending them a code to confirm
+            needs messaging to be connected — ask the management and it can be built in.
+          </div>
         </>)}
 
         <div style={{ display: "flex", gap: 10, marginTop: 18, flexWrap: "wrap", alignItems: "center" }}>
           {step > 0 && <GoldButton ghost small onClick={() => setStep(s => s - 1)}><span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><ArrowLeft size={13} /> Back</span></GoldButton>}
           {step < 5
             ? <GoldButton onClick={guard}><span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>Continue <ArrowRight size={14} /></span></GoldButton>
-            : <GoldButton onClick={finish}>Enrol &amp; issue ID card</GoldButton>}
+            : <GoldButton disabled={saving} onClick={finish}>{saving ? "Enrolling…" : "Enrol & issue ID card"}</GoldButton>}
           <span style={{ font: `11px ${sans}`, color: C.stone }}>Step {step + 1} of 6 · New ID will be <b style={{ color: C.goldDeep, fontFamily: mono }}>MB-{DEPT_CODES[f.dept] || "GEN"}-…</b></span>
         </div>
       </div>
@@ -12797,7 +12984,8 @@ const lastMonths = (n) => {
 
 function PayrollView() {
   const mob = useIsMobile();
-  const { payRuns = [], companies = [], people = [], att = {}, me, draftPayRun, setPayLine, releasePayRun, track } = useProc();
+  const { payRuns = [], companies = [], people = [], att = {}, me, deductionHeads = {},
+    draftPayRun, setPayLine, releasePayRun, track } = useProc();
   const [company, setCompany] = useState((companies[0] || {}).id || "");
   const [month, setMonth] = useState(lastMonths(1)[0]);
   const [openLine, setOpenLine] = useState(null);
@@ -12898,6 +13086,8 @@ function PayrollView() {
         )}
       </div>
 
+      <HeadsPanel heads={deductionHeads[company] || []} company={co.name} />
+
       {!run && (
         <Card pad={22}>
           <div style={{ font: `13px ${sans}`, color: C.inkSoft, lineHeight: 1.6 }}>
@@ -12953,7 +13143,7 @@ function PayrollView() {
                     <th style={th}>Earned</th>
                     <th style={th}>ESI</th>
                     <th style={th}>PF</th>
-                    <th style={th}>Other ded.</th>
+                    <th style={{ ...th, textAlign: "left" }}>Other reductions</th>
                     <th style={th}>Extra</th>
                     <th style={th}>Payable</th>
                     <th style={{ ...th, textAlign: "left" }}>Remark</th>
@@ -12972,7 +13162,16 @@ function PayrollView() {
                       <td style={num}>{inr(l.eGross)}</td>
                       <td style={num}>{l.dEsi ? inr(l.dEsi) : "—"}</td>
                       <td style={num}>{l.dPf ? inr(l.dPf) : "—"}</td>
-                      <td style={num}>{(l.dTds + l.dAdvance + l.dOther) ? inr(l.dTds + l.dAdvance + l.dOther) : "—"}</td>
+                      <td style={{ ...cell, whiteSpace: "normal", maxWidth: 210 }}>
+                        {(l.reductions || []).filter(x => !x.statutory).length ? (
+                          <>
+                            <div style={{ fontFamily: mono, fontSize: 12, color: C.ink }}>{inr(l.dTds + l.dAdvance + l.dOther)}</div>
+                            <div style={{ font: `10px ${sans}`, color: C.stone, lineHeight: 1.4 }}>
+                              {(l.reductions || []).filter(x => !x.statutory).map(x => x.label).join(" · ")}
+                            </div>
+                          </>
+                        ) : <span style={{ color: C.stone, fontFamily: mono, fontSize: 12 }}>—</span>}
+                      </td>
                       <td style={num}>{l.extraDays ? `${l.extraDays}d ${inr(l.extraAmount)}` : "—"}</td>
                       <td style={{ ...num, fontWeight: 700, color: C.ink }}>{inr(l.payable)}</td>
                       <td style={{ ...cell, whiteSpace: "normal", color: C.stone, maxWidth: 220 }}>{l.remark || ""}</td>
@@ -12998,21 +13197,109 @@ function PayrollView() {
   );
 }
 
+/**
+ * What comes off a payslip at this company, and under which rule.
+ *
+ * The rates are not in the software. They are rows, each carrying the rule it
+ * comes from and the name of whoever set it, so a change in the law is an edit
+ * somebody makes and signs. Showing them HERE, above the month, means the
+ * figures in the table below can always be traced to a sentence.
+ */
+function HeadsPanel({ heads, company }) {
+  const [open, setOpen] = useState(false);
+  const live = heads.filter(h => h.active);
+  const off = heads.filter(h => !h.active);
+  const how = (h) => {
+    if (h.basis === "earnedPct") return `${h.rate}% of what they earn`;
+    if (h.basis === "wagePct") return `${h.rate}% of ${inr(h.wage)} a month${h.proRate ? ", pro-rated for days" : ""}`;
+    if (h.basis === "flat") return `${inr(h.wage)} a month`;
+    return "Entered each month by HR";
+  };
+  if (!heads.length) return null;
+  return (
+    <Card pad={0} style={{ marginBottom: 16 }}>
+      <button onClick={() => setOpen(o => !o)}
+        style={{ width: "100%", background: "none", border: "none", cursor: "pointer", textAlign: "left", padding: "13px 16px", display: "flex", alignItems: "center", gap: 9 }}>
+        <ShieldCheck size={15} color={C.goldDeep} />
+        <span style={{ font: `600 12.5px ${sans}`, color: C.ink }}>What comes off a payslip</span>
+        <span style={{ font: `11px ${sans}`, color: C.stone }}>
+          {live.length} applied{off.length ? ` · ${off.length} switched off` : ""}
+        </span>
+        <ChevronRight size={15} color={C.stone} style={{ marginLeft: "auto", transform: open ? "rotate(90deg)" : "none", transition: "transform .15s" }} />
+      </button>
+      {open && (
+        <div style={{ padding: "0 16px 14px" }}>
+          <div style={{ font: `11.5px ${sans}`, color: C.inkSoft, lineHeight: 1.6, marginBottom: 10 }}>
+            These are {company}'s rules as somebody wrote them down — not something built into the
+            software. When a rate changes, this is what gets edited, and whoever edits it is named
+            against it. A released month keeps the figures it was released with.
+          </div>
+          {[...live, ...off].map(h => (
+            <div key={h.code} style={{ padding: "10px 0", borderTop: `1px solid ${C.lineSoft}` }}>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
+                <span style={{ font: `600 12.5px ${sans}`, color: h.active ? C.ink : C.stone }}>{h.label}</span>
+                {!h.active && <Pill tone="stone">not applied</Pill>}
+                <span style={{ font: `11.5px ${sans}`, color: C.inkSoft, marginLeft: "auto", fontFamily: mono }}>{how(h)}</span>
+              </div>
+              <div style={{ font: `11px ${sans}`, color: C.stone, marginTop: 3, lineHeight: 1.55 }}>{h.authority}</div>
+              {h.note && <div style={{ font: `11px ${sans}`, color: C.amber, marginTop: 4, lineHeight: 1.55 }}>{h.note}</div>}
+              <div style={{ font: `10px ${sans}`, color: C.stone, marginTop: 4 }}>
+                {h.employerRate ? `The company pays ${h.employerRate}% on top. ` : ""}
+                {h.ceiling ? `Stops above ${inr(h.ceiling)} a month. ` : ""}
+                {h.rounding === "up" ? "Rounded up to the next rupee. " : ""}
+                {h.setBy ? `Set by ${h.setBy}${h.setOn ? `, ${h.setOn}` : ""}.` : ""}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </Card>
+  );
+}
+
 function PayLineEditor({ line, run, onClose, onSave }) {
   const mob = useIsMobile();
+  const { deductionHeads = {} } = useProc();
+  const heads = (deductionHeads[run.company] || []).filter(h => h.active);
+  const stored = Array.isArray(line.reductions) ? line.reductions : [];
   const [f, setF] = useState({
     days: line.days, extraDays: line.extraDays, tds: line.dTds,
-    advance: line.dAdvance, other: line.dOther, arrear: line.arrear, remark: line.remark,
+    advance: line.dAdvance, arrear: line.arrear, remark: line.remark,
   });
+  /* The one-off reductions HR named. Each carries what it is FOR: "Other:
+     4,000" with no reason on it is the line people come to HR about. */
+  const [others, setOthers] = useState(
+    stored.filter(x => x.code === "other").map(x => ({ label: x.label, amount: x.amount })),
+  );
   const [busy, setBusy] = useState(false);
   const set = (k, v) => setF(s => ({ ...s, [k]: v }));
   const nnum = (v) => { const n = Number(String(v).replace(/[^\d.-]/g, "")); return Number.isFinite(n) ? n : 0; };
 
+  /* What the RULES produce for this person. Not editable — these follow from
+     the person's structure and the company's heads, and a screen that lets
+     somebody type over them is a screen where the number Accounts pays has no
+     rule behind it. */
+  const worked = stored.filter(x => x.statutory);
+  const entered = [
+    { code: "tds", label: (heads.find(h => h.code === "tds") || {}).label || "T.D.S.", key: "tds",
+      why: (heads.find(h => h.code === "tds") || {}).authority || "" },
+    { code: "advance", label: (heads.find(h => h.code === "advance") || {}).label || "Advance recovered", key: "advance",
+      why: (heads.find(h => h.code === "advance") || {}).authority || "" },
+  ];
+  const takingOff =
+    worked.reduce((a, x) => a + x.amount, 0) +
+    nnum(f.tds) + nnum(f.advance) +
+    others.reduce((a, o) => a + nnum(o.amount), 0);
+
   const save = async () => {
+    const named = others
+      .map(o => ({ label: String(o.label || "").trim(), amount: Math.round(nnum(o.amount)) }))
+      .filter(o => o.amount > 0);
+    if (named.some(o => o.label.length < 2)) return toast("Say what each reduction is for", "amber");
     setBusy(true);
     const r = await onSave(run.id, line.id, {
       days: nnum(f.days), extraDays: nnum(f.extraDays), tds: Math.round(nnum(f.tds)),
-      advance: Math.round(nnum(f.advance)), other: Math.round(nnum(f.other)),
+      advance: Math.round(nnum(f.advance)), others: named,
       arrear: Math.round(nnum(f.arrear)), remark: String(f.remark || ""),
     });
     if (r) { toast(`${line.name} updated`, "green"); onClose(); } else setBusy(false);
@@ -13028,7 +13315,7 @@ function PayLineEditor({ line, run, onClose, onSave }) {
   );
 
   return (
-    <Overlay onClose={onClose} width={520}>
+    <Overlay onClose={onClose} width={560}>
       <div style={{ padding: mob ? 16 : 22 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
           <Wallet size={18} color={C.gold} />
@@ -13040,24 +13327,83 @@ function PayLineEditor({ line, run, onClose, onSave }) {
           {line.designation || "—"} · on {inr(line.gross)} a month
         </div>
 
-        {/* What HR sets. The earned figures, ESI and PF are not here on purpose:
-            they follow from the structure and the policy, and are recomputed on
-            save so the number on the sheet always has a rule behind it. */}
         <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr" : "1fr 1fr", gap: "0 14px" }}>
           <Row label={`Days paid (of ${run.monthDays})`} k="days"
-            hint={line.remark && !line.pid ? "" : "Taken from the month's attendance where there is any."} />
+            hint="Taken from the month's attendance where there is any." />
           <Row label="Days beyond the month" k="extraDays" hint="Paid at a month's salary divided by 30." />
-          <Row label="Advance recovered" k="advance" />
-          <Row label="Other deduction" k="other" />
-          <Row label="TDS" k="tds" />
           <Row label="Arrear" k="arrear" hint="Negative to take money back." />
+        </div>
+
+        {/* SALARY REDUCTIONS — how much, and under which rule. */}
+        <div style={{ border: `1px solid ${C.line}`, borderRadius: 10, padding: 14, margin: "4px 0 14px" }}>
+          <div style={{ font: `600 11px ${sans}`, letterSpacing: ".06em", textTransform: "uppercase", color: C.inkDeep, marginBottom: 10 }}>
+            Salary reductions
+          </div>
+
+          {worked.length > 0 ? worked.map(x => (
+            <div key={x.code} style={{ padding: "7px 0", borderTop: `1px solid ${C.lineSoft}` }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 8, font: `12px ${sans}` }}>
+                <span style={{ color: C.ink, fontWeight: 600 }}>{x.label}</span>
+                <span style={{ fontFamily: mono, color: C.amber }}>−{inr(x.amount)}</span>
+              </div>
+              <div style={{ font: `10.5px ${sans}`, color: C.stone, marginTop: 2, lineHeight: 1.5 }}>
+                {x.why}{x.employer ? ` · the company pays ${inr(x.employer)} on top` : ""}
+              </div>
+            </div>
+          )) : (
+            <div style={{ font: `11.5px ${sans}`, color: C.stone, lineHeight: 1.5, paddingBottom: 6 }}>
+              No E.S.I. or P.F. applies to this person. Whether they are covered is set on their
+              salary record, not here — and two thirds of the group are on neither.
+            </div>
+          )}
+
+          {entered.map(e => (
+            <div key={e.code} style={{ padding: "9px 0", borderTop: `1px solid ${C.lineSoft}`, display: "grid", gridTemplateColumns: "1fr 130px", gap: 10, alignItems: "center" }}>
+              <div>
+                <div style={{ font: `600 12px ${sans}`, color: C.ink }}>{e.label}</div>
+                {e.why && <div style={{ font: `10.5px ${sans}`, color: C.stone, marginTop: 2, lineHeight: 1.5 }}>{e.why}</div>}
+              </div>
+              <input value={f[e.key]} onChange={ev => set(e.key, ev.target.value)}
+                style={{ ...inp, margin: 0, fontFamily: mono, textAlign: "right" }} />
+            </div>
+          ))}
+
+          {others.map((o, i) => (
+            <div key={i} style={{ padding: "9px 0", borderTop: `1px solid ${C.lineSoft}`, display: "grid", gridTemplateColumns: "1fr 130px 26px", gap: 8, alignItems: "center" }}>
+              <input value={o.label} placeholder="What is it for? e.g. Canteen, June and July"
+                onChange={e => setOthers(xs => xs.map((x, k) => k === i ? { ...x, label: e.target.value } : x))}
+                style={{ ...inp, margin: 0 }} />
+              <input value={o.amount}
+                onChange={e => setOthers(xs => xs.map((x, k) => k === i ? { ...x, amount: e.target.value } : x))}
+                style={{ ...inp, margin: 0, fontFamily: mono, textAlign: "right" }} />
+              <button onClick={() => setOthers(xs => xs.filter((x, k) => k !== i))}
+                title="Remove" style={{ background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={15} /></button>
+            </div>
+          ))}
+
+          <button onClick={() => setOthers(xs => [...xs, { label: "", amount: "" }])}
+            style={{ ...softBtn, marginTop: 10, borderColor: C.line }}>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Plus size={13} /> Add another reduction</span>
+          </button>
+
+          <div style={{ display: "flex", justifyContent: "space-between", font: `600 12.5px ${sans}`, borderTop: `1px solid ${C.line}`, marginTop: 12, paddingTop: 9 }}>
+            <span>Coming off this month</span>
+            <span style={{ fontFamily: mono, color: C.amber }}>−{inr(Math.round(takingOff))}</span>
+          </div>
+          <div style={{ font: `10.5px ${sans}`, color: C.stone, marginTop: 6, lineHeight: 1.5 }}>
+            E.S.I. and P.F. follow the company's rules and are not typed. What each rule is, and who
+            set it, is on the Payroll screen under "What comes off a payslip".
+          </div>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: "0 14px" }}>
           <Row label="Remark — Accounts sees this" k="remark" wide
             hint="Why the days are what they are, why there is an advance, anything they should know." />
         </div>
 
         <div style={{ background: C.paper, borderRadius: 10, padding: "12px 14px", margin: "6px 0 16px", font: `12px ${sans}`, color: C.inkSoft, lineHeight: 1.8 }}>
           <div>Earned this month <b style={{ color: C.ink, float: "right" }}>{inr(line.eGross)}</b></div>
-          <div>ESI + PF <b style={{ color: C.ink, float: "right" }}>{inr(line.dEsi + line.dPf)}</b></div>
+          <div>Reductions <b style={{ color: C.ink, float: "right" }}>{inr(line.dTotal)}</b></div>
           <div style={{ borderTop: `1px solid ${C.line}`, marginTop: 6, paddingTop: 6 }}>
             Payable as it stands <b style={{ color: C.ink, float: "right" }}>{inr(line.payable)}</b>
           </div>

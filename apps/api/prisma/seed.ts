@@ -35,7 +35,7 @@ import {
   GAP_PEOPLE,
   GAP_REDATED,
 } from './real-gaps.js';
-import { PAY_AUGUST, PAY_POLICIES, PAY_STRUCTURES } from './real-pay.js';
+import { PAY_AUGUST, PAY_HEADS, PAY_POLICIES, PAY_STRUCTURES } from './real-pay.js';
 import {
   ATTENDANCE_HELD,
   ATTENDANCE_SOURCE,
@@ -308,10 +308,14 @@ async function main() {
       if (pick('email')) emails++;
     }
   }
-  console.log(`  answered    ${genders} genders, ${emails} personal emails, ${lines} reporting lines`);
+  console.log(
+    `  answered    ${genders} genders, ${emails} personal emails, ${lines} reporting lines`,
+  );
   if (GAP_REDATED.length) {
-    console.log(`  corrected   ${GAP_REDATED.length} date or posting: ` +
-      GAP_REDATED.map((d) => `${d.id} ${d.field} ${d.was} -> ${d.now}`).join('; '));
+    console.log(
+      `  corrected   ${GAP_REDATED.length} date or posting: ` +
+        GAP_REDATED.map((d) => `${d.id} ${d.field} ${d.was} -> ${d.now}`).join('; '),
+    );
   }
 
   // The two reserved IDs, folded away. Whatever was filed under them in the
@@ -324,7 +328,10 @@ async function main() {
     // joiner would put two different people on the same number on two documents.
     await prisma.retiredEmployeeId.upsert({
       where: { id: m.id },
-      create: { id: m.id, reason: `Reserved for ${m.name}, who turned out to be ${m.into} ${m.as}.` },
+      create: {
+        id: m.id,
+        reason: `Reserved for ${m.name}, who turned out to be ${m.into} ${m.as}.`,
+      },
       update: { reason: `Reserved for ${m.name}, who turned out to be ${m.into} ${m.as}.` },
     });
     const c = m.carries;
@@ -342,8 +349,12 @@ async function main() {
         });
       }
     }
-    console.log(`  merged      ${m.id} ${m.name} into ${m.into} ${m.as}` +
-      (c ? `, carrying the ${c.kind === 'kyc' ? 'KYC record' : `${c.type.toLowerCase()} issued to them`}` : ''));
+    console.log(
+      `  merged      ${m.id} ${m.name} into ${m.into} ${m.as}` +
+        (c
+          ? `, carrying the ${c.kind === 'kyc' ? 'KYC record' : `${c.type.toLowerCase()} issued to them`}`
+          : ''),
+    );
   }
 
   // IMEI and SIM against the devices already on record. Matched on the person
@@ -412,9 +423,11 @@ async function main() {
     });
   }
   console.log(`  hours       ${Object.keys(DEPT_HOURS).length} departments`);
-  console.log(`  leave       ${GAP_LEAVE.casual} casual, ${GAP_LEAVE.sick} sick, ` +
-    `${GAP_LEAVE.earned} earned, ${GAP_LEAVE.lateAfter}-minute grace — set by ` +
-    `${GAP_LEAVE.setBy}, ${GAP_LEAVE.setOn}`);
+  console.log(
+    `  leave       ${GAP_LEAVE.casual} casual, ${GAP_LEAVE.sick} sick, ` +
+      `${GAP_LEAVE.earned} earned, ${GAP_LEAVE.lateAfter}-minute grace — set by ` +
+      `${GAP_LEAVE.setBy}, ${GAP_LEAVE.setOn}`,
+  );
 
   /* ------------------------------------------------------------- holidays */
 
@@ -431,7 +444,9 @@ async function main() {
       update: data,
     });
   }
-  console.log(`  holidays    ${GAP_HOLIDAYS.length}  (${GAP_HOLIDAYS.filter((h) => h.allSites).length} closing every site)`);
+  console.log(
+    `  holidays    ${GAP_HOLIDAYS.length}  (${GAP_HOLIDAYS.filter((h) => h.allSites).length} closing every site)`,
+  );
 
   /* ------------------------------------------------------------ attendance */
 
@@ -449,10 +464,14 @@ async function main() {
       update: data,
     });
   }
-  console.log(`  attendance  ${REAL_ATTENDANCE.length} days for ${REAL_BIOMETRIC.length} people — ${ATTENDANCE_SOURCE}`);
+  console.log(
+    `  attendance  ${REAL_ATTENDANCE.length} days for ${REAL_BIOMETRIC.length} people — ${ATTENDANCE_SOURCE}`,
+  );
   if (ATTENDANCE_HELD.length) {
-    console.log(`              ${ATTENDANCE_HELD.length} on the machine matched to nobody: ` +
-      ATTENDANCE_HELD.map((h) => `${h.machineName} (#${h.code})`).join(', '));
+    console.log(
+      `              ${ATTENDANCE_HELD.length} on the machine matched to nobody: ` +
+        ATTENDANCE_HELD.map((h) => `${h.machineName} (#${h.code})`).join(', '),
+    );
   }
 
   /* ----------------------------------------------------- job descriptions */
@@ -550,12 +569,32 @@ async function main() {
     });
   }
 
+  // What comes off a payslip, and under which rule. Rows rather than code, so
+  // that a change in the law is an edit somebody makes and signs. One of them —
+  // the Punjab State Development Tax — is seeded SWITCHED OFF with the rule on
+  // it, because no August payslip deducts it and that is a fact worth keeping.
+  for (const [companyId, heads] of Object.entries(PAY_HEADS)) {
+    for (const h of heads) {
+      await prisma.deductionHead.upsert({
+        where: { companyId_code: { companyId, code: h.code } },
+        create: { companyId, ...h },
+        update: h,
+      });
+    }
+  }
+
   // What each person is on. The structure, not a payment.
   for (const s of PAY_STRUCTURES) {
     const data = {
-      gross: s.gross, basic: s.basic, hra: s.hra, travel: s.travel,
-      medical: s.medical, special: s.special,
-      esiOn: s.esiOn, pfOn: s.pfOn, pfWages: s.pfWages,
+      gross: s.gross,
+      basic: s.basic,
+      hra: s.hra,
+      travel: s.travel,
+      medical: s.medical,
+      special: s.special,
+      esiOn: s.esiOn,
+      pfOn: s.pfOn,
+      pfWages: s.pfWages,
     };
     await prisma.salary.upsert({
       where: { personId: s.id },
@@ -563,18 +602,51 @@ async function main() {
       update: data,
     });
   }
-  console.log(`  salaries    ${PAY_STRUCTURES.length} structures, ` +
-    `${Object.keys(PAY_POLICIES).length} company policies`);
+  console.log(
+    `  salaries    ${PAY_STRUCTURES.length} structures, ` +
+      `${Object.keys(PAY_POLICIES).length} company policies`,
+  );
 
   // August 2026, as the company actually paid it. Loaded as a RELEASED run: it
   // has been paid, and a released run is not editable.
+  //
+  // The book prints totals; the heads say what each total IS. Naming them here
+  // rather than leaving the itemisation empty means the August screen explains
+  // itself the same way next month's will.
+  const headOf = (company: string, code: string) =>
+    (PAY_HEADS[company as keyof typeof PAY_HEADS] ?? []).find((h) => h.code === code);
+  const bookReductions = (l: (typeof PAY_AUGUST)[number]) => {
+    const out: Array<Record<string, unknown>> = [];
+    const add = (code: string, amount: number, employer: number, fallback: string) => {
+      if (!amount && !employer) return;
+      const h = headOf(l.company, code);
+      out.push({
+        code,
+        label: h?.label ?? fallback,
+        amount,
+        employer,
+        why: h?.authority ?? '',
+        statutory: h ? h.basis !== 'entered' : false,
+      });
+    };
+    add('esi', l.dEsi, l.erEsi, 'E.S.I.');
+    add('pf', l.dPf, l.erPf, 'P.F.');
+    add('tds', l.dTds, 0, 'T.D.S.');
+    add('advance', l.dAdvance, 0, 'Advance recovered');
+    add('other', l.dOther, 0, 'Other deduction');
+    return out;
+  };
   const runs = new Map<string, string>();
   for (const companyId of new Set(PAY_AUGUST.map((l) => l.company))) {
     const head = {
-      monthOn: new Date('2026-08-01T00:00:00Z'), monthDays: 31,
-      status: 'released', source: 'imported',
+      monthOn: new Date('2026-08-01T00:00:00Z'),
+      monthDays: 31,
+      status: 'released',
+      source: 'imported',
       note: "Loaded from the company's own August 2026 salary book.",
-      createdBy: 'Import', releasedBy: 'Import', releasedAt: new Date('2026-08-31T00:00:00Z'),
+      createdBy: 'Import',
+      releasedBy: 'Import',
+      releasedAt: new Date('2026-08-31T00:00:00Z'),
     };
     const run = await prisma.payRun.upsert({
       where: { companyId_month: { companyId, month: 'Aug 2026' } },
@@ -589,14 +661,36 @@ async function main() {
       // Null where the person is on the salary book and not on the employee
       // register. Thirteen are, and dropping them would hide it.
       personId: l.personId ?? null,
-      designation: l.designation, days: l.days,
-      gross: l.gross, basic: l.basic, hra: l.hra, travel: l.travel,
-      medical: l.medical, special: l.special,
-      eBasic: l.eBasic, eHra: l.eHra, eTravel: l.eTravel,
-      eMedical: l.eMedical, eSpecial: l.eSpecial, eGross: l.eGross,
-      dEsi: l.dEsi, dPf: l.dPf, dTds: l.dTds, dAdvance: l.dAdvance,
-      dOther: l.dOther, dTotal: l.dTotal, erEsi: l.erEsi, erPf: l.erPf,
-      extraDays: l.extraDays, extraAmount: l.extraAmount, arrear: l.arrear,
+      designation: l.designation,
+      days: l.days,
+      gross: l.gross,
+      basic: l.basic,
+      hra: l.hra,
+      travel: l.travel,
+      medical: l.medical,
+      special: l.special,
+      eBasic: l.eBasic,
+      eHra: l.eHra,
+      eTravel: l.eTravel,
+      eMedical: l.eMedical,
+      eSpecial: l.eSpecial,
+      eGross: l.eGross,
+      dEsi: l.dEsi,
+      dPf: l.dPf,
+      dTds: l.dTds,
+      dAdvance: l.dAdvance,
+      dOther: l.dOther,
+      dTotal: l.dTotal,
+      erEsi: l.erEsi,
+      erPf: l.erPf,
+      erOther: 0,
+      // The book gives the totals; this says which head each one is and under
+      // which rule, so an imported month reads the same way as one worked out
+      // here rather than showing a figure with nothing behind it.
+      reductions: bookReductions(l),
+      extraDays: l.extraDays,
+      extraAmount: l.extraAmount,
+      arrear: l.arrear,
       net: l.net,
       remark: l.personId ? '' : 'On the salary book, not on the employee register.',
     };
@@ -607,10 +701,14 @@ async function main() {
     });
   }
   const orphans = PAY_AUGUST.filter((l) => !l.personId);
-  console.log(`  pay runs    ${runs.size} for Aug 2026, ${PAY_AUGUST.length} lines, ` +
-    `net ${(PAY_AUGUST.reduce((a, l) => a + l.net, 0) / 100000).toFixed(1)} lakh`);
-  console.log(`              ${orphans.length} paid who are not on the employee register ` +
-    `(${(orphans.reduce((a, l) => a + l.gross, 0) / 100000).toFixed(2)} lakh a month)`);
+  console.log(
+    `  pay runs    ${runs.size} for Aug 2026, ${PAY_AUGUST.length} lines, ` +
+      `net ${(PAY_AUGUST.reduce((a, l) => a + l.net, 0) / 100000).toFixed(1)} lakh`,
+  );
+  console.log(
+    `              ${orphans.length} paid who are not on the employee register ` +
+      `(${(orphans.reduce((a, l) => a + l.gross, 0) / 100000).toFixed(2)} lakh a month)`,
+  );
 
   /* ----------------------------------------- what nobody has answered yet */
 

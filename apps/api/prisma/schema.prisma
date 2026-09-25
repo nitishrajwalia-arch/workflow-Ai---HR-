@@ -106,10 +106,11 @@ model Company {
   updatedAt DateTime @updatedAt
 
   projects       Project[]
-  employees      Person[]       @relation("employer")
+  employees      Person[]        @relation("employer")
   docs           DocLog[]
   salaryPolicies SalaryPolicy[]
   payRuns        PayRun[]
+  deductionHeads DeductionHead[]
 
   @@map("company")
 }
@@ -514,8 +515,16 @@ model PayRunLine {
   dOther   Int @default(0)
   dTotal   Int @default(0)
 
-  erEsi Int @default(0)
-  erPf  Int @default(0)
+  erEsi   Int @default(0)
+  erPf    Int @default(0)
+  /// The company's share of anything that is neither ESI nor PF.
+  erOther Int @default(0)
+
+  /// Every reduction on this line, one by one, with the rule behind each. The
+  /// columns above are the roll-up the salary sheet has always had; this is what
+  /// the person is owed an explanation of. Stored rather than recomputed because
+  /// a released line must still read the same after the rates change.
+  reductions Json @default("[]")
 
   /// Days worked beyond the month, and what they come to.
   extraDays   Float @default(0)
@@ -1370,4 +1379,62 @@ model AccessGrant {
   @@unique([userKey, area, power])
   @@index([userKey])
   @@map("access_grant")
+}
+
+/// WHAT COMES OFF A PAYSLIP, AND UNDER WHICH RULE.
+///
+/// PF is 12% of wages up to 15,000. ESI is 0.75% from the person and 3.25% from
+/// the company. Punjab charges a State Development Tax of 200 a month. Every one
+/// of those figures has been changed by a government before and will be changed
+/// again, so none of them is written into the code: they are rows here, each
+/// carrying the rule it comes from and the name of whoever set it. A change in
+/// the law is then an edit somebody makes and signs.
+model DeductionHead {
+  id        String  @id @default(cuid())
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  /// Stable key the engine and the salary sheet use.
+  code  String
+  label String
+
+  /// earnedPct | wagePct | flat | entered — see packages/shared/src/pay.ts.
+  basis String @default("entered")
+
+  /// The employee's percentage. Unused when the basis is 'flat' or 'entered'.
+  rate         Float   @default(0)
+  /// What the company pays on top, on the same basis. 0 when it pays nothing.
+  employerRate Float   @default(0)
+  /// 'wagePct' and 'flat': the monthly wage or sum the rate applies to.
+  wage         Int     @default(0)
+  /// 'wagePct': a wage recorded against the PERSON beats the figure above.
+  personWage   Boolean @default(false)
+  /// Above this monthly gross the head does not apply. ZERO MEANS NO CEILING.
+  ceiling      Int     @default(0)
+  /// Scale by the days paid.
+  proRate      Boolean @default(true)
+  /// Which switch on the person's record turns it on: esiOn, pfOn, or nothing.
+  requires     String  @default("")
+  /// nearest | up. The ESI regulation says round up; three of Marbella's four
+  /// books round to nearest and the fourth rounds up. It is a rupee a head a
+  /// month, and it is the kind of rupee an inspection asks about.
+  rounding     String  @default("nearest")
+
+  /// The rule it comes from, in words. It goes on the sheet Accounts reads, so
+  /// that a figure nobody recognises can be traced without asking HR.
+  authority String  @default("")
+  /// Anything else somebody needs to know about it.
+  note      String  @default("")
+  /// Off means the company does not deduct it. A head the law provides for and
+  /// the company does not apply is kept, switched off, with the rule on it —
+  /// deleting it loses the fact that somebody looked and decided.
+  active    Boolean @default(true)
+  sort      Int     @default(0)
+
+  setBy     String   @default("")
+  setOn     String   @default("")
+  updatedAt DateTime @updatedAt
+
+  @@unique([companyId, code])
+  @@map("deduction_head")
 }

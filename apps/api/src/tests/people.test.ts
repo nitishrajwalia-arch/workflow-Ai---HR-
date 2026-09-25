@@ -360,3 +360,102 @@ describe('letters', () => {
     expect(body.deliveryNote).toMatch(/Recorded, not sent/);
   });
 });
+
+describe('enrolling somebody', () => {
+  /** Exactly what the enrolment form sends. */
+  const enrolment = (over: Record<string, unknown> = {}) => ({
+    name: 'Test Mason',
+    designation: 'Mason',
+    dept: 'Maintenance',
+    type: 'Staff',
+    joined: '12 Aug 2026',
+    status: 'active',
+    perf: 75,
+    growth: 'Newly enrolled.',
+    notes: [],
+    office: 'grand',
+    employer: 'srg',
+    reportsTo: null,
+    reportsToNote: 'Managing Director',
+    shift: { in: '09:00', out: '18:00', hours: 9 },
+    ...over,
+  });
+
+  const add = (body: Record<string, unknown>) =>
+    app.inject({ method: 'POST', url: '/api/v1/people', headers: auth(token), payload: body });
+
+  it('accepts the payload the enrolment form actually sends', async () => {
+    // It did not, for a long time: the form never asked who employed somebody,
+    // so the server refused every enrolment and the screen said so in a toast
+    // nobody read as "this has never worked".
+    const res = await add(enrolment());
+    expect(res.statusCode, res.body).toBe(201);
+    const p = res.json<{ id: string; employer: string; office: string; reportsToNote: string }>();
+    expect(p.employer).toBe('srg');
+    expect(p.office).toBe('grand');
+    expect(p.reportsToNote).toBe('Managing Director');
+    await db.person.delete({ where: { id: p.id } });
+  });
+
+  it('takes the salary at the same moment as the employee ID, and splits it', async () => {
+    const res = await add(
+      enrolment({ salary: { gross: 47_000, medical: 500, esiOn: false, pfOn: true, pfWages: 0 } }),
+    );
+    expect(res.statusCode, res.body).toBe(201);
+    const { id } = res.json<{ id: string }>();
+
+    const s = await db.salary.findUnique({ where: { personId: id } });
+    expect(s).toBeTruthy();
+    // SRG's own rule: Basic 70% of gross, HRA 30% of Basic, Travelling 10% of
+    // Basic, Medical flat, Special the balance. HR typed one figure.
+    expect(s?.gross).toBe(47_000);
+    expect(s?.basic).toBe(32_900);
+    expect(s?.hra).toBe(9_870);
+    expect(s?.travel).toBe(3_290);
+    expect(s?.medical).toBe(500);
+    expect(s!.basic + s!.hra + s!.travel + s!.medical + s!.special).toBe(47_000);
+    expect(s?.pfOn).toBe(true);
+    expect(s?.esiOn).toBe(false);
+
+    await db.salary.delete({ where: { personId: id } });
+    await db.person.delete({ where: { id } });
+  });
+
+  it('will not write a negative part into somebody’s first payslip', async () => {
+    const res = await add(
+      enrolment({ salary: { gross: 21_500, medical: 500, esiOn: true, pfOn: true, pfWages: 0 } }),
+    );
+    const { id } = res.json<{ id: string }>();
+    const s = await db.salary.findUnique({ where: { personId: id } });
+    expect(s!.special).toBeGreaterThanOrEqual(0);
+    expect(s!.medical).toBeLessThan(500);
+    expect(s!.basic + s!.hra + s!.travel + s!.medical + s!.special).toBe(21_500);
+    await db.salary.delete({ where: { personId: id } });
+    await db.person.delete({ where: { id } });
+  });
+
+  it('records no salary when none was agreed, rather than a zero one', async () => {
+    const res = await add(enrolment({ name: 'Test No Salary' }));
+    const { id } = res.json<{ id: string }>();
+    expect(await db.salary.findUnique({ where: { personId: id } })).toBeNull();
+    await db.person.delete({ where: { id } });
+  });
+
+  it('seals that pay was agreed, without putting the figure in the ledger', async () => {
+    const res = await add(
+      enrolment({
+        name: 'Test Sealed',
+        salary: { gross: 30_000, medical: 0, esiOn: false, pfOn: false, pfWages: 0 },
+      }),
+    );
+    const { id } = res.json<{ id: string }>();
+    const entries = await db.ledgerEntry.findMany({ where: { subject: id } });
+    const pay = entries.find((e) => e.kind === 'salary');
+    expect(pay, 'the ledger says pay was set').toBeTruthy();
+    // An audit trail should not become a second copy of payroll.
+    expect(pay?.detail).not.toContain('30000');
+    expect(pay?.detail).not.toContain('30,000');
+    await db.salary.delete({ where: { personId: id } });
+    await db.person.delete({ where: { id } });
+  });
+});
