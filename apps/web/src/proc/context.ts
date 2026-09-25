@@ -2,7 +2,7 @@
  * The context object the whole UI reads from.
  *
  * This is deliberately its own tiny module rather than living inside
- * ProcProvider, because the legacy UI file imports it too. Both halves must
+ * ProcurementProvider, because the legacy UI file imports it too. Both halves must
  * get the SAME context object — two `createContext()` calls produce two
  * unrelated contexts, and the symptom is a `useProc()` that quietly returns
  * null and a screen that renders blank with no error.
@@ -22,7 +22,7 @@ export function useProc(): ProcValue {
   const value = useContext(ProcCtx);
   if (!value) {
     throw new Error(
-      'useProc() was called outside <ProcProvider>. Every screen must be rendered inside it.',
+      'useProc() was called outside <ProcurementProvider>. Every screen must be rendered inside it.',
     );
   }
   return value;

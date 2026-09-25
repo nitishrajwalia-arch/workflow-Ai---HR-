@@ -523,7 +523,12 @@ export const procurementRoutes: FastifyPluginAsyncZod = async (app) => {
       },
     },
     async () =>
-      db.requisition.findMany({ where: { state: 'open' }, orderBy: { createdAt: 'desc' } }),
+      // Promised rows come back too: they are what the handover counter works
+      // through. Only an issued one leaves the list.
+      db.requisition.findMany({
+        where: { state: { in: ['open', 'promised'] } },
+        orderBy: { createdAt: 'desc' },
+      }),
   );
 
   app.post(
@@ -542,10 +547,45 @@ export const procurementRoutes: FastifyPluginAsyncZod = async (app) => {
       },
     },
     async (req, reply) => {
+      const me = requireUser(req);
       const count = await db.requisition.count();
-      return reply
-        .status(201)
-        .send(await db.requisition.create({ data: { id: `RQ-${2210 + count + 1}`, ...req.body } }));
+      // Who asked is taken from the session, not the body. It is the name the
+      // storekeeper checks the ID card against, so the browser cannot set it.
+      return reply.status(201).send(
+        await db.requisition.create({
+          data: {
+            id: `RQ-${2210 + count + 1}`,
+            ...req.body,
+            byName: me.name,
+            // An account with no employee record leaves this blank rather than
+            // borrowing the account id: the counter checks it against a card,
+            // and a value that can never match a card would be worse than none.
+            byEid: me.personId ?? '',
+          },
+        }),
+      );
+    },
+  );
+
+  app.post(
+    '/requisitions/:id/promise',
+    {
+      preHandler: app.authenticate,
+      schema: {
+        tags: ['procurement'],
+        summary: 'The store accepts a requisition and names a time',
+        params: z.object({ id: z.string() }),
+        body: z.object({ ready: z.string().trim().min(1).max(40) }),
+        response: { 200: z.any(), 404: z.any() },
+      },
+    },
+    async (req) => {
+      const row = await db.requisition.findUnique({ where: { id: req.params.id } });
+      if (!row) throw notFound(`Requisition ${req.params.id}`);
+      return db.requisition.update({
+        where: { id: row.id },
+        data: { state: 'promised', promisedFor: req.body.ready },
+      });
     },
   );
 

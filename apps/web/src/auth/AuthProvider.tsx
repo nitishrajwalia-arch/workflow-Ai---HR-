@@ -1,7 +1,7 @@
 /**
  * Who is signed in.
  *
- * Kept separate from ProcProvider because they answer different questions and
+ * Kept separate from ProcurementProvider because they answer different questions and
  * fail differently: a broken session means "show the login screen", a broken
  * bootstrap means "the server is unwell". Folding them together makes both
  * failures look the same to the user.

@@ -274,7 +274,11 @@ change. There is no window where one is true and the other is not.
 ## Payroll · contacts · devices
 
 - `GET /salaries`, `PUT /salaries/:pid` — **HR**. The ledger records _that_ pay
-  changed and who changed it, never the figures.
+  changed and who changed it, never the figures. The body carries the whole
+  structure — `gross`, `basic`, `hra`, `travel`, `medical`, `special`, `esiOn`,
+  `pfOn`, `pfWages` — and the gross is **stored, not derived**. It used to carry
+  only three of the parts and add them up, which dropped the travelling and
+  medical allowances every person on the company's books has.
 - `GET /contacts`, `PUT /contacts/:pid` — **HR**. A `@marbellagroup.in` address
   is **refused**: the company account closes the day they leave, which is exactly
   when these details are needed.
@@ -370,7 +374,7 @@ can act on**, not a status code.
 | `GET\|POST /vendors`, `POST /vendors/:code/verify`, `POST /vendors/import` | The supplier list. Raising a PO against a vendor nobody has verified returns a **warning in the response body** — it does not block, because sometimes you have to buy today, but nobody gets to say they were not told                                                                          |
 | `GET\|POST /purchase-orders`                                               | POs. Amounts are rupees on the wire and paise in the column                                                                                                                                                                                                                                      |
 | `GET\|POST /purchase-requests`, `POST /purchase-requests/:id/close`        | What the store is asking purchase to buy                                                                                                                                                                                                                                                         |
-| `GET\|POST /requisitions`, `POST /requisitions/:id/close`                  | What site is asking the store for                                                                                                                                                                                                                                                                |
+| `GET\|POST /requisitions`, `POST /requisitions/:id/promise\|close`         | What site is asking the store for. `open` → `promised` (accepted, with a time) → `issued` (handed over at the counter). Who raised it is taken from the session, because it is what the storekeeper checks the ID card against                                                                                                                                                                                                                                                                |
 | `GET\|POST /inventory`                                                     | The stock list                                                                                                                                                                                                                                                                                   |
 | `POST /inventory/move`                                                     | **Receive or issue stock.** Refuses to issue what someone is holding back, naming who to ask. Refuses a delivery that would breach a storage cap unless `override` is supplied — and then seals who authorised it. Quantities are rounded where they are computed, so a gate pass reads `12.4 T` |
 | `GET /inventory/moves`                                                     | The movement history                                                                                                                                                                                                                                                                             |

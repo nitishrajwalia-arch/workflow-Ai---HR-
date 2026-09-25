@@ -125,8 +125,10 @@ export const payrollRoutes: FastifyPluginAsyncZod = async (app) => {
         return row;
       });
 
-      const gross = saved.basic + saved.hra + saved.special;
-      return { ...saved, gross, net: gross - saved.pf - saved.pt };
+      // The gross is stored, not re-derived: adding basic + hra + special leaves
+      // out travelling and medical, and every person on the company's own books
+      // has at least one of them.
+      return { ...saved, net: saved.gross - saved.pf - saved.pt };
     },
   );
 

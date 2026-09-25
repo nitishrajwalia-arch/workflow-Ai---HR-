@@ -56,16 +56,46 @@ actually failed. (A rewritten seal is caught one entry later, at the row whose
 Reproduce it with `scripts/tamper.mjs`, or by editing a `detail` in the
 response in devtools.
 
+## The sweep: every button, pressed
+
+The company asked for every clickable thing to be checked. Twelve things were
+found that did not do what they said. Each is fixed, and each fix is in the file
+with the reason beside it.
+
+| What it said | What it did | Now |
+| --- | --- | --- |
+| Card bureau, "Authorisation code" | compared the word `marbella` in the browser, and printed it under the box | goes to the server, rate-limited, every attempt sealed with the card and the reason |
+| Accounts, "OTP sent to email and phone" | nothing was sent; Verify let through any four characters | the same server-checked authorisation code, sealed |
+| Store Floor, the handover counter | its queue came from `ISSUE_QUEUE = []`, so it could never hold anything — accepting a request closed it outright | a request stops at the counter, carrying who raised it, and leaves when it is handed over |
+| Store Floor, "Simulate wrong badge" | put an invented person, R. Kapoor of MB-PUR-0031, on the screen | the Employee ID is read off the card in their hand and compared with the person who raised the request |
+| Vendors, clicking a vendor | set `openVendor` — nothing rendered it | the account panel is mounted in the shell, so the row and the search box both open it |
+| Connections, "Simulate connect (demo)" | flipped a pill to "Connected · demo" | switching one on is saved and says the data link is still to be finished |
+| People, "Generate a Marbella ID" | `20 + Math.floor(Math.random() * 60)` — in a department of forty it usually collided with a real person | the next free number, the same way enrolment does it |
+| People, "+ 53 more across 8 departments" | written by hand before the roster was loaded, under a list already showing everybody | the roster's own counts |
+| "RQ-… raised to store", "PO-… raised" | the number came from `Math.random()`; the server assigns its own, and the gate pass pointed at a purchase order that was never on file | both wait for the server's number |
+| Profile, "change it on their record and the next pay run picks it up" | nothing in the app could change a salary after enrolment | an editor that proposes the split from the employer's own policy |
+| `PUT /salaries/:pid` | dropped travelling, medical, `esiOn` and `pfOn`, and re-derived the gross from three of the five parts | stores what it is given; the test proves the parts add to the gross |
+| Access, "Add them — an OTP goes to their mobile and email" | pushed a name into a local array; no account, no message, gone on reload | creates the account through `POST /auth/users`, and says plainly that nothing is emailed |
+
+Two more things came out of it. `ProcProvider.tsx` (546 lines) and the
+self-contained `App` that used to close this file (244 lines) were both second
+providers that nothing mounted — two answers to "what is true", only one of them
+ever on screen. With them went forty-six seed constants and helpers that only
+they referenced. And the Access console, which is the one screen that can give
+somebody a login, sat on the admin desk while the company's only administrator
+sits at the HR desk: it follows the ROLE now, not the desk.
+
 ## Things still worth doing
 
 Nothing here is a lie the app tells; they are limits, and each is stated on the
 screen it affects.
 
-- `DEMO_OTP = "4821"` is still a constant in this file. The Chairman's override
-  PIN was moved to the server (`OVERRIDE_PIN`, checked at
-  `POST /api/v1/override/verify`, rate-limited, every attempt sealed) — the OTP
-  path has not been. It gates nothing the override does not already gate, but
-  it should become a real one-time code before this faces the internet.
+- Nothing sends a message. There is no mail server and no SMS gateway behind
+  this, so no OTP, no "we have emailed them", no notification. Every screen that
+  used to claim otherwise now says who has to be told by hand. The Chairman's
+  override code is the one real check, on the server
+  (`OVERRIDE_PIN`, `POST /api/v1/override/verify`, rate-limited, every attempt
+  sealed) — the card bureau and the bill archive both use it.
 - Nothing talks to a bank, a mail server, or WhatsApp. Withdrawal requests and
   payment reminders are recorded and sealed, and each response says plainly
   that it has not been submitted or sent.

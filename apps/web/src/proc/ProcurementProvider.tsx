@@ -312,6 +312,19 @@ export function ProcurementProvider({ children, toast }: Props) {
           () => api.post<any>('/requisitions', { dept: r.dept, item: r.item, qty: r.qty ?? '' }),
           (row, x) => ({ ...x, reqs: [row, ...x.reqs] }),
         ),
+      /** The store accepts a request and names a time. It does not disappear —
+       *  it moves to the handover counter, which is where it is signed for. */
+      promiseReq: (id: string, ready: string) =>
+        optimistic(
+          (x) => ({
+            ...x,
+            reqs: x.reqs.map((r: any) =>
+              r.id === id ? { ...r, state: 'promised', promisedFor: ready } : r,
+            ),
+          }),
+          () => api.post(`/requisitions/${id}/promise`, { ready }),
+        ),
+      /** Handed over at the counter. Now it leaves the list. */
       fulfillReq: (id: string) =>
         optimistic(
           (x) => ({ ...x, reqs: x.reqs.filter((r: any) => r.id !== id) }),
@@ -723,6 +736,36 @@ export function ProcurementProvider({ children, toast }: Props) {
         ),
 
       /** Check the Chairman's override code. Server-side, rate-limited, sealed. */
+      /**
+       * Give somebody a login.
+       *
+       * The Access console used to push a name into a local array and toast
+       * "an OTP goes to their mobile and email". No account was created, no
+       * message was sent, and the row vanished on the next reload. This is the
+       * route that actually makes one; the server refuses it to anybody who is
+       * not an administrator and forces a password change on first sign-in.
+       */
+      addAccount: (u: {
+        name: string;
+        email: string;
+        loginId: string;
+        password: string;
+        role: string;
+        userKey: string;
+      }) =>
+        api
+          // personId links the account to the person on the roster, which is
+          // what puts their name on anything they raise. loginId is what they
+          // type at the sign-in box. For Marbella they are the same thing.
+          .post<{ id: string; employeeId: string | null }>('/auth/users', {
+            ...u,
+            personId: u.loginId,
+          })
+          .catch((err) => {
+            toast(err instanceof ApiError ? err.full : 'That account was not created.', 'red');
+            return null;
+          }),
+
       checkOverride: (code: string, what: string) =>
         api
           .post<{ ok: true; authorisedBy: string }>('/override/verify', { code, what })
@@ -785,7 +828,9 @@ export function ProcurementProvider({ children, toast }: Props) {
           (r, x) => spliceRun(r.run, x),
         ),
 
-      // Keyed by department as well as title — see the note in ProcProvider.
+      /* Keyed by DEPARTMENT as well as title. One title means different jobs in
+         different departments — "Assistant Manager" is three of them here — and
+         a flat map let whichever department was saved last replace the rest. */
       saveJD: (dept: string, role: string, jd: BootstrapJd) =>
         optimistic(
           (x) => ({ ...x, jds: { ...x.jds, [dept]: { ...x.jds[dept], [role]: jd } } }),

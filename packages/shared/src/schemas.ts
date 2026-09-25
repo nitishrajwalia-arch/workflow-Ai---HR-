@@ -346,10 +346,29 @@ export const advanceExitBody = z.object({
 
 /* --------------------------------------------------------- payroll, devices */
 
+/**
+ * A salary structure, as it is stored.
+ *
+ * This used to carry only basic, hra, special, pf, pt and note, and the route
+ * derived the gross by adding the first three. The record has carried travel,
+ * medical and the two statutory switches since the company's own books were
+ * loaded, so anything saved through here dropped them and reported a gross that
+ * was short by the travelling and medical allowances. Nothing called it, which
+ * is the only reason no salary was ever damaged.
+ */
 export const salaryBody = z.object({
+  /** What the person is on. The parts add to this; it is not re-derived. */
+  gross: z.number().int().min(0).max(100_000_000).default(0),
   basic: z.number().int().min(0).max(100_000_000).default(0),
   hra: z.number().int().min(0).max(100_000_000).default(0),
+  travel: z.number().int().min(0).max(100_000_000).default(0),
+  medical: z.number().int().min(0).max(100_000_000).default(0),
   special: z.number().int().min(0).max(100_000_000).default(0),
+  /** Whether the statutory deductions apply to this person at all. */
+  esiOn: z.boolean().default(false),
+  pfOn: z.boolean().default(false),
+  /** The wage PF is worked out on. Zero means the policy's cap. */
+  pfWages: z.number().int().min(0).max(100_000_000).default(0),
   pf: z.number().int().min(0).max(1_000_000).default(0),
   pt: z.number().int().min(0).max(1_000_000).default(0),
   note: z.string().trim().max(500).default(''),

@@ -940,11 +940,23 @@ model PurchaseRequest {
 
 /// A department asking the store for stock it already holds.
 model Requisition {
-  id        String   @id
-  dept      String
-  item      String
-  qty       String   @default("")
-  state     String   @default("open")
+  id   String @id
+  dept String
+  item String
+  qty  String @default("")
+
+  /// open -> promised (the store has accepted it and named a time) -> issued
+  /// (handed over at the counter). The handover screen works the middle state;
+  /// without it a promised request vanished and the counter had nothing to do.
+  state String @default("open")
+
+  /// Who asked. Taken from the session, never from the browser, because it is
+  /// the name the storekeeper checks the ID card against at the counter.
+  byName      String @default("")
+  byEid       String @default("")
+  /// What the store promised — "30 min", "2 days".
+  promisedFor String @default("")
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

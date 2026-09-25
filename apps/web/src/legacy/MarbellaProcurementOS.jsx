@@ -150,7 +150,6 @@ const VEHICLES = {
   truck10: { id: "truck10", name: "10-wheeler truck",        cap: "16–25 T" },
   trailer: { id: "trailer", name: "Multi-axle trailer",      cap: "25–40 T" },
 };
-const VLADDER = ["cart", "auto", "pickup", "truck6", "truck10", "trailer"];
 function estimateTruck(item) {
   const s = (item || "").toLowerCase();
   const num = (m) => m ? parseFloat(m[1].replace(/,/g, "")) : 0;
@@ -221,6 +220,14 @@ function useIsMobile(bp = 760) {  const [m, setM] = useState(typeof window !== "
    comes from the account that signed in, which the server decides — so `name` is
    deliberately blank here. Anything that needs a person's name reads it off the
    session, and falls back to the role when there isn't one. */
+/* A desk is what somebody SEES; a role is what the server lets them DO. They are
+   not the same list, so the Access console has to say which role each desk gets
+   when it creates an account. A desk not named here gets the least of them. */
+const ROLE_FOR = {
+  admin: "ADMIN", hr: "HR", accounts: "MANAGER", purchase: "MANAGER",
+  store: "MANAGER", maintenance: "MANAGER", purchaseAsst: "VIEWER",
+  storeAsst: "VIEWER", security: "VIEWER",
+};
 const USERS = {
   admin:       { name: "", role: "Chairman · Admin",   tier: 1, key: "admin", dept: "Admin" },
   purchase:    { name: "", role: "Purchase Manager",   tier: 2, key: "purchase", dept: "Purchase" },
@@ -242,12 +249,6 @@ const USERS = {
    application down with "cannot read properties of undefined". This never
    returns undefined. */
 const desk = (k) => USERS[k] || { name: "", role: k || "User", tier: 3, key: k || "viewer", dept: "" };
-
-const DESK_IDS = {
-  admin: "MB-ADM-0001", purchase: "MB-PUR-0012", store: "MB-STR-0004",
-  maintenance: "MB-MNT-0006", accounts: "MB-ACC-0002", hr: "MB-HR-0001",
-  purchaseAsst: "MB-PUR-0018", storeAsst: "MB-STR-0009", security: "MB-SEC-0007",
-};
 
 /* Headcount and department count are computed from the live roster where they
    are shown; only the two nobody can derive are kept here. */
@@ -281,16 +282,6 @@ const DEPARTMENTS = Object.keys(DEPT_CODES);
 const DEPTS = Object.keys(DEPT_CODES);
 const EMPLOYEES = [];
 const VENDORS = [];
-const VENDOR_SEED = VENDORS.map((v, i) => ({
-  ...v,
-  phone: "+91 " + (98140 + i * 7) + " " + String(10000 + i * 373).slice(0, 5),
-  whatsapp: "+91 " + (98140 + i * 7) + " " + String(10000 + i * 373).slice(0, 5),
-  email: "billing@" + v.name.toLowerCase().replace(/[^a-z0-9]+/g, "").slice(0, 14) + ".in",
-  contact: "", gst: "", pan: "",
-  status: i === 0 ? "verified" : i === 4 ? "verified" : i === 1 ? "pending" : "unverified",
-  vcode: i === 0 ? "MB-V-0001" : i === 4 ? "MB-V-0002" : "",
-  extras: {},
-}));
 const VEND_ALIASES = {
   name: ["vendor", "vendor name", "supplier", "supplier name", "party", "party name", "name", "firm", "company", "trade name", "नाम", "proveedor"],
   cat: ["category", "type", "material", "cat", "segment", "group"],
@@ -303,9 +294,6 @@ const VEND_ALIASES = {
   address: ["address", "city", "location", "addr", "place"],
 };
 const VEND_SAMPLE = `Party Name,Material,GSTIN,PAN,Contact Person,Mobile,Email,Credit,City\nBharat Cement Agency,Cement,03ABCDE1234F1Z5,ABCDE1234F,Rakesh Kumar,9814000011,rakesh@bharatcement.in,30 days,Mohali\nBansal Hardware,Hardware,03PQRSX9876G2Z1,PQRSX9876G,Vinod Bansal,9815000022,sales@bansalhw.com,15 days,Chandigarh\nSaini Tiles & Sanitary,Finishes,,,Harpreet Saini,9876500033,,COD,Zirakpur\nDeep Electricals,MEP,03LMNOP4567H3Z9,LMNOP4567H,Deepak,9814500044,deep.elec@gmail.com,45 days,Panchkula`;
-const _SN = Date.now();
-const SUB_SEED = [];
-const GATEPASS_SEED = [];
 const BILLS_SEED = [];
 const POS = [];
 const SITES = [];
@@ -324,9 +312,7 @@ const WELCOME_LINES = [
 const TREND = [];
 /* Today's expected deliveries — derived from open POs with a delivery date. */
 const DELIVERIES = [];
-const REQUESTS = [];
 /* Approved requests waiting to be handed over the store counter. */
-const ISSUE_QUEUE = [];
 /* Bank statement lines matched against purchases. Populated by the
    reconciliation run, which needs a statement import to have happened. */
 const RECON = [];
@@ -347,11 +333,9 @@ const catalogKeys = Object.keys(INTENT_CATALOG);
 const matchCatalog = (t) => { const s = t.toLowerCase(); return catalogKeys.find(k => s.includes(k) || k.split(" ").some(w => s.includes(w))); };
 
 /* ---- Invoices pulled from the Purchase Manager's Google Workspace inbox ---- */
-const INVOICES_SEED = [];
 
 /* ---- Call directory — tap to call the people who matter ---- */
 /* Call directory — built from the people and vendors on file, not a fixed list. */
-const CONTACTS = [];
 const MAINT_JOBS = [];
 
 /* ---- your projects — each carries its legal entity + its own RERA + GSTIN. Uploads/POs land on the right one. ---- */
@@ -378,10 +362,7 @@ function stockValue(holds, inv) {
   const idle = rows.filter(r => r.qty >= r.reorder * 2.2).reduce((a, r) => a + r.value, 0);
   return { rows, total, heldValue, bySite, top, idle };
 }
-const SEED_PHOTO = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAKAAAAB4CAIAAAD6wG44AAABuklEQVR42u3ZoU7DUBSAYcamEEhExRIEBEUmq1E8YR+CJyCI6SqCJICqqFjQOBLsIGTcrmU76/1+N8jo2i93vT1MHt/ejzTejl0CwAIswAIswAIswIAFWIAFWIAFWIABC7AAC7B22Sy3E26enyJ/vPnVwgoWYAEGLMACLMDyHDxcbdtm9RycHXBRFL6iBViABVhRd9Efr/fRzuTk4hanFQxYgAVYgBV5F324mUWPPLNoARZgARZgARZgwAIswIqYWXSszKL7ltssOjvgrtV1PdSfKsvSPViABViAAcsuesCmq+X6y8+zGzYjAf5Bu/5DzAf/Ff2rbuJvFR04xY/xSO7BO2uPs+iUQ49nFp2+NKer5YA3466z6KZp9nVoj0kCDNglACzA3UvfNxl3WMEKCZyyNC3fw17Bm/3o9m9WP9xt8bbr89Nhjfv/NynxRIr5ZWSP7Tg2AQc5MYv1v1ZwbiccfBYNuG/BZ9Ft8+IxSYAFGLAAC7AAC7AAC3COmUWP/NBm0X9kFq3QTaqqchVssgRYgAVYgAVYgAELsAALsAALsAADFmABFmABFmABFmDAAizAAizAAqxvfQEXnWBkHO+QXgAAAABJRU5ErkJggg==";
 /* ---- reports raised by anyone on site — text + optional voice note ---- */
-const REPORTS_SEED = [];
-const PR_SEED = [];
 
 /* ============================== PRIMITIVES ============================== */
 function Card({ children, pad = 20, style }) {
@@ -419,7 +400,6 @@ function Gauge({ value = 82, size = 168 }) {
   );
 }
 const inp = { width: "100%", boxSizing: "border-box", padding: "12px 14px", margin: "7px 0 16px", border: `1px solid ${C.line}`, borderRadius: 10, font: `14px ${sans}`, background: "#fff", outline: "none", color: C.ink };
-const roleChip = { cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6, border: `1px solid ${C.line}`, background: "#fff", color: C.inkSoft, font: `600 12px ${sans}`, padding: "8px 11px", borderRadius: 20 };
 const lbl = { font: `600 11px ${sans}`, letterSpacing: "0.1em", textTransform: "uppercase", color: C.inkSoft };
 
 /* ---- shared procurement state across the four pillars ---- */
@@ -832,7 +812,7 @@ function Views({ tab, userKey, onActAs, go = () => {} }) {
   return (<>
     {tab === "overview" && userKey === "admin" && <BossView />}
     {tab === "overview" && (userKey === "purchase" || userKey === "purchaseAsst") && <PurchaseView userKey={userKey} />}
-    {tab === "overview" && (userKey === "store" || userKey === "storeAsst") && <StoreView />}
+    {tab === "overview" && (userKey === "store" || userKey === "storeAsst") && <StoreView userKey={userKey} />}
     {tab === "inventory" && <InventoryView userKey={userKey} />}
     {tab === "intent" && <IntentView userKey={userKey} />}
     {tab === "invoices" && <InvoicesView />}
@@ -846,7 +826,7 @@ function Views({ tab, userKey, onActAs, go = () => {} }) {
     {tab === "hr" && <HRCommandView go={go} />}
     {tab === "roster" && <PeopleRosterView />}
     {tab === "population" && <PopulationView />}
-    {tab === "org" && <OrgView />}
+    {tab === "org" && <OrgView userKey={userKey} />}
     {tab === "cards" && <CardBureauView />}
     {tab === "companies" && <CompaniesView />}
     {tab === "desk" && <CorrespondenceView />}
@@ -1321,7 +1301,7 @@ function CastPanel({ tab, onClose }) {
 
 function AccessConsole({ onActAs }) {
   const mob = useIsMobile();
-  const { saveGrants, grants: savedGrants } = useProc();
+  const { saveGrants, grants: savedGrants, people = [], addAccount } = useProc();
   /* Seeded from what the server holds, so the console opens on the real state
      rather than on a default that was never anybody's actual access. */
   const [grants, setGrants] = useState(() => {
@@ -1335,7 +1315,8 @@ function AccessConsole({ onActAs }) {
   const [newRole, setNewRole] = useState(false);
   const [newUser, setNewUser] = useState(false);
   const [nr, setNr] = useState({ name: "", base: "purchase", dept: "Purchase" });
-  const [nu, setNu] = useState({ name: "", role: "purchase", phone: "", email: "" });
+  const [nu, setNu] = useState({ pid: "", name: "", role: "purchase", email: "", password: "" });
+  const [adding, setAdding] = useState(false);
   const [added, setAdded] = useState([]);
   const cell = { ...inp, margin: 0, padding: "9px 10px", fontSize: 13, boxSizing: "border-box" };
   const flip = (area, power) => setGrants(g => ({ ...g, [pick]: { ...g[pick], [area]: { ...g[pick][area], [power]: !g[pick][area][power] } } }));
@@ -1464,27 +1445,59 @@ function AccessConsole({ onActAs }) {
 
         <Card pad={mob ? 14 : 18}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}><UserPlus size={15} color={C.goldDeep} /><span style={{ font: `600 13px ${sans}`, color: C.ink }}>Add a user</span></div>
-          <div style={{ font: `12px ${sans}`, color: C.stone, marginBottom: 10 }}>Give a person a login against one of the roles. HR still issues their Marbella ID.</div>
+          <div style={{ font: `12px ${sans}`, color: C.stone, marginBottom: 10 }}>Give a person a login against one of the roles. They sign in with their Marbella ID, which HR issues.</div>
           {!newUser ? <GoldButton small onClick={() => setNewUser(true)}><span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Plus size={13} /> New user</span></GoldButton> : (<>
-            <label style={{ ...lbl, fontSize: 9 }}>Name</label>
-            <input value={nu.name} onChange={e => setNu(s => ({ ...s, name: e.target.value }))} placeholder="e.g. P. Grewal" style={{ ...cell, margin: "5px 0 9px" }} />
+            <label style={{ ...lbl, fontSize: 9 }}>Who is it</label>
+            <select value={nu.pid} onChange={e => {
+              const pid = e.target.value;
+              const who = people.find(x => x.id === pid);
+              setNu(s => ({ ...s, pid, name: who ? who.name : "" }));
+            }} style={{ ...sel, margin: "5px 0 9px" }}>
+              <option value="">Pick them off the roster</option>
+              {people.filter(x => x.status !== "exited").map(x => (
+                <option key={x.id} value={x.id}>{x.name} · {x.id} · {x.dept}</option>
+              ))}
+            </select>
+            <label style={{ ...lbl, fontSize: 9 }}>Work email</label>
+            <input value={nu.email} onChange={e => setNu(s => ({ ...s, email: e.target.value }))} placeholder="name@marbellagroup.in" style={{ ...cell, margin: "5px 0 9px" }} />
             <label style={{ ...lbl, fontSize: 9 }}>Role</label>
             <select value={nu.role} onChange={e => setNu(s => ({ ...s, role: e.target.value }))} style={{ ...sel, margin: "5px 0 9px" }}>
               {roles.map(r => <option key={r} value={r}>{(USERS[r] || {}).role || r}</option>)}
             </select>
+            <label style={{ ...lbl, fontSize: 9 }}>First password — at least 12 characters</label>
+            <input type="password" value={nu.password} onChange={e => setNu(s => ({ ...s, password: e.target.value }))} placeholder="They change it the first time they sign in" style={{ ...cell, margin: "5px 0 9px" }} />
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <GoldButton small onClick={() => {
-                if (!nu.name.trim()) return toast("Name the person", "amber");
-                setAdded(a => [{ name: nu.name.trim(), role: (USERS[nu.role] || {}).role || nu.role }, ...a]);
-                setNewUser(false); setNu({ name: "", role: "purchase", phone: "", email: "" });
-                toast(`${nu.name.trim()} added — an OTP goes to their mobile and email`, "green");
-              }}>Add them</GoldButton>
+              {/* This used to push the name into a local array and say an OTP
+                  had gone to their mobile. No account existed, nothing was
+                  sent, and the row disappeared on the next reload. It now asks
+                  the server, which refuses anyone who is not an administrator. */}
+              <GoldButton small disabled={adding} onClick={async () => {
+                if (!nu.pid) return toast("Pick who the login is for", "amber");
+                if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(nu.email.trim())) return toast("A work email is needed — it is how the account is named", "amber");
+                if (nu.password.length < 12) return toast("The first password has to be at least 12 characters", "amber");
+                setAdding(true);
+                const made = await addAccount({
+                  name: nu.name.trim(), email: nu.email.trim().toLowerCase(), loginId: nu.pid,
+                  password: nu.password, role: (ROLE_FOR[nu.role] || "VIEWER"), userKey: nu.role,
+                });
+                setAdding(false);
+                if (!made) return;
+                setAdded(a => [{ name: nu.name.trim(), id: nu.pid, role: (USERS[nu.role] || {}).role || nu.role }, ...a]);
+                setNewUser(false); setNu({ pid: "", name: "", role: "purchase", email: "", password: "" });
+                toast(`${nu.name.trim()} can sign in with ${nu.pid} — tell them the password yourself`, "green");
+              }}>{adding ? "Creating\u2026" : "Create the account"}</GoldButton>
               <GoldButton small ghost onClick={() => setNewUser(false)}>Cancel</GoldButton>
+            </div>
+            <div style={{ font: `11px ${sans}`, color: C.stone, marginTop: 8, lineHeight: 1.5 }}>
+              Nothing is emailed or texted — there is no mail server behind this yet. Hand them the
+              password yourself; the system makes them change it the first time they sign in.
             </div>
           </>)}
           {added.map((a, i) => (
-            <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 0", borderTop: `1px solid ${C.lineSoft}`, marginTop: i ? 0 : 10, font: `12px ${sans}` }}>
-              <Check size={13} color={C.green} /><span style={{ color: C.ink, fontWeight: 600 }}>{a.name}</span><span style={{ color: C.stone }}>· {a.role}</span><Pill tone="amber">awaiting OTP</Pill>
+            <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 0", borderTop: `1px solid ${C.lineSoft}`, marginTop: i ? 0 : 10, font: `12px ${sans}`, flexWrap: "wrap" }}>
+              <Check size={13} color={C.green} /><span style={{ color: C.ink, fontWeight: 600 }}>{a.name}</span>
+              <span style={{ font: `11px ${mono}`, color: C.stone }}>{a.id}</span>
+              <span style={{ color: C.stone }}>· {a.role}</span><Pill tone="green">Can sign in</Pill>
             </div>
           ))}
         </Card>
@@ -1508,8 +1521,16 @@ export function Shell({ userKey: realKey, onLogout }) {
      were whoever the map said, not whoever signed in. They come from the
      server now, and fall back to the map only when the server has not
      answered yet. */
-  const { me } = useProc();
-  const nav = NAV[userKey] || NAV.hr;
+  const { me, openVendor, setOpenVendor } = useProc();
+  /* A desk decides what you SEE; your role decides what you may DO. The Access
+     console sat on the admin desk alone, and the only account the company has is
+     an administrator sitting at the HR desk — so the one person who is allowed
+     to give anybody a login could not reach the screen that does it. It follows
+     the role now, not the desk, and appears once for whoever holds ADMIN. */
+  const base = NAV[userKey] || NAV.hr;
+  const nav = (me && me.role === "ADMIN" && !base.some(n => n[0] === "access"))
+    ? [...base, ["access", "Access", ShieldCheck]]
+    : base;
   const u = { ...(USERS[userKey] || USERS.hr), ...(me ? { name: me.name, role: me.title || me.role, dept: me.dept || '' } : {}) };
   const [tab, setTab] = useState(nav[0][0]);
   const [reporting, setReporting] = useState(false);
@@ -1536,6 +1557,12 @@ export function Shell({ userKey: realKey, onLogout }) {
       {task?.kind === "upload" && <TaskModal title="Upload a document" icon={Upload} onClose={() => setTask(null)}><Uploader /></TaskModal>}
       {task?.kind === "requirement" && <TaskModal title="Request material from store" icon={ClipboardList} onClose={() => setTask(null)}><RequirementForm from={u.name} onDone={() => setTask(null)} compact /></TaskModal>}
       {task?.kind === "enroll" && <EnrollPerson onClose={() => setTask(null)} />}
+      {/* A vendor row on the Vendors screen, and a vendor hit in the search box,
+          both set `openVendor` — and nothing rendered it, so both clicks went
+          nowhere. The only thing that ever mounted this panel lived inside the
+          self-contained App at the bottom of this file, which the product does
+          not use. It belongs here, where both desktop and mobile reach it. */}
+      {openVendor && <VendorAccount name={openVendor} onClose={() => setOpenVendor(null)} />}
     </>
   );
   if (mob) {
@@ -2385,7 +2412,7 @@ function ReviewFlagged({ onClose }) {
                 )}
                 {r.need === "verify" && (
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    <GoldButton small onClick={() => clear(r.id, `${r.vendor} sent for OTP verification`)}>Send for verification</GoldButton>
+                    <GoldButton small onClick={() => clear(r.id, `${r.vendor} sent for verification`)}>Send for verification</GoldButton>
                     <GoldButton small ghost onClick={() => clear(r.id, "approved as a one-off by the Chairman")}>Approve as a one-off</GoldButton>
                   </div>
                 )}
@@ -2499,8 +2526,12 @@ function PurchaseView({ userKey = "purchase" }) {
 }
 
 /* ============================== STORE ============================== */
-function StoreHolds() {
-  const mob = useIsMobile(); const { holds } = useProc();
+function StoreHolds({ userKey = "store" }) {
+  const mob = useIsMobile(); const { holds, releaseHold } = useProc();
+  /* A hold is lifted by whoever placed it or by the Chairman. The store floor
+     is neither, so the store sees who to ask rather than a button it cannot
+     honour; purchase and the Chairman get the button. */
+  const canRelease = userKey === "purchase" || userKey === "purchaseAsst" || userKey === "admin";
   if (!holds.length) return null;
   return (
     <Card pad={mob ? 14 : 18} style={{ marginBottom: 16, borderColor: C.gold, background: C.goldTint }}>
@@ -2515,16 +2546,29 @@ function StoreHolds() {
             <div style={{ color: C.stone, marginTop: 2 }}>Held by {h.by} · {h.days} days from {fmtAgo(h.at)} · {h.id}</div>
             <div style={{ color: C.inkSoft, marginTop: 2, fontStyle: "italic" }}>{h.why}</div>
           </div>
-          <GoldButton small ghost onClick={() => toast(`Ask ${h.by.split("·")[0].trim()} to release ${h.id}`, "gold")}>Ask to release</GoldButton>
+          {/* This used to be an "Ask to release" button that asked nobody — it
+              showed a toast telling you who to go and speak to. A hold can only
+              be lifted by whoever placed it or by the Chairman, so the desks
+              that can lift one get a button that lifts it, and the desks that
+              cannot are told who to ask instead of being given a button that
+              does nothing. */}
+          {canRelease
+            ? <GoldButton small ghost onClick={async () => {
+                const r = await releaseHold(h.id);
+                if (r) toast(`${h.id} released — ${h.qty} ${h.unit} of ${h.item} is back`, "green");
+              }}>Release it</GoldButton>
+            : <span style={{ font: `11px ${sans}`, color: C.stone, textAlign: "right", maxWidth: 140 }}>
+                Only {h.by.split("·")[0].trim()} or the Chairman can lift this
+              </span>}
         </div>
       ))}
       <div style={{ font: `11px ${sans}`, color: C.stone, marginTop: 8 }}>Only purchase or the Chairman can lift a hold. It lifts on its own after the days shown.</div>
     </Card>
   );
 }
-function StoreView() {
+function StoreView({ userKey = "store" }) {
   const mob = useIsMobile();
-  const { reqs, fulfillReq, gatepasses = [], pos = [] } = useProc();
+  const { reqs, promiseReq, fulfillReq, gatepasses = [], pos = [] } = useProc();
   /* What arrived at the gate, checked against the PO it was raised under. A
      quantity over what the PO allows is held rather than quietly accepted. */
   const goodsIn = gatepasses.filter(g => g.status === "arrived").map(g => {
@@ -2536,28 +2580,50 @@ function StoreView() {
   const [active, setActive] = useState(null);
   const [win, setWin] = useState(null);
   const WINDOWS = ["10 min", "30 min", "1 hr", "2 hr", "Half day", "1 day", "2 days"];
-  const [queue, setQueue] = useState(ISSUE_QUEUE);
+  /* The counter works the requests the store has already accepted. This used to
+     be seeded from a constant that was an empty array, so the panel could never
+     have anything in it — accepting a request closed it outright and the two
+     halves of the screen never met. */
+  const waiting = reqs.filter(r => r.state === "open");
+  const queue = reqs.filter(r => r.state === "promised").map(r => ({
+    id: r.id, item: r.item, qty: r.qty, dept: r.dept,
+    who: r.byName || r.dept, eid: r.byEid || "", win: r.promisedFor || "",
+  }));
   const [pick, setPick] = useState(null);
   const [step, setStep] = useState(1);
+  const [typed, setTyped] = useState("");
   const [scan, setScan] = useState(null);
   const [storeOk, setStoreOk] = useState(false);
   const [recipOk, setRecipOk] = useState(false);
   const [log, setLog] = useState([]);
-  const reset = () => { setPick(null); setStep(1); setScan(null); setStoreOk(false); setRecipOk(false); };
+  const reset = () => { setPick(null); setStep(1); setTyped(""); setScan(null); setStoreOk(false); setRecipOk(false); };
   const begin = (it) => { reset(); setPick(it); };
-  const complete = () => { const t = new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }); setLog(l => [{ ...pick, time: t }, ...l]); setQueue(q => q.filter(x => x.id !== pick.id)); reset(); };
+  /* The card in hand decides. The ID is read off it and compared with the person
+     who raised the request — there is no scanner on this counter, and a button
+     that simply asserted a match was not a check. */
+  const checkCard = () => {
+    const got = typed.trim().toUpperCase();
+    if (!got) return toast("Type the Employee ID printed on the card", "amber");
+    setScan({ eid: got, ok: !!pick.eid && got === String(pick.eid).toUpperCase() });
+  };
+  const complete = () => {
+    const t = new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
+    setLog(l => [{ ...pick, time: t }, ...l]);
+    fulfillReq(pick.id);
+    reset();
+  };
   return (
     <div>
       <div style={{ display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}><Eyebrow>Store Floor · Marbella Grand</Eyebrow><Pill tone="amber">Promises capped at 2 days</Pill></div>
       <h1 style={{ font: `400 25px ${serif}`, margin: "6px 0 16px" }}>Requests, goods-in & handover</h1>
 
-      <StoreHolds />
+      <StoreHolds userKey={userKey} />
       <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr" : "1fr 1fr", gap: 18 }}>
         <Card pad={22}>
           <Eyebrow>Department requests</Eyebrow>
           <div style={{ font: `400 16px ${serif}`, margin: "6px 0 12px" }}>Promise a fulfillment time</div>
-          {reqs.length === 0 && <div style={{ color: C.stone, font: `13px ${sans}` }}>Every request handled. Clean floor.</div>}
-          {reqs.map((r) => (
+          {waiting.length === 0 && <div style={{ color: C.stone, font: `13px ${sans}` }}>Every request handled. Clean floor.</div>}
+          {waiting.map((r) => (
             <div key={r.id} style={{ padding: "13px 0", borderTop: `1px solid ${C.lineSoft}` }}>
               <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                 <Pill tone="stone">{r.dept}</Pill><div style={{ font: `600 13px ${sans}` }}>{r.item}</div>
@@ -2570,7 +2636,7 @@ function StoreView() {
                     {WINDOWS.map(w => (<button key={w} onClick={() => setWin(w)} style={{ cursor: "pointer", border: `1px solid ${win === w ? C.gold : C.line}`, background: win === w ? C.gold : "#fff", color: win === w ? "#fff" : C.inkSoft, font: `600 12px ${sans}`, padding: "7px 11px", borderRadius: 20 }}>{w}</button>))}
                   </div>
                   <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-                    <GoldButton small onClick={() => { if (win) { fulfillReq(r.id); setActive(null); setWin(null); toast(`${r.id} promised · ${win}`, "gold"); } }}>Confirm{win ? ` · ${win}` : ""}</GoldButton>
+                    <GoldButton small onClick={() => { if (win) { promiseReq(r.id, win); setActive(null); setWin(null); toast(`${r.id} promised · ${win} — now at the handover counter`, "gold"); } else toast("Pick how soon it will be ready", "amber"); }}>Confirm{win ? ` · ${win}` : ""}</GoldButton>
                     <GoldButton small ghost onClick={() => { setActive(null); setWin(null); }}>Cancel</GoldButton>
                   </div>
                 </div>
@@ -2653,17 +2719,19 @@ function StoreView() {
                       <div style={{ border: `1px dashed ${C.line}`, borderRadius: 6, padding: mob ? 18 : 26, textAlign: "center", background: C.paper }}>
                         <Contact size={26} color={C.gold} style={{ marginBottom: 8 }} />
                         <div style={{ font: `600 14px ${sans}`, marginBottom: 4 }}>Scan the requester’s Marbella ID</div>
-                        <div style={{ font: `12px ${sans}`, color: C.stone, marginBottom: 16 }}>Expecting <b>{pick.who}</b> · {pick.eid}</div>
+                        <div style={{ font: `12px ${sans}`, color: C.stone, marginBottom: 16 }}>Expecting <b>{pick.who}</b>{pick.eid ? <> · {pick.eid}</> : null}</div>
                         <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
-                          <GoldButton small onClick={() => setScan({ name: pick.who, eid: pick.eid, ok: true })}><span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><ScanLine size={14} /> Scan ID</span></GoldButton>
-                          <button onClick={() => setScan({ name: "R. Kapoor", eid: "MB-PUR-0031", ok: false })} style={{ background: "none", border: "none", color: C.stone, font: `600 12px ${sans}`, cursor: "pointer", textDecoration: "underline" }}>Simulate wrong badge</button>
+                          <input value={typed} onChange={e => setTyped(e.target.value.toUpperCase())} onKeyDown={e => e.key === "Enter" && checkCard()}
+                            placeholder="MB-___-____" style={{ ...inp, margin: 0, width: 180, fontFamily: mono, textAlign: "center", letterSpacing: "1px" }} />
+                          <GoldButton small onClick={checkCard}><span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><ScanLine size={14} /> Check the card</span></GoldButton>
                         </div>
+                        <div style={{ font: `11px ${sans}`, color: C.stone, marginTop: 10 }}>Read the Employee ID off the card in their hand and type it in.</div>
                       </div>
                     ) : scan.ok ? (
                       <div>
                         <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 16px", background: C.greenSoft, border: `1px solid ${C.green}33`, borderRadius: 6 }}>
                           <div style={{ width: 34, height: 34, borderRadius: "50%", background: C.green, display: "grid", placeItems: "center", color: "#fff", flexShrink: 0 }}><Check size={18} /></div>
-                          <div><div style={{ font: `600 13px ${sans}`, color: C.green }}>{scan.name} · {scan.eid}</div><div style={{ font: `12px ${sans}`, color: C.inkSoft }}>Matches the requester on {pick.id}.</div></div>
+                          <div><div style={{ font: `600 13px ${sans}`, color: C.green }}>{pick.who} · {scan.eid}</div><div style={{ font: `12px ${sans}`, color: C.inkSoft }}>Matches the person who raised {pick.id}.</div></div>
                         </div>
                         <div style={{ marginTop: 16 }}><GoldButton small onClick={() => setStep(2)}>Continue</GoldButton></div>
                       </div>
@@ -2671,9 +2739,9 @@ function StoreView() {
                       <div>
                         <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 16px", background: C.redSoft, border: `1px solid ${C.red}33`, borderRadius: 6 }}>
                           <div style={{ width: 34, height: 34, borderRadius: "50%", background: C.red, display: "grid", placeItems: "center", color: "#fff", flexShrink: 0 }}><X size={18} /></div>
-                          <div><div style={{ font: `600 13px ${sans}`, color: C.red }}>{scan.name} · {scan.eid}</div><div style={{ font: `12px ${sans}`, color: C.inkSoft }}>Not the requester on file. Handover blocked.</div></div>
+                          <div><div style={{ font: `600 13px ${sans}`, color: C.red }}>{scan.eid}</div><div style={{ font: `12px ${sans}`, color: C.inkSoft }}>{pick.eid ? <>Not {pick.who}, who raised {pick.id}. Handover blocked.</> : <>Nobody is recorded against {pick.id}, so there is nothing to check this against. Handover blocked.</>}</div></div>
                         </div>
-                        <div style={{ marginTop: 16 }}><GoldButton small ghost onClick={() => setScan(null)}>Rescan</GoldButton></div>
+                        <div style={{ marginTop: 16 }}><GoldButton small ghost onClick={() => { setScan(null); setTyped(""); }}>Try again</GoldButton></div>
                       </div>
                     )}
                   </div>
@@ -2717,9 +2785,6 @@ function StoreView() {
 
 /* ============================== SECURITY ============================== */
 /* ===== GUARDS — each guard has their own post and only sees it ===== */
-const MOVES_SEED = [];
-const HOLDS_SEED = [];
-const GATELOG_SEED = [];
 const GUARDS = [];
 /* Who can authorise a movement. These are the desks that carry the authority —
    the person holding the desk comes from whoever is signed into it. */
@@ -4319,9 +4384,22 @@ function ExpensesView({ userKey = "accounts" }) {
 
 function AccountsView() {
   const mob = useIsMobile();
+  const { checkOverride } = useProc();
   const [unlocked, setUnlocked] = useState(false);
-  const [otp, setOtp] = useState(false);
+  const [asking, setAsking] = useState(false);
+  const [busy, setBusy] = useState(false);
   const [code, setCode] = useState("");
+  /* There was a six-digit "OTP sent to email and phone" here, and Verify let
+     through anything four characters long. No message was ever sent and nothing
+     was ever checked. The archive is now opened with the same authorisation code
+     the rest of the system uses, checked on the server and sealed in the ledger. */
+  const unlock = async () => {
+    if (!code.trim()) return toast("Type the authorisation code", "amber");
+    setBusy(true);
+    const who = await checkOverride(code.trim(), "Open the FY22 bill archive");
+    setBusy(false);
+    if (who) { setCode(""); setAsking(false); setUnlocked(true); toast("Archive open for this session", "green"); }
+  };
   return (
     <div>
       <Eyebrow>Reconciliation</Eyebrow>
@@ -4360,14 +4438,16 @@ function AccountsView() {
             </div>
             {!unlocked && (
               <div style={{ marginTop: 12 }}>
-                {!otp ? <GoldButton small ghost onClick={() => setOtp(true)}>Request access</GoldButton>
+                {!asking ? <GoldButton small ghost onClick={() => setAsking(true)}>Request access</GoldButton>
                   : (
                     <div style={{ background: C.panel, border: `1px solid ${C.line}`, borderRadius: 4, padding: 14 }}>
-                      <div style={{ font: `12px ${sans}`, color: C.inkSoft, lineHeight: 1.5, marginBottom: 10 }}>OTP sent to <b>email</b> and <b>phone</b>. Enter it to unlock.</div>
+                      <div style={{ font: `12px ${sans}`, color: C.inkSoft, lineHeight: 1.5, marginBottom: 10 }}>The archive is closed by default. Enter the authorisation code the management holds.</div>
                       <div style={{ display: "flex", gap: 8 }}>
-                        <input value={code} onChange={e => setCode(e.target.value)} placeholder="6-digit OTP" maxLength={6} style={{ ...inp, margin: 0, flex: 1, font: `14px ${mono}`, letterSpacing: "0.2em" }} />
-                        <GoldButton small onClick={() => { if (code.length >= 4) { setUnlocked(true); setOtp(false); } }}>Verify</GoldButton>
+                        <input type="password" value={code} onChange={e => setCode(e.target.value)} onKeyDown={e => e.key === "Enter" && unlock()}
+                          placeholder="Authorisation code" style={{ ...inp, margin: 0, flex: 1, font: `14px ${mono}`, letterSpacing: "0.2em" }} />
+                        <GoldButton small disabled={busy} onClick={unlock}>{busy ? "Checking…" : "Unlock"}</GoldButton>
                       </div>
+                      <div style={{ font: `11px ${sans}`, color: C.stone, marginTop: 8 }}>Checked on the server. Every attempt, accepted or refused, is written into the ledger.</div>
                     </div>
                   )}
               </div>
@@ -4409,7 +4489,18 @@ function PeopleView() {
     .filter(p => p.status !== "exited")
     .map(p => ({ ...p, quality: (p.phone || (contacts[p.id] || {}).phone) && p.photo ? 100 : p.photo ? 85 : 60 }));
   const total = headcount.reduce((a, [, n]) => a + n, 0);
-  const genId = () => { if (!name.trim()) return; const n = 20 + Math.floor(Math.random() * 60); setGenerated(`MB-${DEPT_CODES[dept] || "GEN"}-${String(n).padStart(4, "0")}`); };
+  /* This handed out `20 + Math.floor(Math.random() * 60)`, so it could — and in a
+     department of forty people usually would — offer an ID that already belongs
+     to somebody. The enrolment form has always taken the next free number; this
+     button now does the same thing, from the same roster. */
+  const genId = () => {
+    if (!name.trim()) return;
+    const code = DEPT_CODES[dept] || "GEN";
+    const used = people.filter(p => p.id.startsWith(`MB-${code}-`))
+      .map(p => parseInt(p.id.split("-")[2], 10) || 0);
+    const n = (used.length ? Math.max(...used) : 0) + 1;
+    setGenerated(`MB-${code}-${String(n).padStart(4, "0")}`);
+  };
   const maxDept = Math.max(1, ...headcount.map(d => d[1]));
   return (
     <div>
@@ -4440,7 +4531,12 @@ function PeopleView() {
               <button onClick={() => setInvestigate(e)} style={{ cursor: "pointer", background: "none", border: "none", color: C.gold, display: "grid", placeItems: "center" }}><ChevronRight size={18} /></button>
             </div>
           ))}
-          <div style={{ borderTop: `1px solid ${C.lineSoft}`, marginTop: 4, paddingTop: 12, font: `12px ${sans}`, color: C.stone }}>+ 53 more across 8 departments</div>
+          {/* This said "+ 53 more across 8 departments", flat, under a list that
+              already shows every one of them. Both numbers were written by hand
+              before the company's own roster was loaded. */}
+          <div style={{ borderTop: `1px solid ${C.lineSoft}`, marginTop: 4, paddingTop: 12, font: `12px ${sans}`, color: C.stone }}>
+            {roster.length} on the roster across {headcount.filter(([, n]) => n > 0).length} departments.
+          </div>
         </Card>
         <Card pad={22}>
           <Eyebrow>Add employee</Eyebrow>
@@ -4790,12 +4886,6 @@ function VendorAccount({ name, onClose }) {
 }
 
 
-function VendorAccountMount() {
-  const { openVendor, setOpenVendor } = useProc();
-  if (!openVendor) return null;
-  return <VendorAccount name={openVendor} onClose={() => setOpenVendor(null)} />;
-}
-
 /* ============================== VENDORS ============================== */
 function vAutoMap(headers) {
   const m = {};
@@ -4875,18 +4965,21 @@ function VendorImport({ onClose }) {
   );
 }
 
-const DEMO_OTP = "4821";
+/* A four-digit code printed on the screen beside the box you type it into is
+   not a verification. Nothing here sends a message, so nothing here claims to:
+   the vendor's details are confirmed by whoever is doing the verifying, and
+   said to be, and that is the truth of it until a gateway is connected. */
 function VerifyVendor({ v, onClose }) {
   const mob = useIsMobile(); const { verifyVendor, vendors } = useProc();
   const [stage, setStage] = useState("form");
   const [f, setF] = useState({ gst: v.gst || "", pan: v.pan || "", contact: v.contact || "", phone: v.phone || "", email: v.email || "", gstFile: "", panFile: "" });
-  const [op, setOp] = useState(""); const [oe, setOe] = useState("");
+  const [checked, setChecked] = useState(false);
   const [issued, setIssued] = useState("");
   const set = (k, val) => setF(s => ({ ...s, [k]: val }));
   const missing = !f.gst.trim() || !f.pan.trim() || !f.contact.trim() || !f.phone.trim() || !f.email.trim() || !f.gstFile || !f.panFile;
-  const sendOtp = () => { if (missing) { toast("Fill every field and attach both documents", "amber"); return; } setStage("otp"); toast("OTP sent to phone & email (demo)", "gold"); };
+  const toConfirm = () => { if (missing) { toast("Fill every field and attach both documents", "amber"); return; } setStage("otp"); };
   const verify = () => {
-    if (op.trim() !== DEMO_OTP || oe.trim() !== DEMO_OTP) { toast("OTP doesn't match — try the demo code", "red"); return; }
+    if (!checked) { toast("Confirm you have checked the details with them", "amber"); return; }
     const nextV = "MB-V-" + String(vendors.filter(x => x.vcode).length + 1).padStart(4, "0");
     verifyVendor(v.code, { gst: f.gst.trim(), pan: f.pan.trim(), contact: f.contact.trim(), phone: f.phone.trim(), email: f.email.trim(), vcode: nextV, docs: { gst: f.gstFile, pan: f.panFile } });
     setIssued(nextV); setStage("done"); toast(`${v.name} verified · ${nextV}`, "green");
@@ -4919,16 +5012,24 @@ function VerifyVendor({ v, onClose }) {
           </div>
           <label style={lbl}>Documents</label>
           <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr" : "1fr 1fr", gap: 10, margin: "6px 0 14px" }}>{fileBtn("GST certificate", "gstFile")}{fileBtn("PAN card", "panFile")}</div>
-          <GoldButton onClick={sendOtp}><span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Send size={14} /> Send OTP to phone &amp; email</span></GoldButton>
-          <div style={{ font: `11px ${sans}`, color: C.stone, marginTop: 10 }}>Real OTP &amp; document storage switch on with the backend (SMS/email gateway + secure cloud).</div>
+          <GoldButton onClick={toConfirm}><span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><ArrowRight size={14} /> Check these with them</span></GoldButton>
+          <div style={{ font: `11px ${sans}`, color: C.stone, marginTop: 10 }}>Sending them a code to confirm needs an SMS and email gateway — ask the management and it can be built in.</div>
         </>)}
 
         {stage === "otp" && (<>
-          <div style={{ background: C.goldTint, border: `1px solid ${C.gold}`, borderRadius: 10, padding: "10px 12px", font: `12px ${sans}`, color: C.inkSoft, marginBottom: 14 }}>We've sent a 4-digit code to <b>{f.phone}</b> and <b>{f.email}</b>. <span style={{ color: C.goldDeep }}>Demo code: <b>{DEMO_OTP}</b></span></div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-            <div><label style={lbl}>Phone OTP</label><input value={op} onChange={e => setOp(e.target.value)} placeholder="4 digits" style={{ ...inp, margin: "6px 0 14px", fontFamily: mono, letterSpacing: "0.3em" }} /></div>
-            <div><label style={lbl}>Email OTP</label><input value={oe} onChange={e => setOe(e.target.value)} placeholder="4 digits" style={{ ...inp, margin: "6px 0 14px", fontFamily: mono, letterSpacing: "0.3em" }} /></div>
+          <div style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 11, padding: 14, marginBottom: 14 }}>
+            {[["GST", f.gst], ["PAN", f.pan], ["Contact", f.contact], ["Phone", f.phone], ["Email", f.email],
+              ["GST certificate", f.gstFile], ["PAN card", f.panFile]].map(([k, v2], i) => (
+              <div key={k} style={{ display: "flex", justifyContent: "space-between", gap: 12, padding: "6px 0", borderTop: i ? `1px solid ${C.lineSoft}` : "none", font: `12px ${sans}` }}>
+                <span style={{ color: C.stone }}>{k}</span>
+                <span style={{ color: C.ink, fontWeight: 600, textAlign: "right", wordBreak: "break-all" }}>{v2}</span>
+              </div>
+            ))}
           </div>
+          <label style={{ display: "flex", alignItems: "flex-start", gap: 9, marginBottom: 14, font: `12.5px ${sans}`, color: C.ink, cursor: "pointer", lineHeight: 1.55 }}>
+            <input type="checkbox" checked={checked} onChange={e => setChecked(e.target.checked)} style={{ marginTop: 2 }} />
+            <span>I have read these back to {f.contact || "their contact"} and they confirm them.</span>
+          </label>
           <div style={{ display: "flex", gap: 10 }}><GoldButton onClick={verify}>Verify &amp; issue code</GoldButton><GoldButton ghost onClick={() => setStage("form")}>Back</GoldButton></div>
         </>)}
 
@@ -4954,7 +5055,7 @@ function AddVendor({ prefill, onClose }) {
     if (!f.name.trim()) { toast("Vendor name is needed", "amber"); return; }
     const code = "MB-" + (f.cat.trim().slice(0, 3).toUpperCase() || "GEN") + "-" + String(Math.floor(1000 + Math.random() * 9000));
     addVendor({ code, name: f.name.trim(), cat: f.cat.trim() || "General", terms: f.terms.trim() || "—", contact: f.contact.trim(), phone: f.phone.trim(), email: f.email.trim(), gst: f.gst.trim(), pan: f.pan.trim(), extras: f.city.trim() ? { city: f.city.trim() } : {} });
-    toast("Vendor added to the ledger — verify with OTP when you're ready", "green");
+    toast("Vendor added to the ledger — check their papers and verify when you're ready", "green");
     onClose();
   };
   const half = mob ? { display: "block" } : { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 };
@@ -5009,7 +5110,7 @@ function VendorsView() {
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
           <ShieldCheck size={18} color={C.goldDeep} />
           <span style={{ font: `600 13px ${sans}`, color: C.ink }}>{verified} of {vendors.length} vendors verified</span>
-          <span style={{ font: `12px ${sans}`, color: C.stone }}>· get an OTP and turn every supplier into a verified vendor 💪</span>
+          <span style={{ font: `12px ${sans}`, color: C.stone }}>· check their GST and PAN and turn every supplier into a verified vendor 💪</span>
         </div>
         <div style={{ height: 8, background: C.lineSoft, borderRadius: 4, overflow: "hidden", marginTop: 10 }}><div style={{ width: `${pct}%`, height: "100%", background: `linear-gradient(90deg, ${C.gold}, ${C.goldDeep})` }} /></div>
       </div>
@@ -5063,7 +5164,6 @@ const sel = { ...inp, margin: "6px 0 14px", appearance: "auto" };
 /* ============================== SHARED: CREATE PO (multi-item builder) ============================== */
 const numV = (x) => { const n = parseFloat(String(x == null ? "" : x).replace(/[^\d.]/g, "")); return isNaN(n) ? 0 : n; };
 const inr = (n) => "₹" + (Math.round(n) || 0).toLocaleString("en-IN");
-const CATALOG_SEED = [];
 /* What the scanner returns when it reads a vendor's quotation: the vendor and
    its line items, ready to become a PO. It is filled from the document you hand
    it, so an empty one means nothing has been scanned. */
@@ -5365,10 +5465,21 @@ function CreatePO({ prefill, onClose }) {
 
   const submit = () => {
     if (!filled.length) return toast("Add at least one item", "red");
-    const id = "PO-" + (4472 + Math.floor(Math.random() * 80));
+    /* The PO number was invented here and thrown away: the server assigns its
+       own. The gate pass was then raised against the invented one, so the gate
+       held a pass pointing at a purchase order that was never on file, and the
+       printed PO showed a number nobody could look up. Both now use the number
+       the server gave back, and no gate pass is raised if the PO did not save. */
     filled.forEach(r => learnItem(r.item, r.unit, r.rate, vendor));
-    const po = { id, vendor, site, terms, rows: filled, total, item: `${filled.length} item${filled.length > 1 ? "s" : ""} — ${filled[0].item}`, amt: total, status: "Pending", fresh: true };
-    addPO(po); issueGatePass({ id: "GP-" + id.replace(/^PO-/, ""), po: id, vendor, items: rows.map(r => r.item).filter(Boolean).slice(0, 2).join(", ") + (filled.length > 2 ? ` +${filled.length - 2}` : ""), total }); dropDraft("po"); setIssued(po); toast(`${id} raised · gate pass sent to gate`, "gold");
+    (async () => {
+      const saved = await addPO({ vendor, site, terms, rows: filled, total, lines: filled, item: `${filled.length} item${filled.length > 1 ? "s" : ""} — ${filled[0].item}`, amt: total });
+      if (!saved) return;
+      const id = saved.id;
+      await issueGatePass({ id: "GP-" + String(id).replace(/^PO-/, ""), po: id, vendor, items: rows.map(r => r.item).filter(Boolean).slice(0, 2).join(", ") + (filled.length > 2 ? ` +${filled.length - 2}` : ""), total });
+      dropDraft("po");
+      setIssued({ ...saved, vendor, site, terms, rows: filled, total });
+      toast(`${id} raised · gate pass sent to gate`, "gold");
+    })();
   };
 
   const cellInp = { ...inp, margin: 0, padding: "9px 10px", fontSize: 13, boxSizing: "border-box" };
@@ -5496,9 +5607,14 @@ function RequirementForm({ from = "Maintenance", prefillItem = "", onDone, compa
   const raise = () => {
     if (!item.trim()) return toast("Describe what you need", "red");
     if (over) return toast(`Only ${avail} ${match.unit} can be issued — ${held ? `${held} are on hold` : "that is all the store has"}`, "red");
-    const id = "RQ-" + (2211 + Math.floor(Math.random() * 80));
-    addReq({ id, dept, item, qty: qty || "—" });
-    toast(`${id} raised to store`, "gold"); setItem(""); setQty(""); onDone && onDone();
+    /* The number came out of Math.random() and the server assigns its own, so
+       the toast named a request that does not exist and the storekeeper was
+       looking for a different one. Wait for the row and read its number off it. */
+    (async () => {
+      const row = await addReq({ dept, item, qty: qty || "—" });
+      if (!row) return;
+      toast(`${row.id} raised to store`, "gold"); setItem(""); setQty(""); onDone && onDone();
+    })();
   };
   return (
     <div style={{ background: C.goldTint, border: `1px solid ${C.goldSoft}`, borderRadius: 12, padding: compact ? 14 : 18 }}>
@@ -6769,8 +6885,11 @@ function ReceiveShipment({ onClose }) {
 }
 
 /* ===== SITE LIMITS — what a project may hold, and who can break the rule ===== */
-const CAPS_SEED = [];
-const ADMIN_PIN = "2417";
+/* The override code is NOT in this file, and is not checked in this browser.
+   It lives in OVERRIDE_PIN on the server, which rate-limits the attempts and
+   seals every one of them — accepted or refused — into the ledger. What used to
+   be here was a four-digit constant compared in the browser and printed on the
+   screen underneath the input, which is not an override code, it is a label. */
 function capFor(caps, item, proj) {
   const norm = (x) => String(x || "").toLowerCase().replace(/[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
   const a = norm(item); if (!a) return null;
@@ -6783,11 +6902,19 @@ function capFor(caps, item, proj) {
 }
 function OverrideGate({ cap, asking, onClose, onPass }) {
   const mob = useIsMobile();
-  const [mode, setMode] = useState("pin");
-  const [pin, setPin] = useState(""); const [otp, setOtp] = useState(""); const [sent, setSent] = useState(false);
+  const { checkOverride } = useProc();
+  const [pin, setPin] = useState("");
+  const [busy, setBusy] = useState(false);
   const cell = { ...inp, margin: 0, padding: "10px 12px", fontSize: 15, boxSizing: "border-box", fontFamily: mono, letterSpacing: "0.28em", textAlign: "center" };
-  const tryPin = () => pin.trim() === ADMIN_PIN ? onPass("Chairman's override code") : toast("Wrong override code", "red");
-  const tryOtp = () => otp.trim() === DEMO_OTP ? onPass("OTP to the Chairman's mobile") : toast("Wrong OTP", "red");
+  /* The server decides. It is rate-limited to five attempts a minute and seals
+     every attempt into the ledger, which is the whole point of an override. */
+  const tryPin = async () => {
+    if (!pin.trim()) return toast("Type the override code", "amber");
+    setBusy(true);
+    const who = await checkOverride(pin.trim(), `${cap.item} at ${cap.proj} — ${asking} ${cap.unit} against a cap of ${cap.max}`);
+    setBusy(false);
+    if (who) { setPin(""); onPass(who); }
+  };
   return (
     <Overlay onClose={onClose} width={480}>
       <div style={{ padding: mob ? 18 : 24 }}>
@@ -6801,30 +6928,19 @@ function OverrideGate({ cap, asking, onClose, onPass }) {
           You are trying to put it at <b style={{ color: C.ink }}>{asking} {cap.unit}</b>.<br />
           {cap.why && <span style={{ fontStyle: "italic" }}>{cap.why}</span>}
         </div>
-        <div style={{ display: "flex", gap: 7, marginBottom: 12, flexWrap: "wrap" }}>
-          {[["pin", "Override code"], ["otp", "OTP to the Chairman"]].map(([k, l]) => (
-            <button key={k} onClick={() => setMode(k)} style={{ cursor: "pointer", border: `1px solid ${mode === k ? C.gold : C.line}`, background: mode === k ? C.goldTint : "#fff", color: mode === k ? C.goldDeep : C.stone, borderRadius: 20, padding: "7px 13px", font: `600 11px ${sans}` }}>{l}</button>
-          ))}
+        <label style={{ ...lbl, fontSize: 9 }}>The Chairman's override code</label>
+        <input type="password" value={pin} onChange={e => setPin(e.target.value.replace(/[^\d]/g, "").slice(0, 8))}
+          onKeyDown={e => e.key === "Enter" && tryPin()} placeholder="••••" style={{ ...cell, marginTop: 6 }} />
+        <div style={{ font: `11px ${sans}`, color: C.stone, marginTop: 7, lineHeight: 1.55 }}>
+          He types it himself. The code is held on the server, never in this screen — five wrong
+          tries in a minute and it stops answering.
         </div>
-        {mode === "pin" ? (<>
-          <label style={{ ...lbl, fontSize: 9 }}>The Chairman's override code</label>
-          <input type="password" value={pin} onChange={e => setPin(e.target.value.replace(/[^\d]/g, "").slice(0, 6))} placeholder="••••" style={{ ...cell, marginTop: 6 }} />
-          <div style={{ font: `11px ${sans}`, color: C.stone, marginTop: 7 }}>He types it himself. Demo code {ADMIN_PIN}.</div>
-          <div style={{ marginTop: 12 }}><GoldButton onClick={tryPin}>Unlock</GoldButton></div>
-        </>) : (<>
-          {!sent ? (
-            <div style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 11, padding: 13 }}>
-              <div style={{ font: `12px ${sans}`, color: C.inkSoft, marginBottom: 10 }}>A code goes to the Chairman's mobile. He reads it out, or approves from his own phone.</div>
-              <GoldButton small onClick={() => { setSent(true); toast("OTP sent to the Chairman", "gold"); }}>Send the OTP</GoldButton>
-            </div>
-          ) : (<>
-            <label style={{ ...lbl, fontSize: 9 }}>Code from the Chairman's mobile</label>
-            <input value={otp} onChange={e => setOtp(e.target.value.replace(/[^\d]/g, "").slice(0, 4))} placeholder="4-digit" style={{ ...cell, marginTop: 6 }} />
-            <div style={{ font: `11px ${sans}`, color: C.stone, marginTop: 7 }}>Demo OTP {DEMO_OTP}.</div>
-            <div style={{ marginTop: 12 }}><GoldButton onClick={tryOtp}>Unlock</GoldButton></div>
-          </>)}
-        </>)}
-        <div style={{ font: `11px ${sans}`, color: C.stone, marginTop: 12 }}>Whoever unlocks it, and when, is written into the record beside the item.</div>
+        <div style={{ marginTop: 12 }}>
+          <GoldButton disabled={busy} onClick={tryPin}>{busy ? "Checking…" : "Unlock"}</GoldButton>
+        </div>
+        <div style={{ font: `11px ${sans}`, color: C.stone, marginTop: 12 }}>
+          Every attempt is sealed into the ledger, accepted or refused, with who asked and what for.
+        </div>
       </div>
     </Overlay>
   );
@@ -7320,35 +7436,10 @@ function TaskModal({ title, icon: Icon = Sparkles, onClose, children }) {
 
 
 /* who sits under whom, and out of which office — seeded so the tree isn't empty on day one */
-const ORG_SEED = {
-  "MB-ADM-0001": { boss: null,           office: "hq"    },
-  "MB-HR-0001":  { boss: "MB-ADM-0001",  office: "hq"    },
-  "MB-PUR-0012": { boss: "MB-ADM-0001",  office: "hq"    },
-  "MB-STR-0004": { boss: "MB-ADM-0001",  office: "grand" },
-  "MB-ACC-0002": { boss: "MB-ADM-0001",  office: "hq"    },
-  "MB-MNT-0006": { boss: "MB-ADM-0001",  office: "grand" },
-  "MB-PUR-0018": { boss: "MB-PUR-0012",  office: "hq"    },
-  "MB-STR-0009": { boss: "MB-STR-0004",  office: "grand" },
-  "MB-SIT-0021": { boss: "MB-ADM-0001",  office: "twin"  },
-  "MB-SEC-0007": { boss: "MB-HR-0001",   office: "grand" },
-  "MB-SEC-0012": { boss: "MB-HR-0001",   office: "twin"  },
-  "MB-SIT-0052": { boss: "MB-SIT-0021",  office: "curo"  },
-  "MB-STR-0014": { boss: "MB-STR-0004",  office: "grand" },
-  "MB-PUR-0009": { boss: "MB-PUR-0012",  office: "hq"    },
-  "MB-LAB-0087": { boss: "MB-SIT-0021",  office: "grand" },
-  "MB-LAB-0102": { boss: "MB-SIT-0021",  office: "grand" },
-  "MB-LAB-0118": { boss: "MB-SIT-0021",  office: "twin"  },
-  "MB-LAB-0131": { boss: "MB-SIT-0052",  office: "curo"  },
-  "MB-SIT-0044": { boss: "MB-SIT-0021",  office: "twin"  },
-};
 const P_TYPES = ["Staff", "Site", "Labour", "Security"];
 const typeTone = (t) => t === "Labour" ? "amber" : t === "Security" ? "stone" : t === "Site" ? "gold" : "green";
 
-const PEOPLE_SEED = [];
 
-const HRLOG_SEED = [];
-const HRTASKS_SEED = [];
-const HRANN_SEED = [];
 
 const fmtToday = () => new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
 /* EDIT 18 of 23: eight buttons said "Sending to printer…" and did nothing at all
@@ -7524,21 +7615,6 @@ function ShareCard({ p, onClose }) {
 }
 
 /* ---------- Enrol a person → issue ID + QR ---------- */
-const LEAVE_POLICY = [
-  ["Casual leave", "12 a year", "Accrues 1 a month. Carries nothing forward."],
-  ["Sick leave", "6 a year", "Medical note needed beyond 2 days at a stretch."],
-  ["Earned leave", "15 a year", "After probation. Encashable at year end."],
-  ["Public holidays", "10 a year", "Per the group calendar shared each January."],
-  ["Unpaid leave", "By approval", "Manager + HR both have to approve in writing."],
-];
-const INCENTIVE_BOOK = [
-  ["Quarter Star bonus", "Up to ₹10,000", "Score 8+/10 across performance, attendance and tasks."],
-  ["Attendance bonus", "₹1,500 a month", "Full month, no unapproved absence."],
-  ["Site allowance", "₹2,000 a month", "For staff posted at a live site."],
-  ["Overtime", "1.5× hourly", "Approved hours beyond the shift, paid with salary."],
-  ["Festival advance", "Interest-free", "One month's salary, recovered over 6 months."],
-  ["Referral", "₹5,000", "Paid after the referred person clears probation."],
-];
 /**
  * The leave rules a new person lands on, with the reason beside each.
  *
@@ -7738,9 +7814,13 @@ function EnrollPerson({ onClose }) {
           </div>
           <div style={{ ...two, marginTop: 10 }}>
             <div style={gap}><L>Personal mobile</L><input value={f.phone} onChange={e => set("phone", e.target.value)} placeholder="+91 …" style={{ ...cell, marginTop: 5 }} /></div>
-            <div><L>Personal email</L><input value={f.email} onChange={e => set("email", e.target.value)} placeholder="name@gmail.com" style={{ ...cell, marginTop: 5 }} /></div>
+            {/* emailCheck was written and then never wired to anything, so the one
+                field where a typo costs the most — the address a leaver keeps —
+                took whatever was typed. It says what is wrong while you type. */}
+            <div><CheckedField label="Personal email" value={f.email} onChange={v => set("email", v)}
+              placeholder="name@gmail.com" check={(v) => emailCheck(v)} /></div>
           </div>
-          <div style={{ font: `11px ${sans}`, color: C.stone, marginTop: 6 }}>Both get an OTP at the last step. Company email and number are issued after the ID.</div>
+          <div style={{ font: `11px ${sans}`, color: C.stone, marginTop: 6 }}>Their own number and address, so the company can still reach them after they leave. Company email and number are issued after the ID.</div>
         </>)}
 
         {step === 1 && (<>
@@ -8105,7 +8185,6 @@ function LettersView({ presetPerson }) {
 
 /* ---------- Person profile ---------- */
 /* ===== FULL PROFILE — the whole story of a person ===== */
-function hashN(s, mod) { let h = 0; for (let i = 0; i < String(s).length; i++) h = (h * 31 + String(s).charCodeAt(i)) >>> 0; return h % mod; }
 function parseJoin(j) {
   const m = String(j || "").match(/(\d{1,2})\s+([A-Za-z]{3})\s+(\d{4})/);
   if (!m) return null;
@@ -8113,6 +8192,159 @@ function parseJoin(j) {
   if (mi < 0) return null;
   return new Date(Number(m[3]), mi, Number(m[1]));
 }
+/**
+ * Recording a raise.
+ *
+ * The Revisions panel on the profile has always told HR to "change it on their
+ * record and the next pay run picks it up", and there was nothing in the app
+ * that could change it: a salary was set once, at enrolment, and never again.
+ * `setSalary` sat on the context unused, and the route behind it dropped
+ * travelling, medical and the two statutory switches — so wiring the old one up
+ * would have quietly cut people's pay.
+ *
+ * The split is proposed by the employer's own policy, exactly as at enrolment,
+ * so a raise lands in the same shape as everything already on the books.
+ */
+function ReviseSalary({ p, sal, onClose }) {
+  const mob = useIsMobile();
+  const { setSalary, salaryPolicies = {}, deductionHeads = {}, companies = [] } = useProc();
+  const [gross, setGross] = useState(String(sal?.gross || ""));
+  const [medical, setMedical] = useState(String(sal?.medical ?? 500));
+  const [esiOn, setEsiOn] = useState(!!sal?.esiOn);
+  const [pfOn, setPfOn] = useState(!!sal?.pfOn);
+  const [why, setWhy] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const g = Number(gross) || 0;
+  const med = Number(medical) || 0;
+  const policy = salaryPolicies[p.employer] || null;
+  const split = g > 0 && policy ? proposeBreakUp(policy, g, med) : null;
+  const heads = (deductionHeads[p.employer] || []).filter(h => h.active);
+  /* A whole 30-day month, so HR sees the reduction at its full size rather than
+     a figure pro-rated by days she has not entered yet. */
+  const monthly = split && heads.length
+    ? reductionsFor(heads, { ...split, esiOn, pfOn, pfWages: sal?.pfWages || 0 },
+        { gross: g, eGross: g, days: 30, monthDays: 30 })
+    : [];
+  const was = sal?.gross || 0;
+  const diff = g - was;
+  const coName = (companies.find(c => c.id === p.employer) || {}).name || "their company";
+
+  const save = async () => {
+    if (g <= 0) return toast("Type the new monthly gross", "amber");
+    if (!why.trim()) return toast("Say what the change is for — it goes in the ledger", "amber");
+    setBusy(true);
+    const next = split
+      ? { gross: g, basic: split.basic, hra: split.hra, travel: split.travel, medical: split.medical,
+          special: split.special, esiOn, pfOn, pfWages: sal?.pfWages || 0, note: why.trim() }
+      /* No policy for that company yet, so there is nothing to split by. The
+         gross is recorded as it stands rather than invented into parts. */
+      : { gross: g, basic: 0, hra: 0, travel: 0, medical: med, special: 0,
+          esiOn, pfOn, pfWages: sal?.pfWages || 0, note: why.trim() };
+    const ok = await setSalary(p.id, next);
+    setBusy(false);
+    if (ok !== null) { toast(`${p.name} is now on ${inr(g)} a month`, "green"); onClose(); }
+  };
+
+  const cell = { ...inp, margin: 0, padding: "10px 12px", fontSize: 14, boxSizing: "border-box" };
+  const Sw = ({ on, set, label, sub }) => (
+    <button onClick={() => set(!on)} style={{ cursor: "pointer", textAlign: "left", width: "100%",
+      border: `1px solid ${on ? C.green : C.line}`, background: on ? C.greenSoft : "#fff",
+      borderRadius: 10, padding: "10px 12px", marginTop: 8 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <span style={{ width: 18, height: 18, borderRadius: 5, border: `1.5px solid ${on ? C.green : C.line}`,
+          background: on ? C.green : "#fff", display: "grid", placeItems: "center", flexShrink: 0 }}>
+          {on && <Check size={12} color="#fff" />}
+        </span>
+        <span style={{ font: `600 12px ${sans}`, color: C.ink }}>{label}</span>
+      </div>
+      <div style={{ font: `11px ${sans}`, color: C.stone, marginTop: 4 }}>{sub}</div>
+    </button>
+  );
+
+  return (
+    <Overlay onClose={onClose} width={540}>
+      <div style={{ padding: mob ? 18 : 24 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
+          <TrendingUp size={17} color={C.goldDeep} /><Eyebrow>Salary revision</Eyebrow>
+          <button onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
+        </div>
+        <h2 style={{ font: `400 20px ${serif}`, margin: "4px 0 4px" }}>What is {p.name} on now?</h2>
+        <div style={{ font: `12px ${sans}`, color: C.stone, marginBottom: 16 }}>
+          {was > 0 ? <>On {inr(was)} a month today, paid by {coName}.</> : <>Nothing on file yet, paid by {coName}.</>}
+        </div>
+
+        <label style={lbl}>New monthly gross (₹)</label>
+        <input value={gross} onChange={e => setGross(e.target.value.replace(/[^\d]/g, ""))}
+          placeholder="e.g. 32000" style={{ ...cell, marginTop: 6, fontFamily: mono }} />
+        {g > 0 && was > 0 && diff !== 0 && (
+          <div style={{ font: `11px ${sans}`, color: diff > 0 ? C.green : C.amber, marginTop: 6 }}>
+            {diff > 0 ? "Up" : "Down"} {inr(Math.abs(diff))} a month · {Math.abs(Math.round(diff / was * 1000) / 10)}%
+            {diff > 0 ? ` · ${inr(diff * 12)} more a year` : ` · ${inr(Math.abs(diff) * 12)} less a year`}
+          </div>
+        )}
+
+        <label style={{ ...lbl, marginTop: 14, display: "block" }}>Medical allowance (₹ a month)</label>
+        <input value={medical} onChange={e => setMedical(e.target.value.replace(/[^\d]/g, ""))}
+          style={{ ...cell, marginTop: 6, fontFamily: mono }} />
+
+        <Sw on={esiOn} set={setEsiOn} label="E.S.I. applies" sub="Employee State Insurance is deducted from their pay." />
+        <Sw on={pfOn} set={setPfOn} label="P.F. applies" sub="Provident Fund is deducted from their pay." />
+
+        {split && (
+          <div style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 10, padding: 12, marginTop: 14 }}>
+            <div style={{ font: `600 11px ${sans}`, color: C.inkDeep, marginBottom: 6 }}>
+              How it splits — {coName}&rsquo;s own rule
+            </div>
+            {[["Basic", split.basic], ["H.R.A.", split.hra], ["Travelling", split.travel], ["Medical", split.medical], ["Special", split.special]].map(([k, v], i) => (
+              <div key={k} style={{ display: "flex", justifyContent: "space-between", font: `12px ${sans}`, padding: "5px 0", borderTop: i ? `1px solid ${C.lineSoft}` : "none" }}>
+                <span style={{ color: C.inkSoft }}>{k}</span><span style={{ fontFamily: mono, color: C.ink }}>{inr(v)}</span>
+              </div>
+            ))}
+            <div style={{ display: "flex", justifyContent: "space-between", font: `600 12px ${sans}`, padding: "7px 0 0", borderTop: `1px solid ${C.line}`, marginTop: 4 }}>
+              <span>Gross</span><span style={{ fontFamily: mono }}>{inr(split.gross)}</span>
+            </div>
+            {monthly.length > 0 && (
+              <div style={{ marginTop: 10, paddingTop: 8, borderTop: `1px solid ${C.line}` }}>
+                <div style={{ font: `600 11px ${sans}`, color: C.inkDeep, marginBottom: 4 }}>Reductions, in a full month</div>
+                {monthly.map(x => (
+                  <div key={x.code} style={{ display: "flex", justifyContent: "space-between", font: `12px ${sans}`, padding: "4px 0" }}>
+                    <span style={{ color: C.inkSoft }}>{x.label}</span><span style={{ fontFamily: mono, color: C.amber }}>&minus;{inr(x.amount)}</span>
+                  </div>
+                ))}
+                <div style={{ display: "flex", justifyContent: "space-between", font: `600 12px ${sans}`, paddingTop: 6, marginTop: 4, borderTop: `1px solid ${C.lineSoft}` }}>
+                  <span>In hand, a full month</span>
+                  <span style={{ fontFamily: mono, color: C.green }}>{inr(g - monthly.reduce((a, x) => a + x.amount, 0))}</span>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+        {!split && g > 0 && (
+          <div style={{ font: `12px ${sans}`, color: C.stone, marginTop: 14, lineHeight: 1.6 }}>
+            {coName} has no salary policy on file, so there is no rule to split this by. The gross is
+            recorded as it stands and nothing is invented into parts.
+          </div>
+        )}
+
+        <label style={{ ...lbl, marginTop: 14, display: "block" }}>What is this for?</label>
+        <textarea value={why} onChange={e => setWhy(e.target.value)} rows={2}
+          placeholder="e.g. annual revision agreed 1 Oct 2026 / promoted to Site Supervisor"
+          style={{ ...cell, marginTop: 6, resize: "vertical" }} />
+        <div style={{ font: `11px ${sans}`, color: C.stone, marginTop: 6, lineHeight: 1.5 }}>
+          The ledger records that pay changed and who changed it, never the figures. The next pay run
+          uses the new structure; months already released keep the one they were worked out on.
+        </div>
+
+        <div style={{ display: "flex", gap: 8, marginTop: 16, flexWrap: "wrap" }}>
+          <GoldButton disabled={busy} onClick={save}>{busy ? "Saving\u2026" : "Record the revision"}</GoldButton>
+          <GoldButton ghost onClick={onClose}>Cancel</GoldButton>
+        </div>
+      </div>
+    </Overlay>
+  );
+}
+
 /**
  * What is actually known about somebody, for their profile.
  *
@@ -8151,6 +8383,7 @@ function buildStory(p) {
 function FullProfile({ p, onClose }) {
   const [fileOpen, setFileOpen] = useState(null);
   const [liveCam, setLiveCam] = useState(null);
+  const [revising, setRevising] = useState(false);
   const mob = useIsMobile();
   const { activeFirm, salaries = {}, payRuns = [] } = useProc();
   const s = buildStory(p);
@@ -8272,9 +8505,16 @@ function FullProfile({ p, onClose }) {
                 revision, so there is nothing to show and it says that. */}
             <Sec title="Revisions" icon={<TrendingUp size={14} color={C.goldDeep} />}>
               <div style={{ font: `12px ${sans}`, color: C.stone, lineHeight: 1.6 }}>
-                No revision has been recorded for anybody yet — there is one salary on file per
-                person, the one they are on now. When a raise is agreed, change it on their record
-                and the next pay run picks it up.
+                There is one salary on file per person, the one they are on now. When a raise is
+                agreed, record it here and the next pay run picks it up — months already released
+                keep the structure they were worked out on.
+              </div>
+              <div style={{ marginTop: 10 }}>
+                <GoldButton small onClick={() => setRevising(true)}>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                    <TrendingUp size={13} /> {sal && sal.gross > 0 ? "Change the salary" : "Set a salary"}
+                  </span>
+                </GoldButton>
               </div>
             </Sec>
 
@@ -8311,6 +8551,7 @@ function FullProfile({ p, onClose }) {
         </div>
       </div>
       {fileOpen && <FilePreview title={fileOpen.title} meta={fileOpen.meta} onClose={() => setFileOpen(null)} />}
+      {revising && <ReviseSalary p={p} sal={sal} onClose={() => setRevising(false)} />}
     </Overlay>
   );
 }
@@ -8885,7 +9126,6 @@ const attPeriod = (att) => [...new Set(Object.values(att || {}).flat().map(r => 
    happened to come back last. */
 const attOn = (days, date) => (days || []).find(r => r.date === date) || null;
 
-const ATT_SEED = {};
 
 const toMin = (t) => { if (!t) return null; const [h, m] = t.split(":").map(Number); return h * 60 + (m || 0); };
 const hhmm = (mins) => `${Math.floor(mins / 60)}h ${String(mins % 60).padStart(2, "0")}m`;
@@ -8911,11 +9151,6 @@ function attSummary(id, att, shift) {
   const total = days.length || 1;
   const reqMins = present * (shift.hours * 60);
   return { present, absent, late, incomplete, mins, reqMins, pct: Math.round(present / total * 100), days };
-}
-function mergeAtt(existing, rows) {
-  const a = { ...existing };
-  rows.forEach(r => { if (!r.id || !r.date) return; const arr = (a[r.id] ? [...a[r.id]] : []).filter(x => x.date !== r.date); arr.push({ date: r.date, in: r.in || null, out: r.out || null }); a[r.id] = arr; });
-  return a;
 }
 function taskStats(name, hrTasks) {
   const mine = hrTasks.filter(t => t.who === name);
@@ -9098,7 +9333,6 @@ function AttendanceView() {
 }
 
 /* ---------- Incentive packages ---------- */
-const PKG_SEED = [];
 
 function PackageCreate({ onClose }) {
   const mob = useIsMobile(); const { addPackage } = useProc();
@@ -9503,7 +9737,6 @@ const relDay = (dateStr) => { const diff = Math.round((asDate(dateStr) - asDate(
 const niceDate = (dateStr) => { const d = asDate(dateStr); return `${WD[d.getDay()]} ${d.getDate()} ${MONTHS[d.getMonth()].slice(0, 3)}`; };
 const t12 = (t) => { if (!t) return ""; let [h, m] = t.split(":").map(Number); const ap = h >= 12 ? "PM" : "AM"; h = h % 12 || 12; return `${h}:${String(m).padStart(2, "0")} ${ap}`; };
 
-const CAL_SEED = [];
 
 function useVisibleEvents(userKey) {
   const { events, people } = useProc();
@@ -9705,10 +9938,10 @@ function ConnectModal({ c, onClose }) {
         <div style={{ background: C.paper, borderRadius: 10, padding: "12px 14px", font: `12px ${sans}`, color: C.inkSoft, lineHeight: 1.6, marginBottom: 14 }}>
           Connecting signs in securely — {c.key === "claude" ? "with an API key" : "through the official sign-in (OAuth)"}. No password is ever stored in the app. Your developer flips this on once; after that it just works for everyone.
         </div>
-        <GoldButton onClick={() => { connect(c.key); toast(`${c.name} connected · demo`, "green"); onClose(); }}>
-          <span style={{ display: "inline-flex", alignItems: "center", gap: 7 }}><Link2 size={15} /> Simulate connect (demo)</span>
+        <GoldButton onClick={() => { connect(c.key); toast(`${c.name} switched on`, "green"); onClose(); }}>
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 7 }}><Link2 size={15} /> Switch it on</span>
         </GoldButton>
-        <div style={{ font: `11px ${sans}`, color: C.stone, marginTop: 10 }}>Demo flips the UI to the connected state so you can see it. Live data flows once the secure link is finished.</div>
+        <div style={{ font: `11px ${sans}`, color: C.stone, marginTop: 10 }}>This records that the company wants {c.name} wired in, and it is saved. Data starts moving once the secure sign-in is finished — that last step is your developer's.</div>
       </div>
     </Overlay>
   );
@@ -9729,14 +9962,14 @@ function ConnectionsView() {
             <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 10 }}>
               <div style={{ width: 46, height: 46, borderRadius: 13, background: c.tint, display: "grid", placeItems: "center", color: c.ink, flexShrink: 0 }}><Ic size={23} /></div>
               <div style={{ flex: 1, minWidth: 0 }}><div style={{ font: `600 14px ${sans}`, color: C.ink }}>{c.name}</div><div style={{ font: `11px ${sans}`, color: C.stone }}>{c.tag}</div></div>
-              <Pill tone={on ? "green" : "stone"}>{on ? "Connected · demo" : "Not connected"}</Pill>
+              <Pill tone={on ? "amber" : "stone"}>{on ? "Switched on · link pending" : "Off"}</Pill>
             </div>
             <ul style={{ margin: "0 0 14px", padding: 0, listStyle: "none" }}>
               {c.does.map((d, i) => <li key={i} style={{ display: "flex", gap: 8, font: `12px ${sans}`, color: C.inkSoft, padding: "3px 0" }}><Check size={14} color={C.green} style={{ flexShrink: 0, marginTop: 1 }} /> {d}</li>)}
             </ul>
             {on
-              ? <GoldButton small ghost onClick={() => { disconnect(c.key); toast(`${c.name} disconnected`, "stone"); }}>Disconnect</GoldButton>
-              : <GoldButton small onClick={() => setPick(c)}><span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Plug size={14} /> Connect</span></GoldButton>}
+              ? <GoldButton small ghost onClick={() => { disconnect(c.key); toast(`${c.name} switched off`, "stone"); }}>Switch off</GoldButton>
+              : <GoldButton small onClick={() => setPick(c)}><span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Plug size={14} /> Switch on</span></GoldButton>}
           </Card>
         ); })}
       </div>
@@ -9745,7 +9978,7 @@ function ConnectionsView() {
         <div style={{ font: `600 11px ${sans}`, letterSpacing: "0.08em", textTransform: "uppercase", color: C.stone, marginBottom: 8 }}>Coming soon</div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>{SOON.map(s => <span key={s} style={{ font: `12px ${sans}`, color: C.stone, background: "#fff", border: `1px solid ${C.line}`, borderRadius: 20, padding: "6px 12px" }}>{s}</span>)}</div>
       </div>
-      <div style={{ display: "flex", alignItems: "flex-start", gap: 8, marginTop: 14, font: `12px ${sans}`, color: C.stone, lineHeight: 1.5 }}><Info size={14} color={C.goldDeep} style={{ flexShrink: 0, marginTop: 1 }} /> These buttons are the real entry point. The secure handshake — Google &amp; Facebook via OAuth, Claude via an API key — is a small backend step your developer finishes; then live data flows in.</div>
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 8, marginTop: 14, font: `12px ${sans}`, color: C.stone, lineHeight: 1.5 }}><Info size={14} color={C.goldDeep} style={{ flexShrink: 0, marginTop: 1 }} /> Switching one on is saved and is the real entry point — nothing here pretends to be connected. The secure handshake itself — Google &amp; Facebook via OAuth, Claude via an API key — is a small backend step your developer finishes; then live data flows in.</div>
       {pick && <ConnectModal c={pick} onClose={() => setPick(null)} />}
     </div>
   );
@@ -9767,10 +10000,11 @@ function ConnectionsView() {
 
    3. Org — who reports to whom, drawn as a tree that grows as HR enters people.
 
-   HONEST NOTE ON THE AUTHORISATION CODE: everything here runs in the browser, so the code is
-   checked in the browser. That is fine for stopping a colleague printing a card off someone
-   else's screen. It is NOT access control — anyone who can open the file can read the code.
-   Real enforcement belongs on the server that talks to the printer, and that is a backend job.  */
+   THE AUTHORISATION CODE: it is not in this file and is not checked in this browser. Both
+   gates send it to the server, which rate-limits the attempts and seals every one of them —
+   accepted or refused — into the ledger with the card, the person and the reason. A card
+   opens doors that are shut to outsiders, so the check had to be somewhere a colleague
+   cannot read.  */
 
 /* The four sites the company had when this was written. They are a FALLBACK for
    the self-contained demo provider only — the real list comes from the server,
@@ -9801,7 +10035,6 @@ const officeIn = (offices, id) => {
 };
 
 /* zones a card can open — printed on the back, and the reason a lost card matters */
-const ZONES = ["Main gate", "Site office", "Sales office", "Store & yard", "Accounts room", "Server room", "Basement plant", "Club house", "Tower floors"];
 /* Which zones a card opens, per department. This mirrors the same table in
    @marbella/shared, which is what the server enforces — the copy here only
    decides what gets printed on the back of the card. */
@@ -9841,28 +10074,12 @@ const UNDERTAKINGS = [
   "I understand a further replacement may be charged to me.",
 ];
 
-const CARD_LOG_SEED = [];
 
 /* Each department's working day. The twelve departments are the company's own,
    and the hours are the shift the majority of that department is actually on
    according to the employee records — not a number somebody guessed. `setBy`
    stays as the department, because the manager who owns it is a person, and the
    people are on file; HR fills the name in when they confirm it. */
-const DEPT_RULES_SEED = {
-  Sales:        { in: "10:30", out: "18:30", hours: 8, days: "Mon–Sat", grace: 15, setBy: "Sales",        note: "" },
-  CRM:          { in: "10:30", out: "18:30", hours: 8, days: "Mon–Sat", grace: 15, setBy: "CRM",          note: "" },
-  Accounts:     { in: "10:30", out: "18:30", hours: 8, days: "Mon–Sat", grace: 15, setBy: "Accounts",     note: "" },
-  IT:           { in: "10:30", out: "18:30", hours: 8, days: "Mon–Sat", grace: 15, setBy: "IT",           note: "" },
-  Admin:        { in: "10:30", out: "18:30", hours: 8, days: "Mon–Sat", grace: 15, setBy: "Admin",        note: "" },
-  Pantry:       { in: "10:30", out: "18:30", hours: 8, days: "Mon–Sat", grace: 15, setBy: "Pantry",       note: "" },
-  HR:           { in: "10:15", out: "18:30", hours: 8, days: "Mon–Sat", grace: 15, setBy: "HR",           note: "" },
-  Marketing:    { in: "10:30", out: "18:30", hours: 8, days: "Mon–Sat", grace: 15, setBy: "Marketing",    note: "" },
-  Project:      { in: "09:30", out: "18:30", hours: 9, days: "Mon–Sat", grace: 15, setBy: "Project",      note: "Site postings start earlier than head office." },
-  Purchase:     { in: "10:30", out: "18:30", hours: 8, days: "Mon–Sat", grace: 15, setBy: "Purchase",     note: "" },
-  Maintenance:  { in: "09:00", out: "18:30", hours: 9, days: "Mon–Sat", grace: 15, setBy: "Maintenance",  note: "" },
-  Horticulture: { in: "08:30", out: "18:30", hours: 9, days: "Mon–Sat", grace: 15, setBy: "Horticulture", note: "Earliest start — watering before the day heats up." },
-};
-
 const nowStamp = () => {
   const d = new Date();
   const M = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
@@ -9917,34 +10134,44 @@ function CardFace({ p, ver, dead }) {
   );
 }
 
-/* ---------- authorisation. Client-side only — see the note at the top. ---------- */
-function AuthGate({ label = "Authorise", pass, setPass, onOk, disabled, hint }) {
+/* ---------- authorisation ----------
+   The code is NOT in this file and is not checked in this browser. It goes to the
+   server, which rate-limits the attempts and seals each one — accepted or refused —
+   into the ledger with what it was for. What used to be here was the word "marbella"
+   compared in the browser and printed on the screen under the input, which is not an
+   authorisation code, it is a label. A card opens doors; this had to be real. */
+function AuthGate({ label = "Authorise", pass, setPass, onOk, disabled, hint, what = "Card bureau" }) {
+  const { checkOverride } = useProc();
   const [err, setErr] = useState("");
-  const go = () => {
+  const [busy, setBusy] = useState(false);
+  const go = async () => {
     if (!pass.trim()) { setErr("Enter the authorisation code."); return; }
-    if (pass.trim().toLowerCase() !== "marbella") { setErr("That code isn't right. Ask the HR Head."); return; }
-    setErr(""); onOk();
+    setErr(""); setBusy(true);
+    const who = await checkOverride(pass.trim(), what);
+    setBusy(false);
+    if (!who) { setErr("That code isn't right. The management holds it."); return; }
+    setPass(""); onOk(who);
   };
   return (
     <div style={{ background: C.paper, borderRadius: 11, padding: 14, marginTop: 4 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
         <LockIcon size={15} color={C.goldDeep} />
         <div style={{ font: `600 12px ${sans}`, color: C.ink }}>Authorisation code</div>
-        <span style={{ marginLeft: "auto", font: `10px ${sans}`, color: C.stone }}>default: marbella</span>
+        <span style={{ marginLeft: "auto", font: `10px ${sans}`, color: C.stone }}>held by the management</span>
       </div>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         <input type="password" value={pass} onChange={e => { setPass(e.target.value); setErr(""); }}
           placeholder="Enter code"
           style={{ flex: 1, minWidth: 150, padding: "10px 12px", border: `1px solid ${err ? C.red : C.line}`, borderRadius: 9, font: `13px ${sans}`, outline: "none", color: C.ink, background: "#fff" }} />
-        <GoldButton small onClick={go}>
-          <span style={{ display: "inline-flex", alignItems: "center", gap: 6, opacity: disabled ? .5 : 1 }}><Printer size={14} /> {label}</span>
+        <GoldButton small disabled={busy} onClick={go}>
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 6, opacity: disabled ? .5 : 1 }}><Printer size={14} /> {busy ? "Checking…" : label}</span>
         </GoldButton>
       </div>
       {err && <div style={{ font: `12px ${sans}`, color: C.red, marginTop: 7, display: "flex", alignItems: "center", gap: 5 }}><TriangleAlert size={13} /> {err}</div>}
       {hint && !err && <div style={{ font: `11px ${sans}`, color: C.stone, marginTop: 7 }}>{hint}</div>}
       <div style={{ font: `10px ${sans}`, color: C.stone, marginTop: 8, display: "flex", alignItems: "flex-start", gap: 5, lineHeight: 1.5 }}>
         <Info size={12} color={C.goldDeep} style={{ flexShrink: 0, marginTop: 1 }} />
-        The code is checked in the browser. It stops a colleague printing from your screen — it is not access control. Enforcement belongs on the printer's server.
+        The code is checked on the server, never in this screen. Five wrong tries in a minute and it stops answering, and every attempt is written into the ledger with what it was for.
       </div>
     </div>
   );
@@ -10003,6 +10230,7 @@ function DamagedSwap({ p, ver, onClose, onIssue }) {
         </div>
 
         <AuthGate label="Send to printer" pass={pass} setPass={setPass} disabled={!ready}
+          what={`Reprint the ID card for ${p.name} (${p.id}) — old card v${ver} handed back, ${REISSUE[reason].label.toLowerCase()}`}
           hint={ready ? null : "Tick the two boxes above first."}
           onOk={() => {
             if (!ready) { toast("Confirm the old card came back first", "amber"); return; }
@@ -10134,6 +10362,7 @@ function ReprintFlow({ p, ver, onClose, onIssue }) {
               This entry can be added to but never edited or deleted. That is the point of it.
             </div>
             <AuthGate label="Cancel old card &amp; print new" pass={pass} setPass={setPass}
+              what={`Kill ID card v${ver} for ${p.name} (${p.id}) and print v${ver + 1} — ${REISSUE[reason].label.toLowerCase()}`}
               onOk={() => {
                 onIssue({ reason, recv: "—", killed: true,
                   note: `${REISSUE[reason].label}. Last in hand ${when}. Told ${told}.${reason === "stolen" ? ` FIR ${fir}.` : ""} ${circ}` });
@@ -10857,25 +11086,19 @@ function DeptRulesView() {
 /* ============================== INTAKE · DOSSIER · EXIT ==============================
 
    TAMPER EVIDENCE — READ THIS BEFORE TRUSTING THE LEDGER.
-   Every HR event is written into a chain. Each entry stores a fingerprint computed from its
-   own contents plus the fingerprint of the entry before it. Edit any past entry and every
-   fingerprint after it stops matching, and the Verify button says exactly where the break is.
+   Every HR event is written into a chain. Each entry stores a seal computed from its own
+   contents plus the seal of the entry before it, so editing any past entry breaks every seal
+   after it and the Verify button says exactly where.
 
-   That makes changes VISIBLE. It does not make them IMPOSSIBLE. This whole app runs in the
-   browser, so anyone who can open the file can rewrite the state — and, if they knew what
-   they were doing, recompute the chain to match. Making records genuinely unalterable needs
-   three things this build cannot have: storage on a server the user does not control,
-   append-only permissions at the database level, and the fingerprints signed with a key that
-   never reaches the browser. Until that exists, treat this as a seal on an envelope: it shows
-   you if someone opened it. It does not stop them.                                          */
+   The seals are SHA-256 and they are computed on the SERVER, where this browser cannot
+   reach them; the browser re-derives them independently to check, and `verifyLedger` below
+   reports which entry failed. The 64-bit pair this file used to compute here is gone — it
+   disagreed with every server seal, so a perfectly good ledger reported itself tampered,
+   and a tamper-detector that cries wolf teaches people to ignore it.
 
-const h32 = (str) => { let h = 2166136261; for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; };
-const fingerprint = (payload, prev) => {
-  const s = prev + "|" + payload;
-  const a = h32(s), b = h32(s.split("").reverse().join("") + a);
-  return (a.toString(16).padStart(8, "0") + b.toString(16).padStart(8, "0")).toUpperCase();
-};
-const ledgerPayload = (e) => [e.at, e.who, e.kind, e.subject, e.detail].join("\u0001");
+   What is still true: storage the user cannot write to and append-only permissions at the
+   database level are what make a record unalterable. The chain makes a change VISIBLE. */
+
 /* rebuild the chain from the bottom up and report the first entry whose seal no longer fits */
 /* EDIT 21 of 23: the server seals the ledger with real SHA-256, computed where a
    browser cannot reach it. The `fingerprint()` above is this file's old 64-bit
@@ -10909,7 +11132,6 @@ function verifyLedger(entries, cryptoOk, fault) {
 /* The ledger opens empty and seals its first entry the moment something real
    happens. Seeding it with invented history would defeat the point of a chain
    whose whole value is that every link can be traced back to a genuine act. */
-const LEDGER_SEED = [];
 
 /* ---------- validation that actually validates ---------- */
 const luhnOK = (s) => {
@@ -10933,33 +11155,16 @@ const isCompanyEmail = (s) => COMPANY_DOMAINS.some(d => String(s).toLowerCase().
    the one field that must never be guessed, and the screens already say "not on
    file" rather than showing a number nobody entered. It is loaded from the
    server, where it sits in its own table so it can be withheld wholesale. */
-const SAL_SEED = {};
 const gross = (s) => s ? (s.basic || 0) + (s.hra || 0) + (s.special || 0) : 0;
 const net = (s) => s ? gross(s) - (s.pf || 0) - (s.pt || 0) : 0;
 
 /* ---------- devices ---------- */
-const DEVICE_SEED = [];
-const DEVICE_TYPES = ["Phone", "Laptop", "Tablet", "Scanner", "Radio", "Vehicle tracker"];
 
 /* ---------- personal contact (never the company address — see note in the UI) ---------- */
 /* Personal phone and personal email — the only way to reach somebody after their
    company account is closed. Empty here for the same reason as the salaries. */
-const CONTACT_SEED = {};
 
 /* ---------- leave policy sits with the department, alongside its hours ---------- */
-const LEAVE_SEED = {
-  Purchase:           { casual: 12, sick: 8,  earned: 15, halfDay: "Under 5h worked counts half.",   lateAfter: 3 },
-  Store:              { casual: 10, sick: 8,  earned: 15, halfDay: "Under 5h worked counts half.",   lateAfter: 3 },
-  Maintenance:        { casual: 10, sick: 10, earned: 15, halfDay: "Under 4h counts half.",          lateAfter: 4 },
-  Accounts:           { casual: 12, sick: 8,  earned: 18, halfDay: "Under 5h worked counts half.",   lateAfter: 3 },
-  "Site Engineering": { casual: 10, sick: 8,  earned: 15, halfDay: "Under 5h counts half. Pour days exempt.", lateAfter: 4 },
-  Security:           { casual: 8,  sick: 8,  earned: 12, halfDay: "Shift is whole or nothing.",     lateAfter: 2 },
-  HR:                 { casual: 12, sick: 8,  earned: 15, halfDay: "Under 5h worked counts half.",   lateAfter: 3 },
-  Admin:              { casual: 15, sick: 10, earned: 21, halfDay: "—",                              lateAfter: 6 },
-  "QA / QC":          { casual: 10, sick: 8,  earned: 15, halfDay: "Under 5h counts half.",          lateAfter: 3 },
-  Labour:             { casual: 0,  sick: 0,  earned: 0,  halfDay: "Paid by muster, per day.",       lateAfter: 0 },
-};
-
 /* ============================== BULK INTAKE ============================== */
 /* The columns and their aliases live in @marbella/shared so that the matcher
    here, the master workbook HR is handed and the test that proves the one reads
@@ -11411,113 +11616,6 @@ function BulkImportView() {
 }
 
 /* ============================== PHOTO ============================== */
-function PhotoCapture({ p, onClose, onSave }) {
-  const mob = useIsMobile();
-  const vid = React.useRef(null), can = React.useRef(null);
-  const [state, setState] = useState("asking");
-  const [shot, setShot] = useState(null);
-  const [err, setErr] = useState("");
-  useEffect(() => {
-    let stream;
-    (async () => {
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: 480, height: 480 } });
-        if (vid.current) { vid.current.srcObject = stream; await vid.current.play(); setState("live"); }
-      } catch (e) { setErr(e && e.message ? e.message : "Camera unavailable"); setState("blocked"); }
-    })();
-    return () => { if (stream) stream.getTracks().forEach(t => t.stop()); };
-  }, []);
-  const snap = () => {
-    const v = vid.current, c = can.current;
-    if (!v || !c) return;
-    const s = Math.min(v.videoWidth, v.videoHeight);
-    c.width = 320; c.height = 320;
-    c.getContext("2d").drawImage(v, (v.videoWidth - s) / 2, (v.videoHeight - s) / 2, s, s, 0, 0, 320, 320);
-    setShot(c.toDataURL("image/jpeg", 0.82)); setState("shot");
-  };
-  return (
-    <Overlay onClose={onClose} width={430}>
-      <div style={{ padding: mob ? 16 : 22 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
-          <Camera size={18} color={C.gold} /><Eyebrow>Live photo — {p.name}</Eyebrow>
-          <button onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
-        </div>
-        <div style={{ width: "100%", aspectRatio: "1", borderRadius: 14, overflow: "hidden", background: C.inkDeep, display: "grid", placeItems: "center", marginBottom: 14 }}>
-          {state === "shot" ? <img src={shot} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-            : <video ref={vid} playsInline muted style={{ width: "100%", height: "100%", objectFit: "cover", display: state === "live" ? "block" : "none" }} />}
-          {state === "asking" && <div style={{ color: "#9AA6BC", font: `13px ${sans}` }}>Asking for the camera…</div>}
-          {state === "blocked" && (
-            <div style={{ textAlign: "center", padding: 22 }}>
-              <Camera size={26} color="#7E8AA0" />
-              <div style={{ font: `600 13px ${sans}`, color: "#E8ECF4", marginTop: 10 }}>No camera here</div>
-              <div style={{ font: `11px ${sans}`, color: "#9AA6BC", marginTop: 6, lineHeight: 1.5 }}>{err}</div>
-              <div style={{ font: `11px ${sans}`, color: "#7E8AA0", marginTop: 8, lineHeight: 1.5 }}>
-                Browsers only hand over the camera on a secure page with permission granted. On the live site it will open.
-              </div>
-            </div>
-          )}
-        </div>
-        <canvas ref={can} style={{ display: "none" }} />
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          {state === "live" && <GoldButton onClick={snap}><span style={{ display: "inline-flex", alignItems: "center", gap: 7 }}><Camera size={15} /> Take the photo</span></GoldButton>}
-          {state === "shot" && <>
-            <GreenButton onClick={() => { onSave(shot); onClose(); }}><Check size={14} /> Use this</GreenButton>
-            <button onClick={() => setState("live")} style={softBtn}>Retake</button>
-          </>}
-        </div>
-        <div style={{ font: `11px ${sans}`, color: C.stone, marginTop: 12, lineHeight: 1.55 }}>
-          Taken here and now, not uploaded from a gallery — that's the point of a live photo. It goes on the ID card and the gate screen.
-        </div>
-      </div>
-    </Overlay>
-  );
-}
-
-/* ============================== OTP ============================== */
-function OtpVerify({ p, channel, target, onClose, onVerified }) {
-  const mob = useIsMobile();
-  const [code] = useState(() => String(Math.floor(100000 + Math.random() * 900000)));
-  const [typed, setTyped] = useState("");
-  const [left, setLeft] = useState(120);
-  const [err, setErr] = useState("");
-  useEffect(() => { const t = setInterval(() => setLeft(l => Math.max(0, l - 1)), 1000); return () => clearInterval(t); }, []);
-  const mm = String(Math.floor(left / 60)).padStart(2, "0"), ss = String(left % 60).padStart(2, "0");
-  return (
-    <Overlay onClose={onClose} width={420}>
-      <div style={{ padding: mob ? 16 : 22 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
-          {channel === "phone" ? <Phone size={18} color={C.gold} /> : <Mail size={18} color={C.gold} />}
-          <Eyebrow>Verify {channel === "phone" ? "mobile" : "email"}</Eyebrow>
-          <button onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
-        </div>
-        <div style={{ font: `13px ${sans}`, color: C.inkSoft, margin: "8px 0 14px", lineHeight: 1.55 }}>
-          A six-digit code for <b style={{ color: C.ink }}>{p.name}</b> at <b style={{ color: C.ink }}>{target}</b>.
-        </div>
-        <div style={{ background: C.goldTint, border: `1px solid ${C.gold}`, borderRadius: 11, padding: 14, marginBottom: 14 }}>
-          <div style={{ font: `600 10px ${sans}`, letterSpacing: ".12em", textTransform: "uppercase", color: C.goldDeep, marginBottom: 6 }}>Demo — the code is shown here</div>
-          <div style={{ font: `700 30px ${mono}`, letterSpacing: ".18em", color: C.ink, textAlign: "center" }}>{code}</div>
-          <div style={{ font: `11px ${sans}`, color: C.inkSoft, marginTop: 8, lineHeight: 1.55 }}>
-            On the live system this is sent by SMS or email and never appears on screen. Sending needs a gateway —
-            a backend job. What's real here is the flow, the expiry and the record.
-          </div>
-        </div>
-        <label style={lbl}>Enter the code they read back</label>
-        <input value={typed} onChange={e => { setTyped(e.target.value.replace(/\D/g, "").slice(0, 6)); setErr(""); }}
-          placeholder="000000" style={{ ...inp, font: `700 20px ${mono}`, letterSpacing: ".2em", textAlign: "center", margin: "8px 0 6px", borderColor: err ? C.red : C.line }} />
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
-          <Clock size={13} color={left ? C.stone : C.red} />
-          <span style={{ font: `12px ${sans}`, color: left ? C.stone : C.red }}>{left ? `Expires in ${mm}:${ss}` : "Expired — start again"}</span>
-        </div>
-        {err && <div style={{ font: `12px ${sans}`, color: C.red, marginBottom: 10, display: "flex", alignItems: "center", gap: 5 }}><TriangleAlert size={13} /> {err}</div>}
-        <GoldButton onClick={() => {
-          if (!left) { setErr("That code has expired."); return; }
-          if (typed !== code) { setErr("Doesn't match. Read it back once more."); return; }
-          onVerified(); onClose();
-        }}>Confirm</GoldButton>
-      </div>
-    </Overlay>
-  );
-}
 
 /* ============================== DEBOARDING ============================== */
 const EXIT_STAGES = [
@@ -11994,26 +12092,11 @@ const RERA_STATUS = {
    GSTIN, PAN and registered address are left blank on purpose: they were not in
    the data we were given, and the screens show a blank one in red so somebody
    fills it in rather than trusting a number nobody checked. */
-const COMPANY_SEED = [
-  { id: "srg",     name: "SRG Developers & Promoters",              gstin: "", pan: "", kind: "Partnership",      addr: "" },
-  { id: "newmarb", name: "New Marbella Developers And Promoters LLP", gstin: "", pan: "", kind: "LLP",            addr: "" },
-  { id: "srgmarb", name: "SRG Marbella Developers And Promoters LLP", gstin: "", pan: "", kind: "LLP",            addr: "" },
-  { id: "garg",    name: "Garg Builders And Promoters LLP",         gstin: "", pan: "", kind: "LLP",              addr: "" },
-];
-
 /* The four projects, each against the entity that owns it. RERA numbers are
    blank for the same reason as the GSTINs above. */
-const PROJECT_SEED = [
-  { id: "grand",       name: "Marbella Grand", short: "Grand",       company: "srg",     reraStatus: "notyet", rera: "", stage: "building", addr: "" },
-  { id: "newmarbella", name: "New Marbella",   short: "New Marbella", company: "newmarb", reraStatus: "notyet", rera: "", stage: "building", addr: "" },
-  { id: "twin",        name: "Twin Tower",     short: "Twin Tower",  company: "srgmarb", reraStatus: "notyet", rera: "", stage: "building", addr: "" },
-  { id: "royce",       name: "Marbella Royce", short: "Royce",       company: "garg",    reraStatus: "notyet", rera: "", stage: "building", addr: "" },
-];
-
 /* Who employs whom. Every person on file carries their own employer, so this
    override map is empty — it exists for the rare case where the record is wrong
    and somebody needs to correct it without touching the import. */
-const EMPLOYER_SEED = {};
 
 /* ---------- a field that tells you what's wrong while you type ---------- */
 function CheckedField({ label, hint, value, onChange, placeholder, check, mono: useMono }) {
@@ -13163,9 +13246,25 @@ const lastMonths = (n) => {
 
 function PayrollView() {
   const mob = useIsMobile();
-  const { payRuns = [], companies = [], people = [], att = {}, me, deductionHeads = {},
-    draftPayRun, setPayLine, releasePayRun, track } = useProc();
-  const [company, setCompany] = useState((companies[0] || {}).id || "");
+  const { payRuns = [], companies = [], people = [], projects = [], att = {}, me,
+    deductionHeads = {}, scope, draftPayRun, setPayLine, releasePayRun, track } = useProc();
+
+  /* PAYROLL FOLLOWS THE PROJECT CHOSEN AT THE TOP.
+     A pay run belongs to a COMPANY and a project is paid by one, so choosing
+     Royce shows what Garg Builders paid and nothing else. Two projects can
+     share an entity — Grand and Manifest are both SRG — and where they do, the
+     screen says so rather than letting somebody read one project's sheet as if
+     it covered only that project. */
+  const ofProject = projects.find(x => x.id === scope) || null;
+  const scoped = ofProject ? ofProject.company : null;
+  const sharedWith = ofProject
+    ? projects.filter(x => x.company === scoped && x.id !== ofProject.id).map(x => x.short)
+    : [];
+  const [company, setCompany] = useState(scoped || (companies[0] || {}).id || "");
+  /* Follow the switcher when it moves, and leave the choice alone when the
+     whole group is selected — that is the one case where picking a company
+     here is the operator's own decision. */
+  useEffect(() => { if (scoped) setCompany(scoped); }, [scoped]);
   const [month, setMonth] = useState(lastMonths(1)[0]);
   const [openLine, setOpenLine] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -13238,12 +13337,18 @@ function PayrollView() {
         {run && run.source === "imported" && <Pill tone="stone">from your own salary book</Pill>}
       </div>
       <h1 style={{ font: `400 25px ${serif}`, margin: "6px 0 5px" }}>
-        {view === "record" ? "Everything Accounts has been given." : "The month, worked out."}
-      </h1>
-      <p style={{ font: `13px ${sans}`, color: C.inkSoft, maxWidth: 680, margin: "0 0 14px", lineHeight: 1.55 }}>
         {view === "record"
-          ? "Every sheet that has gone to Accounts, newest first — what each company paid, and what the group paid altogether. These figures were released and do not change: this is the record, not a working copy, and nothing on it can be edited."
-          : "Pick a company and a month and the desk works every payslip out from what each person is on and what the company's policy says — the same arithmetic as your own salary books, checked line by line against August. You set the days, an advance, an extra day, and why. Release it and it stops moving."}
+          ? (scoped ? `${ofProject.short} — what has gone out.` : "Everything Accounts has been given.")
+          : (scoped ? `${ofProject.short} — the month, worked out.` : "The month, worked out.")}
+      </h1>
+      <p style={{ font: `13px ${sans}`, color: C.inkSoft, maxWidth: 700, margin: "0 0 14px", lineHeight: 1.55 }}>
+        {view === "record"
+          ? (scoped
+              ? <>Every sheet <b style={{ color: C.ink }}>{co.name}</b> has sent to Accounts, newest first. Released figures — nothing here can be edited.</>
+              : <>Every sheet that has gone to Accounts, newest first: what each company paid, and what the group paid altogether. Released figures — nothing here can be edited.</>)
+          : (scoped
+              ? <>Pick a month and the desk works out every payslip <b style={{ color: C.ink }}>{co.name}</b> owes, from what each person is on and the company's own policy. You set the days, an advance, an extra day and why.</>
+              : <>Pick a company and a month and the desk works every payslip out from what each person is on and the company's own policy. You set the days, an advance, an extra day and why. Release it and it stops moving.</>)}
       </p>
 
       {/* Two jobs, kept apart on purpose. The record is read-only — a screen
@@ -13262,9 +13367,19 @@ function PayrollView() {
 
       {view === "work" && (<>
       <div style={{ display: "flex", gap: 9, flexWrap: "wrap", alignItems: "center", marginBottom: 16 }}>
-        <select value={company} onChange={e => setCompany(e.target.value)} style={{ ...sel, margin: 0, minWidth: 220 }}>
-          {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-        </select>
+        {scoped ? (
+          <div style={{ font: `600 13px ${sans}`, color: C.ink, padding: "9px 0", minWidth: 220 }}>
+            {co.name}
+            <div style={{ font: `11px ${sans}`, color: C.stone, fontWeight: 400, marginTop: 2 }}>
+              who pay everybody at {ofProject.short}
+              {sharedWith.length ? ` and ${sharedWith.join(", ")}` : ""}
+            </div>
+          </div>
+        ) : (
+          <select value={company} onChange={e => setCompany(e.target.value)} style={{ ...sel, margin: 0, minWidth: 220 }}>
+            {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        )}
         <select value={month} onChange={e => setMonth(e.target.value)} style={{ ...sel, margin: 0, width: 140 }}>
           {lastMonths(14).map(m => <option key={m} value={m}>{m}</option>)}
         </select>
@@ -13397,6 +13512,7 @@ function PayrollView() {
 
       {view === "record" && (
         <PayRecord payRuns={payRuns} companies={companies} onSheet={sheetFor}
+          only={scoped} project={ofProject} sharedWith={sharedWith}
           onOpen={(r) => { setCompany(r.company); setMonth(r.month); setView("work"); window.scrollTo({ top: 0, behavior: "smooth" }); }} />
       )}
 
@@ -13422,8 +13538,14 @@ function PayrollView() {
  * apart from the totals — reporting it as money that has gone out is the one
  * mistake this view exists to prevent.
  */
-function PayRecord({ payRuns, companies, onOpen, onSheet }) {
+function PayRecord({ payRuns: allRuns, companies, onOpen, onSheet, only, project, sharedWith = [] }) {
   const mob = useIsMobile();
+  /* Only what the chosen project's company paid. With the whole group chosen,
+     everything. */
+  const payRuns = useMemo(
+    () => (only ? allRuns.filter(r => r.company === only) : allRuns),
+    [allRuns, only],
+  );
   /* "31 Aug 2026", not "2026-08-31". The rest of the desk writes dates the way
      people here write them and this screen should not be the exception. */
   const fmtDate = (iso) => {
@@ -13494,10 +13616,16 @@ function PayRecord({ payRuns, companies, onOpen, onSheet }) {
         ))}
       </div>
       <div style={{ font: `11px ${sans}`, color: C.stone, margin: "0 0 22px", lineHeight: 1.6 }}>
-        Every company in the group, every month that has been released. Drafts are not counted.
+        {only
+          ? <>Everything <b style={{ color: C.inkSoft }}>{(companies.find(c => c.id === only) || {}).name}</b> has paid.
+              {sharedWith.length
+                ? ` They pay everybody at ${project ? project.short : "this project"} and at ${sharedWith.join(", ")}, so these sheets cover all of them — a sheet is per company, not per project.`
+                : ""} Drafts are not counted.</>
+          : "Every company in the group, every month that has been released. Drafts are not counted."}
       </div>
 
       {/* ------------------------------------------------------- by company */}
+      {!only && (<>
       <Eyebrow>Company by company</Eyebrow>
       <div style={{ font: `12px ${sans}`, color: C.stone, margin: "4px 0 10px" }}>
         What each firm has paid its own people, and what the group has paid altogether.
@@ -13571,6 +13699,7 @@ function PayRecord({ payRuns, companies, onOpen, onSheet }) {
         "Payslips" counts every line on every sheet, so somebody paid in two months is counted twice —
         it is a count of payslips, not of people.
       </div>
+      </>)}
 
       {/* --------------------------------------------------------- by month */}
       <Eyebrow>Month by month</Eyebrow>
@@ -14112,7 +14241,7 @@ function OrgCard({ p, all, depth, tilt, onOpen, selected, expanded, toggle, reve
   );
 }
 
-function OrgView() {
+function OrgView({ userKey = "hr" }) {
   const mob = useIsMobile();
   const { people, companies, projects, offices = [], scope, track, jds } = useProc();
   const inScope = (p) => scope === "group" || officesOnProject(offices, scope).includes(p.office);
@@ -14319,7 +14448,9 @@ function OrgView() {
               )}
 
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <GoldButton small onClick={() => toast(`Open the desk and search ${p.id} to write to ${p.name.split(" ")[0]}`, "gold")}>
+                {/* This used to tell you to go and open the desk yourself. It
+                    opens it. */}
+                <GoldButton small onClick={() => { clickNav(userKey, "desk"); }}>
                   <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Mail size={13} /> Write to them</span>
                 </GoldButton>
                 <button onClick={() => { setExpanded(e => [...new Set([...e, ...chain.map(c => c.id)])]); toast("Opened their line on the board", "stone"); }} style={softBtn}>Show on board</button>
@@ -14394,247 +14525,10 @@ function ColourThemes() {
   );
 }
 
-export default function App() {
-  const [themeKey, setThemeKeyRaw] = useState("marbella");
-  const setThemeKey = (k) => { applyTheme(k); setThemeKeyRaw(k); };
-  const [userKey, setUserKey] = useState(null);
-  const [pos, setPos] = useState([]);
-  const [invoices, setInvoices] = useState(INVOICES_SEED);
-  const [reqs, setReqs] = useState(REQUESTS);
-  const [firmId, setFirmId] = useState("grand");
-  const [prs, setPrs] = useState(PR_SEED);
-  const [reports, setReports] = useState(REPORTS_SEED);
-  const [drafts, setDrafts] = useState([]);
-  const [usage, setUsage] = useState({});
-  const [docLog, setDocLog] = useState([]);
-  const [jds, setJds] = useState({});
-  /* Filled from the server. Empty here for the same reason the leave numbers
-     are: a holiday list decides whether a day off is an absence. */
-  const [holidays] = useState([]);
-  const [people, setPeople] = useState(() => PEOPLE_SEED.map((p) => ({
-    shift: { ...DEFAULT_SHIFT },
-    office: p.office || ORG_SEED[p.id]?.office || "hq",
-    reportsTo: p.reportsTo !== undefined ? p.reportsTo : (p.id in ORG_SEED ? ORG_SEED[p.id].boss : "MB-ADM-0001"),
-    employer: p.employer || EMPLOYER_SEED[p.id] || COMPANY_SEED[0].id,
-    ...p,
-  })));
-  const [cardLog, setCardLog] = useState(CARD_LOG_SEED);
-  const [ledger, setLedger] = useState(LEDGER_SEED);
-  const [salaries, setSalaries] = useState(SAL_SEED);
-  const [devices, setDevices] = useState(DEVICE_SEED);
-  const [contacts, setContacts] = useState(CONTACT_SEED);
-  const [leavePolicy, setLeavePolicy] = useState(LEAVE_SEED);
-  const [exits, setExits] = useState([]);
-  const [companies, setCompanies] = useState(COMPANY_SEED);
-  const [projects, setProjects] = useState(PROJECT_SEED);
-  const [scope, setScope] = useState("group");
-  const [deptRules, setDeptRules] = useState(DEPT_RULES_SEED);
-  const [hrLog, setHrLog] = useState(HRLOG_SEED);
-  const [hrTasks, setHrTasks] = useState(HRTASKS_SEED);
-  const [hrAnn, setHrAnn] = useState(HRANN_SEED);
-  const [att, setAtt] = useState(ATT_SEED);
-  const [packages, setPackages] = useState(PKG_SEED);
-  const [coachOn, setCoachOn] = useState(true);
-  const [coachRun, setCoachRun] = useState(null);
-  const [events, setEvents] = useState(CAL_SEED);
-  const [catalog, setCatalog] = useState(CATALOG_SEED);
-  const [vendors, setVendors] = useState(VENDOR_SEED);
-  const [subs, setSubs] = useState(SUB_SEED);
-  const [openVendor, setOpenVendor] = useState(null);
-  const [gatepasses, setGatepasses] = useState(GATEPASS_SEED);
-  const [gateLog, setGateLog] = useState(GATELOG_SEED);
-  const [holds, setHolds] = useState(HOLDS_SEED);
-  const [reminders, setReminders] = useState([]);
-  const [exports, setExports] = useState([]);
-  const [inv, setInv] = useState(INVENTORY);
-  const [caps, setCaps] = useState(CAPS_SEED);
-  const [moves, setMoves] = useState(MOVES_SEED);
-  const [conns, setConns] = useState({ google: false, meta: false, claude: false });
-  const proc = {
-    caps,
-    setCap: (c) => setCaps(a => [c, ...a.filter(x => !(x.item === c.item && x.proj === c.proj))]),
-    inv,
-    addItem: (it) => setInv(a => [{ ...it }, ...a]),
-    adjustItem: (name, delta) => setInv(a => a.map(r => r.item === name ? { ...r, qty: Math.round((Number(r.qty) + delta) * 100) / 100 } : r)),
-    exports,
-    registerExport: (e) => setExports(l => [e, ...l.filter(x => x.key !== e.key)]),
-    reminders,
-    queueReminder: (r) => setReminders(l => [{ approved: false, ...r }, ...l]),
-    approveReminder: (i) => setReminders(l => l.map((x, k) => k === i ? { ...x, approved: true } : x)),
-    holds,
-    placeHold: (h) => setHolds(l => [{ id: "HD-" + (300 + Math.floor(Math.random()*400)), at: Date.now(), ...h }, ...l]),
-    releaseHold: (id) => setHolds(l => l.filter(h => h.id !== id)),
-    moves,
-    addMove: (m) => setMoves(l => [{ at: Date.now(), ...m }, ...l]),
-    gateLog,
-    logGate: (e) => setGateLog(l => [{ id: "GT-" + (4400 + Math.floor(Math.random() * 500)), at: Date.now(), ...e }, ...l]),
-    people,
-    usage, docLog, jds,
-    track: (k) => setUsage(u => ({ ...u, [k]: (u[k] || 0) + 1 })),
-    logDoc: (d) => setDocLog(l => [{ at: nowStamp(), ...d }, ...l]),
-    saveJD: (dept, role, jd) => setJds(x => ({ ...x, [dept]: { ...x[dept], [role]: jd } })),
-    cardLog, ledger, salaries, devices, contacts, leavePolicy, holidays, exits,
-    companies, projects, scope, setScope,
-    saveCompany: (c) => setCompanies(x => x.some(y => y.id === c.id) ? x.map(y => y.id === c.id ? { ...y, ...c } : y) : [...x, c]),
-    saveProject: (p) => setProjects(x => x.some(y => y.id === p.id) ? x.map(y => y.id === p.id ? { ...y, ...p } : y) : [...x, p]),
-    setEmployer: (pid, cid) => setPeople(x => x.map(p => p.id === pid ? { ...p, employer: cid } : p)),
-    seal: (kind, subject, detail) => setLedger(l => {
-      const e = { id: "LG-" + (2500 + l.length), at: nowStamp(), who: "Simran Kaur", kind, subject, detail };
-      const prev = l.length ? l[0].seal : "GENESIS";
-      return [{ ...e, prev, seal: fingerprint(ledgerPayload(e), prev) }, ...l];
-    }),
-    setSalary: (pid, sal) => setSalaries(x => ({ ...x, [pid]: { ...x[pid], ...sal } })),
-    addDevice: (d) => setDevices(x => [{ id: "DV-" + (300 + x.length), ...d }, ...x]),
-    dropDevice: (id) => setDevices(x => x.filter(d => d.id !== id)),
-    setContact: (pid, c) => setContacts(x => ({ ...x, [pid]: { ...x[pid], ...c } })),
-    setLeave: (dept, v) => setLeavePolicy(x => ({ ...x, [dept]: { ...x[dept], ...v } })),
-    bulkAddPeople: (recs) => {
-      const made = recs.map((r, i) => {
-        const code = DEPT_CODES[r.dept] || "GEN";
-        const id = r.id || `MB-${code}-${String(9000 + i).slice(-4)}`;
-        const off = (OFFICES.find(o => (r.office || "").toLowerCase().includes(o.short.toLowerCase())) || OFFICES[0]).id;
-        return { id, name: r.name, designation: r.desig, dept: r.dept, type: "Staff",
-          phone: "", email: "", joined: normDate(r.joined), status: "active", perf: 75, growth: "", notes: [],
-          shift: { ...DEFAULT_SHIFT }, office: off, reportsTo: null, reportsToNote: "", photo: null, imported: true,
-          employer: (projects.find(pr => pr.id === off) || {}).company || "dpre" };
-      });
-      setPeople(x => [...made, ...x]);
-      made.forEach((m, i) => {
-        const r = recs[i];
-        if (r.basic || r.hra || r.special) setSalaries(s2 => ({ ...s2, [m.id]: { basic: +r.basic || 0, hra: +r.hra || 0, special: +r.special || 0, pf: 1800, pt: 200, note: "imported" } }));
-        if (r.phone || r.email) setContacts(c => ({ ...c, [m.id]: { phone: r.phone || "", email: r.email || "", vPhone: false, vEmail: false } }));
-        if (r.imei) setDevices(d => [{ id: "DV-" + (400 + d.length), pid: m.id, type: "Phone", model: "imported", imei: r.imei, sim: r.sim || "\u2014", issued: normDate(r.joined) }, ...d]);
-      });
-      setLedger(l => {
-        let out = [...l];
-        made.forEach(m => {
-          const e = { id: "LG-" + (2600 + out.length), at: nowStamp(), who: desk(userKey).role || "HR", kind: "join", subject: m.id, detail: `${m.name} imported as ${m.designation}.` };
-          const prev = out.length ? out[0].seal : "GENESIS";
-          out = [{ ...e, prev, seal: fingerprint(ledgerPayload(e), prev) }, ...out];
-        });
-        return out;
-      });
-      setHrLog(l => [{ when: "just now", text: `Bulk import \u2014 ${made.length} people added` }, ...l]);
-      return made;
-    },
-    /* Fill in blanks on people already here. A blank cell leaves that field
-       alone — see the note on UPD_FIELDS for why that matters. */
-    bulkUpdatePeople: (recs) => {
-      const touched = [];
-      recs.forEach(r => {
-        const p = people.find(x => x.id === r.id);
-        if (!p) return;
-        const patch = {};
-        if (r.gender) patch.gender = String(r.gender).toLowerCase().startsWith("f") ? "female"
-          : String(r.gender).toLowerCase().startsWith("m") ? "male"
-          : String(r.gender).toLowerCase().startsWith("o") ? "other" : "undisclosed";
-        if (r.dob) patch.dob = normDate(r.dob);
-        if (r.reportsTo) patch.reportsTo = r.reportsTo;
-        if (Object.keys(patch).length) setPeople(x => x.map(y => y.id === r.id ? { ...y, ...patch } : y));
-        if (r.phone || r.email) setContacts(c => ({ ...c, [r.id]: { ...(c[r.id] || { vPhone: false, vEmail: false }),
-          ...(r.phone ? { phone: r.phone } : {}), ...(r.email ? { email: r.email } : {}) } }));
-        if (r.basic || r.hra || r.special) setSalaries(s2 => ({ ...s2, [r.id]: { pf: 1800, pt: 200, note: "imported", ...(s2[r.id] || {}),
-          ...(r.basic ? { basic: +r.basic || 0 } : {}), ...(r.hra ? { hra: +r.hra || 0 } : {}), ...(r.special ? { special: +r.special || 0 } : {}) } }));
-        touched.push({ id: r.id, name: p.name });
-      });
-      setHrLog(l => [{ when: "just now", text: `Filled in ${touched.length} record${touched.length === 1 ? "" : "s"} from a sheet` }, ...l]);
-      return touched;
-    },
-    openExit: (p) => {
-      const id = "EX-" + (700 + exits.length);
-      setExits(x => [{ id, pid: p.id, stage: "decision", record: {}, opened: nowStamp() }, ...x]);
-      return id;
-    },
-    advanceExit: (id, payload, summary) => {
-      setExits(xs => xs.map(e => {
-        if (e.id !== id) return e;
-        const i = EXIT_STAGES.findIndex(s2 => s2.k === e.stage);
-        const next = EXIT_STAGES[Math.min(EXIT_STAGES.length - 1, i + 1)].k;
-        const done = e.stage === "closed" || next === e.stage;
-        return { ...e, record: { ...e.record, [e.stage]: payload }, stage: done ? "closed" : next };
-      }));
-      const ex = exits.find(e => e.id === id);
-      if (ex && ex.stage === "assets") setPeople(ps => ps.map(p => p.id === ex.pid ? { ...p, status: "exited" } : p));
-      setLedger(l => {
-        const e = { id: "LG-" + (2700 + l.length), at: nowStamp(), who: "Simran Kaur", kind: "exit", subject: (ex || {}).pid || id, detail: summary };
-        const prev = l.length ? l[0].seal : "GENESIS";
-        return [{ ...e, prev, seal: fingerprint(ledgerPayload(e), prev) }, ...l];
-      });
-    },
-    issueCard: (p, d) => {
-      const ver = Math.max(0, ...cardLog.filter(c => c.pid === p.id).map(c => c.ver)) + 1;
-      setCardLog(l => [{
-        id: "CD-" + (1100 + l.length), pid: p.id, name: p.name, ver,
-        reason: d.reason, at: nowStamp(), by: "Simran Kaur",
-        recv: d.recv || "\u2014", note: d.note || "", killed: d.killed ? "v" + (ver - 1) : null,
-      }, ...l]);
-      setHrLog(l => [{ when: "just now", text: `Issued card v${ver} \u2014 ${p.name} (${(REISSUE[d.reason] || {}).label || d.reason})` }, ...l]);
-    },
-    deptRules,
-    setDeptRule: (d, r) => setDeptRules(x => ({ ...x, [d]: { ...x[d], ...r } })),
-    offices: OFFICES,
-    addPerson: (p) => { setPeople(x => [{ shift: { ...DEFAULT_SHIFT }, ...p }, ...x]); setHrLog(l => [{ when: "just now", text: `Enrolled ${p.name} — issued ${p.id}` }, ...l]); },
-    updatePerson: (id, patch, logText) => { setPeople(x => x.map(y => y.id === id ? { ...y, ...patch } : y)); if (logText) setHrLog(l => [{ when: "just now", text: logText }, ...l]); },
-    addNote: (id, text) => { setPeople(x => x.map(y => y.id === id ? { ...y, notes: [{ when: "just now", text }, ...(y.notes || [])] } : y)); setHrLog(l => [{ when: "just now", text: `Added a private note` }, ...l]); },
-    hrLog, logHR: (text) => setHrLog(l => [{ when: "just now", text }, ...l]),
-    hrTasks, addHrTask: (t) => setHrTasks(x => [{ id: "T" + Date.now(), done: false, ...t }, ...x]), toggleHrTask: (id) => setHrTasks(x => x.map(y => y.id === id ? { ...y, done: !y.done } : y)),
-    hrAnn, addAnn: (a) => setHrAnn(x => [{ when: "just now", ...a }, ...x]),
-    att, importAtt: (rows, source) => { setAtt(a => mergeAtt(a, rows)); setHrLog(l => [{ when: "just now", text: `Imported ${rows.length} attendance rows from ${source}` }, ...l]); },
-    packages,
-    addPackage: (pk) => { setPackages(x => [{ id: "PK" + Date.now(), status: "proposed", ...pk }, ...x]); setHrLog(l => [{ when: "just now", text: `Proposed incentive · ${pk.name} (${cr(pk.amount)})` }, ...l]); },
-    approvePackage: (id) => setPackages(x => x.map(p => p.id === id ? { ...p, status: "live" } : p)),
-    declinePackage: (id) => setPackages(x => x.map(p => p.id === id ? { ...p, status: "declined" } : p)),
-    issueBonus: (id, who) => { setPackages(x => x.map(p => p.id === id ? { ...p, issuedTo: who, status: "issued" } : p)); setHrLog(l => [{ when: "just now", text: `Issued bonus — ${who}` }, ...l]); },
-    pos, addPO: (po) => setPos(p => [po, ...p]),
-    invoices, clearInvoice: (id) => setInvoices(v => v.map(x => x.id === id ? { ...x, state: "cleared" } : x)),
-    reqs, addReq: (r) => setReqs(x => [r, ...x]), fulfillReq: (id) => setReqs(x => x.filter(y => y.id !== id)),
-    prs, addPR: (pr) => setPrs(x => [pr, ...x]), fulfillPR: (id) => setPrs(x => x.filter(y => y.id !== id)),
-    reports, addReport: (r) => setReports(x => [r, ...x]),
-    drafts, saveDraft: (type, label, data) => setDrafts(d => [{ type, label, data, when: "just now" }, ...d.filter(x => x.type !== type)]), dropDraft: (type) => setDrafts(d => d.filter(x => x.type !== type)),
-    coachOn, setCoachOn, coachRun, startCoach: (id) => setCoachRun(id), stopCoach: () => setCoachRun(null),
-    events, addEvent: (e) => { setEvents(x => [{ id: "EV" + Date.now(), ...e }, ...x]); }, delEvent: (id) => setEvents(x => x.filter(y => y.id !== id)),
-    catalog, learnItem: (name, unit, rate, vendor) => { if (!name || !name.trim()) return; setCatalog(c => { const i = c.findIndex(x => x.name.toLowerCase() === name.trim().toLowerCase()); const rec = { name: name.trim(), unit: unit || "", rate: numV(rate) || 0, vendor: vendor || "" }; if (i >= 0) { const cp = [...c]; cp[i] = { ...cp[i], ...rec }; return cp; } return [rec, ...c]; }); },
-    vendors,
-    addVendors: (list) => { setVendors(v => [...list, ...v]); },
-    addVendor: (v) => setVendors(vs => [{ ...v, status: "unverified", vcode: "" }, ...vs]),
-    verifyVendor: (code, patch) => setVendors(vs => vs.map(v => v.code === code ? { ...v, ...patch, status: "verified" } : v)),
-    subs,
-    openVendor, setOpenVendor,
-    gatepasses,
-    issueGatePass: (g) => setGatepasses(x => [{ at: Date.now(), status: "expected", ...g }, ...x.filter(p => p.id !== g.id)]),
-    markPass: (id, patch) => setGatepasses(x => x.map(p => p.id === id ? { ...p, ...patch } : p)),
-    sendSub: (s) => setSubs(x => [{ id: "SUB-" + (2090 + Math.floor(Math.random() * 90)), status: "sent", versions: [{ v: 1, fileName: s.fileName, by: s.by, at: Date.now(), note: s.note || "" }], ...s }, ...x]),
-    reviseSub: (id, patch) => setSubs(xs => xs.map(s => s.id === id ? { ...s, status: "revised", versions: [...s.versions, { v: s.versions.length + 1, fileName: patch.fileName, by: patch.by, at: Date.now(), note: patch.note || "" }] } : s)),
-    conns, connect: (k) => setConns(c => ({ ...c, [k]: true })), disconnect: (k) => setConns(c => ({ ...c, [k]: false })),
-    firms: FIRMS, activeFirm: firmById(firmId), setFirm: setFirmId,
-  };
-  return (
-    <ThemeCtx.Provider value={{ themeKey, setThemeKey }}>
-    <ProcCtx.Provider value={proc}>
-      <div key={themeKey} style={{ background: C.paper, minHeight: "100vh", transition: "background .25s ease" }}>
-      {/* EDIT 23 of 23: `onLogin` used to be handed a desk key, because the button
-          passed one in ("admin"). It now passes what the person actually typed,
-          so this — the no-server build — has to resolve the Employee ID itself.
-          Without this the shell is handed "MB-ADM-0001" as a desk and renders
-          nothing at all.
-
-          There is no server here, so there is nothing to check a password
-          against, and this build does not pretend otherwise: see the banner in
-          ../standalone.tsx. The real build asks the server, and the server
-          decides which desk comes back. */}
-      {userKey ? <Shell userKey={userKey} onLogout={() => setUserKey(null)} /> : <Login onLogin={(id, pw) => {
-        const typed = String(id || "").trim().toLowerCase();
-        const desk = Object.keys(DESK_IDS).find(k => DESK_IDS[k].toLowerCase() === typed);
-        if (!desk) throw new Error("That is not one of the nine Employee IDs in this demo. Tap a desk below to fill one in.");
-        if (!String(pw || "").trim()) throw new Error("Enter any password. There is no server in this demo, so nothing checks it — the real build asks one.");
-        setUserKey(desk);
-      }} />}
-      {userKey && <Assistant />}
-      <style>{`@keyframes mbpulse{0%,100%{opacity:1}50%{opacity:.35}}@keyframes mbglow{0%,100%{box-shadow:0 0 0 0 rgba(199,161,98,.45),0 8px 22px rgba(199,161,98,.30)}50%{box-shadow:0 0 0 9px rgba(199,161,98,0),0 10px 30px rgba(199,161,98,.55)}}@keyframes mbpop{0%{transform:scale(.9);opacity:0}100%{transform:scale(1);opacity:1}}@keyframes mbrise{0%{transform:translateY(0) rotate(0);opacity:0}20%{opacity:1}100%{transform:translateY(-46px) rotate(20deg);opacity:0}}`}</style>
-      <VendorAccountMount />
-      <Toaster />
-      </div>
-    </ProcCtx.Provider>
-    </ThemeCtx.Provider>
-  );
-}
+/* The self-contained App that used to close this file has been removed.
+   It was a second provider — its own useState world, its own sign-in, its own
+   seed arrays — and nothing imported it: the product mounts src/App.tsx, which
+   wraps these same screens in AuthProvider and ProcurementProvider, and the
+   shareable preview mounts that same App with the network swapped out. Two
+   providers for one UI is two answers to "what is true", and only one of them
+   was ever on screen. */

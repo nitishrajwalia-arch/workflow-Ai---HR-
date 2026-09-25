@@ -20,7 +20,7 @@ import {
   type PayStructure,
 } from '@marbella/shared';
 import { describe, expect, it } from 'vitest';
-import { makeApp } from './helpers.js';
+import { auth, makeApp, signIn } from './helpers.js';
 import { PAY_AUGUST, PAY_HEADS, PAY_POLICIES } from '../../prisma/real-pay.js';
 
 const policy = (c: string): PayPolicy =>
@@ -533,6 +533,79 @@ describe('a month, as it lands in the database', () => {
         .map((l) => l.gross)
         .sort();
       expect(both).toEqual([35_000, 98_000]);
+    } finally {
+      await app.close();
+      await db.$disconnect();
+    }
+  });
+});
+
+/**
+ * Recording a raise.
+ *
+ * `PUT /salaries/:pid` carried only basic, hra, special, pf, pt and note, and
+ * derived the gross by adding the first three. Every person on the company's
+ * books has a travelling or a medical allowance or both, so saving through it
+ * dropped them and reported a gross short by exactly those two — and it also
+ * dropped esiOn and pfOn, which decide whether anything is deducted at all.
+ * Nothing in the app called it, which is the only reason no pay was cut.
+ */
+describe('changing what somebody is on', () => {
+  it('keeps travelling, medical and the statutory switches, and the gross it was given', async () => {
+    const { app, db } = await makeApp();
+    try {
+      const { token } = await signIn(app);
+      const person = await db.person.findFirst({ where: { id: { startsWith: 'MB-' } } });
+      expect(person).toBeTruthy();
+      const pid = person!.id;
+      const before = await db.salary.findUnique({ where: { personId: pid } });
+
+      const res = await app.inject({
+        method: 'PUT',
+        url: `/api/v1/salaries/${pid}`,
+        headers: auth(token),
+        payload: {
+          gross: 32_000,
+          basic: 16_000,
+          hra: 8_000,
+          travel: 1_600,
+          medical: 500,
+          special: 5_900,
+          esiOn: true,
+          pfOn: true,
+          pfWages: 0,
+          pf: 0,
+          pt: 0,
+          note: 'Annual revision agreed 1 Oct 2026.',
+        },
+      });
+      expect(res.statusCode).toBe(200);
+
+      const row = await db.salary.findUnique({ where: { personId: pid } });
+      expect(row?.gross, 'the gross is stored, not re-derived from three parts').toBe(32_000);
+      expect(row?.travel).toBe(1_600);
+      expect(row?.medical).toBe(500);
+      expect(row?.esiOn).toBe(true);
+      expect(row?.pfOn).toBe(true);
+      // The parts add to the gross that was sent, which is what the old route
+      // could not report: 16,000 + 8,000 + 5,900 is 29,900, not 32,000.
+      expect(
+        (row?.basic ?? 0) + (row?.hra ?? 0) + (row?.travel ?? 0) + (row?.medical ?? 0) + (row?.special ?? 0),
+      ).toBe(32_000);
+
+      // The ledger says pay changed and who changed it. It does not say by how much.
+      const seal = await db.ledgerEntry.findFirst({
+        where: { kind: 'salary', subject: pid },
+        orderBy: { seq: 'desc' },
+      });
+      expect(seal?.detail).toContain(person!.name);
+      expect(seal?.detail).not.toContain('32');
+
+      if (before) {
+        await db.salary.update({ where: { personId: pid }, data: { ...before } });
+      } else {
+        await db.salary.delete({ where: { personId: pid } });
+      }
     } finally {
       await app.close();
       await db.$disconnect();

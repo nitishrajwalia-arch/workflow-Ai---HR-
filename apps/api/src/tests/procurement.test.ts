@@ -362,6 +362,57 @@ describe('a payment reminder', () => {
   });
 });
 
+/**
+ * The counter between the store and whoever asked.
+ *
+ * Accepting a request used to close it outright, so a promised request
+ * disappeared and the handover screen — which is where the ID card is checked
+ * and both sides sign — could never have anything in it. A request now stops at
+ * the counter, carrying who raised it, and only leaves when it is handed over.
+ */
+describe('a request the store has accepted', () => {
+  it('waits at the counter instead of vanishing, and remembers who asked', async () => {
+    const made = await post('/requisitions', {
+      dept: 'Maintenance',
+      item: 'Angle grinder discs',
+      qty: '10 nos',
+    });
+    expect(made.statusCode).toBe(201);
+    const id = made.json<{ id: string }>().id;
+
+    // Who asked comes from the session, not the body — it is what the
+    // storekeeper checks the ID card against.
+    const raised = made.json<{ byName: string; byEid: string; state: string }>();
+    expect(raised.state).toBe('open');
+    expect(raised.byName).not.toBe('');
+    expect(raised.byEid).not.toBe('');
+
+    const promised = await post(`/requisitions/${id}/promise`, { ready: '2 days' });
+    expect(promised.statusCode).toBe(200);
+    expect(promised.json<{ state: string }>().state).toBe('promised');
+    expect(promised.json<{ promisedFor: string }>().promisedFor).toBe('2 days');
+
+    const list = await get('/requisitions');
+    const rows = list.json<Array<{ id: string; state: string }>>();
+    expect(rows.find((r) => r.id === id)?.state).toBe('promised');
+
+    const issued = await post(`/requisitions/${id}/close`, {});
+    expect(issued.statusCode).toBe(200);
+    expect(issued.json<{ state: string }>().state).toBe('issued');
+
+    const after = await get('/requisitions');
+    expect(after.json<Array<{ id: string }>>().some((r) => r.id === id)).toBe(false);
+
+    await db.requisition.deleteMany({ where: { id } });
+  });
+
+  it('refuses to promise a requisition that does not exist', async () => {
+    const res = await post('/requisitions/RQ-nope/promise', { ready: '1 hr' });
+    expect(res.statusCode).toBe(404);
+    expect(message(res)).toMatch(/RQ-nope/);
+  });
+});
+
 describe('none of it is readable without signing in', () => {
   it.each(['/inventory', '/holds', '/caps', '/purchase-orders', '/vendors', '/banks'])(
     '%s refuses an anonymous request',
