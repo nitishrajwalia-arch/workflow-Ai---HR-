@@ -13,7 +13,7 @@
 import type { SessionUser } from '@marbella/shared';
 import { PREVIEW_WORLD } from './data.js';
 import { currentSession, rememberSession, type PreviewSession } from './desk.js';
-import { MANAGEMENT_ID, deskFor } from './desks.js';
+import { MANAGEMENT_ID, deskFor, roleFor } from './desks.js';
 
 interface PreviewPerson {
   id: string;
@@ -59,6 +59,8 @@ const me = (): SessionUser => {
     title: s.title,
     personId: s.personId,
     userKey: s.desk,
+    // The payload's own `role` is whoever generated it. Each desk holds its own.
+    role: roleFor(s.desk),
   } as SessionUser;
 };
 

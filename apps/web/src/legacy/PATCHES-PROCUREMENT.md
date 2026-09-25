@@ -127,6 +127,17 @@ so there is always something to ring. And the export panel offered "Excel" and
 "CSV" as two chips that produced byte-identical text, the Excel one named
 `.xls`, which it was not.
 
+All nine desks were then swept in the shareable build. No crash on any of
+them and no console error; the remaining reports are a tab that is already
+selected, a filter over an empty list, or a chip whose tick changes but whose
+words do not — the sweeper compares text.
+
+One thing that sweep did surface: the preview payload carries one `me`, and its
+role is whoever generated it — an administrator. So every desk in the shared
+link was an administrator, and the Access console, which follows the role now,
+appeared on the store assistant's screen. Each desk holds its own role in the
+preview now; only Management sees it.
+
 Two more things came out of it. `ProcProvider.tsx` (546 lines) and the
 self-contained `App` that used to close this file (244 lines) were both second
 providers that nothing mounted — two answers to "what is true", only one of them

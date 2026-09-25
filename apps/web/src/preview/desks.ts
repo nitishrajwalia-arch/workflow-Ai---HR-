@@ -63,6 +63,32 @@ const BY_DEPT: Record<string, string> = {
   HR: 'hr',
 };
 
+/**
+ * What a desk is ALLOWED to do, as opposed to what it can see.
+ *
+ * The preview payload carries one `me`, and its `role` is the account that
+ * generated it — an administrator. Every desk in the shared link therefore
+ * looked like an administrator, and the Access console, which follows the
+ * role, turned up on the store assistant's screen. A link somebody is shown
+ * to judge the product must not show the storeman handing out logins.
+ */
+const ROLE_BY_DESK: Readonly<Record<string, string>> = {
+  admin: 'ADMIN',
+  hr: 'HR',
+  accounts: 'MANAGER',
+  purchase: 'MANAGER',
+  store: 'MANAGER',
+  maintenance: 'MANAGER',
+  purchaseAsst: 'VIEWER',
+  storeAsst: 'VIEWER',
+  security: 'VIEWER',
+};
+
+/** The role that desk holds. Anything unlisted gets the least of them. */
+export function roleFor(desk: string): string {
+  return ROLE_BY_DESK[desk] ?? 'VIEWER';
+}
+
 export function deskFor(id: string): string {
   const direct = BY_ID.get(id.trim().toUpperCase());
   if (direct) return direct;
