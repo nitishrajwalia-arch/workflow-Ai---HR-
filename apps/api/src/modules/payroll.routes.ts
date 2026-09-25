@@ -69,7 +69,20 @@ export const payrollRoutes: FastifyPluginAsyncZod = async (app) => {
       return Object.fromEntries(
         rows.map((s) => [
           s.personId,
-          { basic: s.basic, hra: s.hra, special: s.special, pf: s.pf, pt: s.pt, note: s.note },
+          {
+            gross: s.gross,
+            basic: s.basic,
+            hra: s.hra,
+            travel: s.travel,
+            medical: s.medical,
+            special: s.special,
+            esiOn: s.esiOn,
+            pfOn: s.pfOn,
+            pfWages: s.pfWages,
+            pf: s.pf,
+            pt: s.pt,
+            note: s.note,
+          },
         ]),
       );
     },

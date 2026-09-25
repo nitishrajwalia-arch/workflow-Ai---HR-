@@ -8114,47 +8114,53 @@ function parseJoin(j) {
   if (mi < 0) return null;
   return new Date(Number(m[3]), mi, Number(m[1]));
 }
+/**
+ * What is actually known about somebody, for their profile.
+ *
+ * There used to be a great deal more here, and none of it was true. A joining
+ * salary derived from a hash of the employee ID, a 10-12% annual revision band,
+ * a year-by-year salary history projected from both, a next-increment date, a
+ * home address chosen from a list of five, "Identity verified — OTP on mobile
+ * and email" whenever the hash was not divisible by four, an assessment quiz
+ * score, and a previous employer picked from four real construction firms — all
+ * of it printed on a named employee's profile, and printable on a letterhead.
+ *
+ * Every one of those is gone. What is left is what the record holds, and where
+ * the record holds nothing the screen says so.
+ */
 function buildStory(p) {
   const f = p.file || {};
-  const seed = hashN(p.id, 1000);
-  const base = f.salary ? Number(f.salary) : 22000 + (seed % 46) * 1000;
   const jd = parseJoin(p.joined);
   const now = new Date();
   let years = 0;
-  if (jd) { years = now.getFullYear() - jd.getFullYear(); if (now.getMonth() < jd.getMonth() || (now.getMonth() === jd.getMonth() && now.getDate() < jd.getDate())) years--; }
-  years = Math.max(0, years);
-  const pct = 10 + (seed % 3);            // 10-12% annual band
-  const hist = [];
-  let sal = base;
-  for (let k = 0; k <= years; k++) {
-    hist.push({ year: jd ? jd.getFullYear() + k : now.getFullYear() - years + k, salary: Math.round(sal / 100) * 100, note: k === 0 ? "Joining salary" : `Annual revision · +${pct}%` });
-    sal = sal * (1 + pct / 100);
-  }
-  const nextSalary = Math.round(sal / 100) * 100;
-  let nextDate = null, daysTo = null;
   if (jd) {
-    nextDate = new Date(jd.getFullYear() + years + 1, jd.getMonth(), jd.getDate());
-    daysTo = Math.ceil((nextDate - now) / 86400000);
+    years = now.getFullYear() - jd.getFullYear();
+    if (now.getMonth() < jd.getMonth() || (now.getMonth() === jd.getMonth() && now.getDate() < jd.getDate())) years--;
   }
   return {
-    f, base, years, pct, hist,
-    current: hist[hist.length - 1] ? hist[hist.length - 1].salary : base,
-    nextSalary, nextDate, daysTo,
-    address: f.address || ["Sector 22-C, Chandigarh", "Phase 7, Mohali", "Dhakoli, Zirakpur", "Sector 70, Mohali", "New Chandigarh"][seed % 5],
-    pan: f.pan || "", aadhaar: f.aadhaar || "",
-    verified: !!(f.pan && f.aadhaar) || seed % 4 !== 0,
-    cv: f.cvName || `${p.name.split(" ").join("-")}-CV.pdf`,
-    cvOn: p.joined,
-    form: seed % 5 !== 0, quiz: 55 + (seed % 45),
-    exCo: f.exCo || ["Ansal Housing", "Omaxe", "Sushma Buildtech", "—"][seed % 4],
-    exRole: f.exRole || p.designation,
+    f,
+    years: Math.max(0, years),
+    // Only what was typed on the enrolment form in this session, if anything.
+    pan: f.pan || "",
+    aadhaar: f.aadhaar || "",
+    address: f.address || "",
+    exCo: f.exCo || "",
+    exRole: f.exRole || "",
   };
 }
+
 function FullProfile({ p, onClose }) {
   const [fileOpen, setFileOpen] = useState(null);
   const [liveCam, setLiveCam] = useState(null);
-  const mob = useIsMobile(); const { activeFirm } = useProc();
+  const mob = useIsMobile();
+  const { activeFirm, salaries = {}, payRuns = [] } = useProc();
   const s = buildStory(p);
+  /* What they are on, and what they were actually paid. Both real: the first
+     from the salary record, the second off the sheets Accounts was given. */
+  const sal = salaries[p.id];
+  const myLines = payRuns
+    .filter(r => r.status !== "draft")
+    .flatMap(r => r.lines.filter(l => l.pid === p.id).map(l => ({ ...l, month: r.month })));
   const Row = ({ k, v, tone }) => (
     <div style={{ display: "flex", justifyContent: "space-between", gap: 10, padding: "7px 0", borderTop: `1px solid ${C.lineSoft}`, font: `12px ${sans}` }}>
       <span style={{ color: C.stone }}>{k}</span>
@@ -8195,10 +8201,9 @@ function FullProfile({ p, onClose }) {
               <Row k="With us" v={s.years >= 1 ? `${s.years} year${s.years > 1 ? "s" : ""}` : "Under a year"} />
               <Row k="Department" v={`${p.dept} · ${p.type}`} />
               <Row k="Status" v={p.status === "active" ? "Active" : p.status === "pending" ? "Pending — not yet staff" : "Exited"} tone={p.status === "active" ? C.green : p.status === "pending" ? C.amber : C.stone} />
-              <Row k="Identity verified" v={s.verified ? "Verified — OTP on mobile & email" : "Pending verification"} tone={s.verified ? C.green : C.amber} />
-              <Row k="PAN" v={s.pan || "on file"} />
-              <Row k="Aadhaar" v={s.aadhaar ? "on file" : "on file"} />
-              <Row k="Address" v={s.address} />
+              <Row k="PAN" v={s.pan || "not on this screen"} tone={s.pan ? C.ink : C.stone} />
+              <Row k="Aadhaar" v={s.aadhaar ? "on file" : "not on this screen"} tone={s.aadhaar ? C.ink : C.stone} />
+              <Row k="Address" v={s.address || "not on this screen"} tone={s.address ? C.ink : C.stone} />
               <Row k="Phone" v={p.phone} />
               <Row k="Email" v={p.email} />
             </Sec>
@@ -8218,62 +8223,87 @@ function FullProfile({ p, onClose }) {
               })()}
             </Sec>
             <Sec title="What they came in with" icon={<FileText size={14} color={C.goldDeep} />}>
-              {docChip("CV at time of application", true, `${s.cv} · received ${s.cvOn}`)}
-              {docChip("Google Form response", s.form, s.form ? "Application form — submitted" : "Never submitted")}
-              {docChip("Assessment quiz", s.quiz >= 40, `Scored ${s.quiz}/100`)}
-              <Row k="Previous company" v={s.exCo} />
-              <Row k="Was working as" v={s.exRole} />
+              {/* A CV filename built from their name, a Google Form "response", a
+                  quiz score and a previous employer picked from four real firms
+                  all used to sit here, none of it recorded anywhere. */}
+              {s.exCo || s.exRole ? (<>
+                <Row k="Previous company" v={s.exCo} />
+                <Row k="Was working as" v={s.exRole} />
+              </>) : (
+                <div style={{ font: `12px ${sans}`, color: C.stone, lineHeight: 1.6 }}>
+                  Nothing is on file about where they worked before, and no application document has
+                  been attached. It is asked for on the enrolment form, and can be added there.
+                </div>
+              )}
             </Sec>
           </div>
 
           <div>
+            {/* WHAT THEY ARE ON, from the salary record — not a figure worked
+                out from their employee ID, which is what used to be here. */}
             <Sec title="Salary structure" icon={<Wallet size={14} color={C.goldDeep} />}>
-              <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
-                <span style={{ font: `400 24px ${serif}`, color: C.inkDeep }}>{inr(s.current)}</span>
-                <span style={{ font: `12px ${sans}`, color: C.stone }}>per month · current</span>
-              </div>
-              <div style={{ font: `11px ${sans}`, color: C.stone, marginBottom: 8 }}>{wordsIN(s.current)} a month · {inr(s.current * 12)} a year</div>
-              <Row k="Joining salary" v={inr(s.base)} />
-              <Row k="Annual revision band" v={`${s.pct}% a year`} tone={C.goldDeep} />
-              <Row k="Revisions so far" v={s.years} />
+              {sal && sal.gross > 0 ? (<>
+                <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
+                  <span style={{ font: `400 24px ${serif}`, color: C.inkDeep }}>{inr(sal.gross)}</span>
+                  <span style={{ font: `12px ${sans}`, color: C.stone }}>per month · gross</span>
+                </div>
+                <div style={{ font: `11px ${sans}`, color: C.stone, marginBottom: 8 }}>
+                  {wordsIN(sal.gross)} a month · {inr(sal.gross * 12)} a year
+                </div>
+                <Row k="Basic" v={inr(sal.basic)} />
+                <Row k="H.R.A." v={inr(sal.hra)} />
+                {sal.travel > 0 && <Row k="Travelling" v={inr(sal.travel)} />}
+                {sal.medical > 0 && <Row k="Medical" v={inr(sal.medical)} />}
+                <Row k="Special" v={inr(sal.special)} />
+                <Row k="E.S.I." v={sal.esiOn ? "Applies" : "Does not apply"} tone={sal.esiOn ? C.ink : C.stone} />
+                <Row k="P.F." v={sal.pfOn ? (sal.pfWages ? `On ${inr(sal.pfWages)} of wages` : "Applies") : "Does not apply"} tone={sal.pfOn ? C.ink : C.stone} />
+                {sal.note && <Row k="Note" v={sal.note} />}
+              </>) : (
+                <div style={{ font: `12px ${sans}`, color: C.stone, lineHeight: 1.6 }}>
+                  No salary on file for them. Until there is one they are left off every pay run,
+                  and the run says so rather than paying them nothing quietly.
+                </div>
+              )}
             </Sec>
 
-            <Sec title="Next increment" icon={<Clock size={14} color={C.goldDeep} />}>
-              {s.nextDate ? (<>
-                <div style={{ background: s.daysTo <= 60 ? C.goldTint : C.paper, border: `1px solid ${s.daysTo <= 60 ? C.gold : C.line}`, borderRadius: 10, padding: 12 }}>
-                  <div style={{ font: `600 13px ${sans}`, color: C.inkDeep }}>
-                    {s.daysTo <= 0 ? "Increment is due now" : s.daysTo <= 60 ? `Due in ${s.daysTo} days` : `Due in ${Math.round(s.daysTo / 30)} months`}
-                  </div>
-                  <div style={{ font: `12px ${sans}`, color: C.inkSoft, marginTop: 4 }}>
-                    On {s.nextDate.getDate()} {VMONTHS[s.nextDate.getMonth()]} {s.nextDate.getFullYear()} — {inr(s.current)} → <b style={{ color: C.goldDeep }}>{inr(s.nextSalary)}</b> at {s.pct}%.
-                  </div>
-                  <div style={{ marginTop: 8, height: 6, background: C.lineSoft, borderRadius: 20, overflow: "hidden" }}>
-                    <div style={{ width: `${Math.max(4, Math.min(100, 100 - (s.daysTo / 365) * 100))}%`, height: "100%", background: C.gold }} />
-                  </div>
-                  <div style={{ font: `11px ${sans}`, color: C.stone, marginTop: 6 }}>They can see this too — nobody has to ask when their raise is coming.</div>
-                </div>
-              </>) : <div style={{ font: `12px ${sans}`, color: C.stone }}>Add a joining date to track the increment clock.</div>}
+            {/* "Next increment" and a year-by-year "Salary history" stood here,
+                both projected from a hash: a 10-12% band, a due date, a bar
+                filling towards it, and the line "They can see this too — nobody
+                has to ask when their raise is coming." Nothing records a
+                revision, so there is nothing to show and it says that. */}
+            <Sec title="Revisions" icon={<TrendingUp size={14} color={C.goldDeep} />}>
+              <div style={{ font: `12px ${sans}`, color: C.stone, lineHeight: 1.6 }}>
+                No revision has been recorded for anybody yet — there is one salary on file per
+                person, the one they are on now. When a raise is agreed, change it on their record
+                and the next pay run picks it up.
+              </div>
             </Sec>
 
-            <Sec title="Salary history" icon={<TrendingUp size={14} color={C.goldDeep} />}>
-              {s.hist.map((h, i) => (
-                <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 0", borderTop: i ? `1px solid ${C.lineSoft}` : "none" }}>
-                  <span style={{ font: `12px ${mono}`, color: C.stone, width: 42 }}>{h.year}</span>
-                  <span style={{ flex: 1, font: `11px ${sans}`, color: C.stone }}>{h.note}</span>
-                  <span style={{ font: `13px ${mono}`, color: C.ink }}>{inr(h.salary)}</span>
+            <Sec title="What they were actually paid" icon={<History size={14} color={C.goldDeep} />}>
+              {myLines.length ? (<>
+                {myLines.slice(0, 6).map((l, i2) => (
+                  <div key={i2} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 0", borderTop: i2 ? `1px solid ${C.lineSoft}` : "none" }}>
+                    <span style={{ font: `12px ${mono}`, color: C.stone, width: 62 }}>{l.month}</span>
+                    <span style={{ flex: 1, font: `11px ${sans}`, color: C.stone }}>
+                      {l.days} day{l.days === 1 ? "" : "s"}{l.dTotal ? ` · ${inr(l.dTotal)} held back` : ""}
+                    </span>
+                    <span style={{ font: `13px ${mono}`, color: C.ink }}>{inr(l.payable)}</span>
+                  </div>
+                ))}
+                <div style={{ font: `11px ${sans}`, color: C.stone, marginTop: 8, lineHeight: 1.55 }}>
+                  From the sheets Accounts was given. The whole month, every company, is on Payroll.
                 </div>
-              ))}
-              <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 0", borderTop: `1px dashed ${C.gold}` }}>
-                <span style={{ font: `12px ${mono}`, color: C.goldDeep, width: 42 }}>{s.nextDate ? s.nextDate.getFullYear() : "next"}</span>
-                <span style={{ flex: 1, font: `11px ${sans}`, color: C.goldDeep }}>Upcoming · +{s.pct}%</span>
-                <span style={{ font: `13px ${mono}`, color: C.goldDeep }}>{inr(s.nextSalary)}</span>
-              </div>
+              </>) : (
+                <div style={{ font: `12px ${sans}`, color: C.stone, lineHeight: 1.6 }}>
+                  They are not on any released pay run yet.
+                </div>
+              )}
             </Sec>
           </div>
         </div>
 
         <div style={{ display: "flex", alignItems: "flex-start", gap: 8, font: `11px ${sans}`, color: C.stone, marginTop: 4 }}>
-          <Info size={13} color={C.goldDeep} style={{ flexShrink: 0, marginTop: 1 }} /> Salary history is projected from the joining salary and the annual band where a revision hasn't been recorded yet. Stored CV, form and quiz files open from the document vault once the backend is connected.
+          <Info size={13} color={C.goldDeep} style={{ flexShrink: 0, marginTop: 1 }} /> Everything on this profile is what the record holds. Where it holds nothing, it says so — this screen does not work a figure out and present it as a fact.
         </div>
         {liveCam && <CameraLive cam={liveCam} onClose={() => setLiveCam(null)} />}
         <div style={{ display: "flex", gap: 10, marginTop: 14, flexWrap: "wrap" }}>

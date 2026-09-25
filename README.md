@@ -259,6 +259,32 @@ seeded switched off**, with the Act named on it, because no August payslip
 deducts it: a head that is missing looks like nobody thought about it, and a head
 that is off with the rule on it says somebody looked.
 
+### 9. Where the salary data is, and what was invented on the way there
+
+Three places, all real:
+
+- **Payroll → What has gone out** — the four August sheets as the company paid
+  them, by company and combined, with the exact file re-downloadable from any
+  row and every payslip line readable.
+- **Payroll → Work out a month** — one company, one month, every person's days,
+  earned pay, reductions head by head, and payable.
+- **People → open anybody → Profile** — what that person is on: gross, Basic,
+  HRA, Travelling, Medical, Special, whether ESI and PF apply, and what they
+  were actually paid in every released month.
+
+That third one was the problem. It used to print a **salary worked out from a
+hash of the employee ID** — a joining figure, a 10–12% annual revision band, a
+year-by-year history projected from both, a next-increment date with a progress
+bar and the line "They can see this too — nobody has to ask when their raise is
+coming." Also a home address picked from a list of five, "Identity verified —
+OTP on mobile & email" whenever the hash was not divisible by four, an
+assessment quiz score, and a **previous employer chosen from four real
+construction firms**. All of it against a named employee, on a screen with a
+Print button.
+
+Every one of those is gone. The profile shows the salary record, the pay lines,
+and where the record holds nothing it says so.
+
 ### 9. Who is at which project
 
 People are posted to a **site office**; a project has one. The workforce filter

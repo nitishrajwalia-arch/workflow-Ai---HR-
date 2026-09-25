@@ -107,9 +107,18 @@ export interface BootstrapDevice {
 }
 
 export interface BootstrapSalary {
+  /** The monthly gross — what the parts add to, and what a person is "on". */
+  gross: number;
   basic: number;
   hra: number;
+  travel: number;
+  medical: number;
   special: number;
+  /** Whether the statutory deductions apply to this person at all. */
+  esiOn: boolean;
+  pfOn: boolean;
+  /** The wage PF is worked out on, when it is not the policy's. */
+  pfWages: number;
   pf: number;
   pt: number;
   note: string;
