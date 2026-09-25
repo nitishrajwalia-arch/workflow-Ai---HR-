@@ -13000,6 +13000,10 @@ function PayrollView() {
   const [month, setMonth] = useState(lastMonths(1)[0]);
   const [openLine, setOpenLine] = useState(null);
   const [busy, setBusy] = useState(false);
+  /* Two jobs on one screen, and the record is the one that gets opened most —
+     working a month out happens four times a month, and "what went out in
+     August" gets asked every week. */
+  const [view, setView] = useState("record");
 
   const run = payRuns.find(r => r.company === company && r.month === month) || null;
   const lines = run ? run.lines : [];
@@ -13042,14 +13046,16 @@ function PayrollView() {
   /* The sheet Accounts receives. Built in the browser from the run already on
      screen, by the same shared code a test checks against the engine — so the
      file and the screen cannot drift, and it works with the API unreachable. */
-  const sheet = () => {
+  const sheetFor = (r) => {
     const joined = {};
     for (const p of people) if (p.joined) joined[p.id] = p.joined;
-    const { name, csv } = rollOutSheet(run, { companyName: co.name, joined, preparedBy: (me && me.name) || "" });
+    const name2 = (companies.find(c => c.id === r.company) || {}).name;
+    const { name, csv } = rollOutSheet(r, { companyName: name2, joined, preparedBy: (me && me.name) || "" });
     downloadFile(name, csv, "text/csv");
     track("payroll:sheet");
-    toast(run.status === "released" ? `${run.month} sheet downloaded — send it to Accounts` : `${run.month} downloaded as a DRAFT — release it before Accounts pays from it`, run.status === "released" ? "green" : "amber");
+    toast(r.status === "released" ? `${r.month} sheet downloaded — the same one Accounts was given` : `${r.month} downloaded as a DRAFT — release it before Accounts pays from it`, r.status === "released" ? "green" : "amber");
   };
+  const sheet = () => sheetFor(run);
 
   const cell = { padding: "9px 10px", font: `12px ${sans}`, borderTop: `1px solid ${C.lineSoft}`, whiteSpace: "nowrap" };
   const num = { ...cell, textAlign: "right", fontFamily: mono };
@@ -13062,15 +13068,30 @@ function PayrollView() {
         {run && <Pill tone={run.status === "released" ? "green" : "gold"}>{run.status === "released" ? "released to accounts" : "draft"}</Pill>}
         {run && run.source === "imported" && <Pill tone="stone">from your own salary book</Pill>}
       </div>
-      <h1 style={{ font: `400 25px ${serif}`, margin: "6px 0 5px" }}>The month, worked out.</h1>
-      <p style={{ font: `13px ${sans}`, color: C.inkSoft, maxWidth: 680, margin: "0 0 18px", lineHeight: 1.55 }}>
-        Pick a company and a month and the desk works every payslip out from what each person is on
-        and what the company's policy says — the same arithmetic as your own salary books, checked
-        line by line against August. You set the days, an advance, an extra day, and why. Release it
-        and it stops moving: Accounts pays from these figures, so they are the figures that stay.
-        What has already gone out, month by month, is at the bottom of this screen.
+      <h1 style={{ font: `400 25px ${serif}`, margin: "6px 0 5px" }}>
+        {view === "record" ? "Everything Accounts has been given." : "The month, worked out."}
+      </h1>
+      <p style={{ font: `13px ${sans}`, color: C.inkSoft, maxWidth: 680, margin: "0 0 14px", lineHeight: 1.55 }}>
+        {view === "record"
+          ? "Every sheet that has gone to Accounts, newest first — what each company paid, and what the group paid altogether. These figures were released and do not change: this is the record, not a working copy, and nothing on it can be edited."
+          : "Pick a company and a month and the desk works every payslip out from what each person is on and what the company's policy says — the same arithmetic as your own salary books, checked line by line against August. You set the days, an advance, an extra day, and why. Release it and it stops moving."}
       </p>
 
+      {/* Two jobs, kept apart on purpose. The record is read-only — a screen
+          where the history and the working copy share a table is a screen where
+          somebody edits last month by accident. */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 18, flexWrap: "wrap" }}>
+        {[["record", "What has gone out", History], ["work", "Work out a month", Calculator]].map(([k, label, Icon]) => (
+          <button key={k} onClick={() => setView(k)}
+            style={{ cursor: "pointer", borderRadius: 11, padding: "9px 14px", display: "inline-flex", alignItems: "center", gap: 7,
+              border: `1.5px solid ${view === k ? C.gold : C.line}`, background: view === k ? C.goldTint : "#fff",
+              font: `600 12.5px ${sans}`, color: view === k ? C.goldDeep : C.inkSoft }}>
+            <Icon size={14} /> {label}
+          </button>
+        ))}
+      </div>
+
+      {view === "work" && (<>
       <div style={{ display: "flex", gap: 9, flexWrap: "wrap", alignItems: "center", marginBottom: 16 }}>
         <select value={company} onChange={e => setCompany(e.target.value)} style={{ ...sel, margin: 0, minWidth: 220 }}>
           {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -13203,8 +13224,12 @@ function PayrollView() {
         </>
       )}
 
-      <PayHistory payRuns={payRuns} companies={companies}
-        onOpen={(r) => { setCompany(r.company); setMonth(r.month); window.scrollTo({ top: 0, behavior: "smooth" }); }} />
+      </>)}
+
+      {view === "record" && (
+        <PayRecord payRuns={payRuns} companies={companies} onSheet={sheetFor}
+          onOpen={(r) => { setCompany(r.company); setMonth(r.month); setView("work"); window.scrollTo({ top: 0, behavior: "smooth" }); }} />
+      )}
 
       {openLine && <PayLineEditor line={openLine} run={run} onClose={() => setOpenLine(null)} onSave={setPayLine} />}
     </div>
@@ -13212,109 +13237,235 @@ function PayrollView() {
 }
 
 /**
- * What has gone out, month by month.
+ * THE RECORD: every sheet Accounts has been given.
  *
- * The rest of the screen is about ONE month of ONE company, which is how a
- * payroll is worked out. This is the other question — "how much went out in
- * August?" — and it was not answerable anywhere: you had to pick each company
- * in turn and add the four numbers up yourself.
+ * The rest of the screen works out ONE month of ONE company, which is how a
+ * payroll is done and how it should stay. This is the other half — what has
+ * actually left, by company and altogether — and it was not answerable
+ * anywhere: you opened each company in turn and added the four numbers up on
+ * paper.
  *
- * Only RELEASED and PAID runs count towards a month's total. A draft is a
- * working figure; adding it to what has gone out would report money that has
- * not left, and it is listed separately so it is not mistaken for one.
+ * READ ONLY, on purpose. Nothing here opens an editor. A screen where the
+ * history and the working copy share a table is a screen where somebody edits
+ * last month by accident, and a released month is what Accounts paid from.
+ *
+ * Only RELEASED runs are counted. A draft is a working figure and is listed
+ * apart from the totals — reporting it as money that has gone out is the one
+ * mistake this view exists to prevent.
  */
-function PayHistory({ payRuns, companies, onOpen }) {
+function PayRecord({ payRuns, companies, onOpen, onSheet }) {
   const mob = useIsMobile();
+  /* "31 Aug 2026", not "2026-08-31". The rest of the desk writes dates the way
+     people here write them and this screen should not be the exception. */
+  const fmtDate = (iso) => {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return String(iso).slice(0, 10);
+    const M = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    return `${String(d.getUTCDate()).padStart(2, "0")} ${M[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
+  };
   const nameOf = (id) => (companies.find(c => c.id === id) || {}).name || id;
-  const months = useMemo(() => {
-    const by = new Map();
-    for (const r of payRuns) {
-      if (!by.has(r.month)) by.set(r.month, []);
-      by.get(r.month).push(r);
-    }
-    return [...by.entries()].map(([month, runs]) => {
-      const out = runs.filter(r => r.status !== "draft");
-      const sum = (rs, pick) => rs.reduce((a, r) => a + r.lines.reduce((b, l) => b + pick(l), 0), 0);
-      return {
-        month, runs,
-        people: out.reduce((a, r) => a + r.lines.length, 0),
-        gross: sum(out, l => l.eGross),
-        deducted: sum(out, l => l.dTotal),
-        paid: sum(out, l => l.payable),
-        employer: sum(out, l => (l.erEsi || 0) + (l.erPf || 0) + (l.erOther || 0)),
-        drafts: runs.filter(r => r.status === "draft").length,
-      };
-    });
+  const out = useMemo(() => payRuns.filter(r => r.status !== "draft"), [payRuns]);
+  const drafts = useMemo(() => payRuns.filter(r => r.status === "draft"), [payRuns]);
+
+  const sums = (rs) => ({
+    /* `sheets`, not `runs`: the month rows carry an ARRAY called runs and the
+       spread below silently replaced it with this count. */
+    sheets: rs.length,
+    people: rs.reduce((a, r) => a + r.lines.length, 0),
+    gross: rs.reduce((a, r) => a + r.lines.reduce((b, l) => b + l.eGross, 0), 0),
+    deducted: rs.reduce((a, r) => a + r.lines.reduce((b, l) => b + l.dTotal, 0), 0),
+    paid: rs.reduce((a, r) => a + r.lines.reduce((b, l) => b + l.payable, 0), 0),
+    employer: rs.reduce((a, r) => a + r.lines.reduce((b, l) => b + (l.erEsi || 0) + (l.erPf || 0) + (l.erOther || 0), 0), 0),
+  });
+
+  const all = useMemo(() => sums(out), [out]);
+  const byCompany = useMemo(() => {
+    const ids = [...new Set(out.map(r => r.company))];
+    return ids.map(id => ({ id, name: nameOf(id), ...sums(out.filter(r => r.company === id)) }))
+      .sort((a, b) => b.paid - a.paid);
+  }, [out, companies]);
+  const byMonth = useMemo(() => {
+    const seen = [];
+    for (const r of payRuns) if (!seen.includes(r.month)) seen.push(r.month);
+    return seen.map(month => ({
+      month,
+      runs: payRuns.filter(r => r.month === month),
+      ...sums(payRuns.filter(r => r.month === month && r.status !== "draft")),
+    }));
   }, [payRuns, companies]);
 
-  if (!months.length) return null;
+  if (!payRuns.length) {
+    return (
+      <Card pad={22}>
+        <div style={{ font: `13px ${sans}`, color: C.inkSoft, lineHeight: 1.6 }}>
+          Nothing has gone to Accounts yet. Work a month out, release it, and it appears here —
+          with the sheet that was sent, kept exactly as it was sent.
+        </div>
+      </Card>
+    );
+  }
 
-  const cell = { padding: "9px 10px", font: `12px ${sans}`, borderTop: `1px solid ${C.lineSoft}`, whiteSpace: "nowrap" };
+  const cell = { padding: "10px 10px", font: `12px ${sans}`, borderTop: `1px solid ${C.lineSoft}`, whiteSpace: "nowrap" };
   const num = { ...cell, textAlign: "right", fontFamily: mono };
   const th = { padding: "9px 10px", font: `600 10px ${sans}`, letterSpacing: ".06em", textTransform: "uppercase", color: "#fff", background: C.ink, whiteSpace: "nowrap", textAlign: "right" };
 
   return (
-    <div style={{ marginTop: 26 }}>
-      <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap", marginBottom: 6 }}>
-        <Eyebrow>What has gone out</Eyebrow>
-        <span style={{ font: `12px ${sans}`, color: C.stone }}>
-          Every month that has been released, newest first. Tap a company to open that month.
-        </span>
+    <div>
+      {/* ------------------------------------------------ the group, combined */}
+      <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr 1fr" : "repeat(4, 1fr)", gap: 12, marginBottom: 8 }}>
+        {[["Paid to employees", inrShort(all.paid), C.green, `${all.sheets} sheet${all.sheets === 1 ? "" : "s"} across ${byMonth.filter(m => m.sheets > 0).length} month${byMonth.length === 1 ? "" : "s"}`],
+          ["Earned before deductions", inrShort(all.gross), C.ink, "What the work came to"],
+          ["Held back", inrShort(all.deducted), C.amber, "E.S.I., P.F., TDS, advances"],
+          ["Company's own share", inrShort(all.employer), C.inkSoft, "On top — never reaches a bank account"]].map(([k, v, tone, sub]) => (
+          <Card key={k} pad={14}>
+            <div style={{ font: `600 10px ${sans}`, letterSpacing: ".1em", textTransform: "uppercase", color: C.stone }}>{k}</div>
+            <div style={{ font: `400 ${mob ? 20 : 24}px ${serif}`, color: tone, marginTop: 5 }}>{v}</div>
+            <div style={{ font: `10px ${sans}`, color: C.stone, marginTop: 4, lineHeight: 1.4 }}>{sub}</div>
+          </Card>
+        ))}
       </div>
-      <Card pad={0}>
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: mob ? 620 : 0 }}>
+      <div style={{ font: `11px ${sans}`, color: C.stone, margin: "0 0 22px", lineHeight: 1.6 }}>
+        Every company in the group, every month that has been released. Drafts are not counted.
+      </div>
+
+      {/* ------------------------------------------------------- by company */}
+      <Eyebrow>Company by company</Eyebrow>
+      <div style={{ font: `12px ${sans}`, color: C.stone, margin: "4px 0 10px" }}>
+        What each firm has paid its own people, and what the group has paid altogether.
+      </div>
+      {mob ? (
+        <div style={{ display: "grid", gap: 10, marginBottom: 8 }}>
+          {byCompany.map(c => (
+            <Card key={c.id} pad={14}>
+              <div style={{ font: `600 13px ${sans}`, color: C.ink, marginBottom: 6 }}>{c.name}</div>
+              {[["Paid to employees", inr(c.paid), C.green], ["Earned", inr(c.gross), C.ink],
+                ["Held back", inr(c.deducted), C.amber], ["Company's own share", inr(c.employer), C.inkSoft],
+                ["Sheets sent", `${c.sheets}`, C.inkSoft]].map(([k, v, tone]) => (
+                <div key={k} style={{ display: "flex", justifyContent: "space-between", font: `12px ${sans}`, padding: "4px 0" }}>
+                  <span style={{ color: C.stone }}>{k}</span>
+                  <span style={{ fontFamily: mono, color: tone, fontWeight: 600 }}>{v}</span>
+                </div>
+              ))}
+            </Card>
+          ))}
+          <Card pad={14} style={{ background: C.ink }}>
+            <div style={{ font: `600 13px ${sans}`, color: "#fff", marginBottom: 6 }}>All four companies together</div>
+            {[["Paid to employees", inr(all.paid)], ["Earned", inr(all.gross)],
+              ["Held back", inr(all.deducted)], ["Company's own share", inr(all.employer)]].map(([k, v]) => (
+              <div key={k} style={{ display: "flex", justifyContent: "space-between", font: `12px ${sans}`, padding: "4px 0" }}>
+                <span style={{ color: "#B9C4D6" }}>{k}</span>
+                <span style={{ fontFamily: mono, color: "#fff", fontWeight: 600 }}>{v}</span>
+              </div>
+            ))}
+          </Card>
+        </div>
+      ) : (
+        <Card pad={0} style={{ marginBottom: 8 }}>
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
               <tr>
-                <th style={{ ...th, textAlign: "left" }}>Month</th>
-                <th style={th}>People</th>
+                <th style={{ ...th, textAlign: "left" }}>Company</th>
+                <th style={th}>Sheets sent</th>
+                <th style={th}>Payslips</th>
                 <th style={th}>Earned</th>
-                <th style={th}>Reductions</th>
-                <th style={th}>Paid out</th>
+                <th style={th}>Held back</th>
+                <th style={th}>Paid to employees</th>
                 <th style={th}>Company's own share</th>
               </tr>
             </thead>
             <tbody>
-              {months.map(m => (
-                <React.Fragment key={m.month}>
-                  <tr style={{ background: C.paper }}>
-                    <td style={{ ...cell, font: `600 12.5px ${sans}`, color: C.ink }}>
-                      {m.month}
-                      {m.drafts > 0 && <span style={{ font: `10px ${sans}`, color: C.amber, marginLeft: 8 }}>
-                        {m.drafts} still a draft — not counted
-                      </span>}
-                    </td>
-                    <td style={{ ...num, fontWeight: 600 }}>{m.people || "—"}</td>
-                    <td style={{ ...num, fontWeight: 600 }}>{m.gross ? inr(m.gross) : "—"}</td>
-                    <td style={{ ...num, fontWeight: 600, color: C.amber }}>{m.deducted ? inr(m.deducted) : "—"}</td>
-                    <td style={{ ...num, fontWeight: 700, color: C.ink }}>{m.paid ? inr(m.paid) : "—"}</td>
-                    <td style={{ ...num, color: C.inkSoft }}>{m.employer ? inr(m.employer) : "—"}</td>
-                  </tr>
-                  {m.runs.map(r => (
-                    <tr key={r.id} onClick={() => onOpen(r)} style={{ cursor: "pointer" }}>
-                      <td style={{ ...cell, paddingLeft: 26, color: C.inkSoft }}>
-                        {nameOf(r.company)}
-                        {r.status === "draft" && <Pill tone="gold" style={{ marginLeft: 7 }}>draft</Pill>}
-                        {r.source === "imported" && <span style={{ font: `10px ${sans}`, color: C.stone, marginLeft: 7 }}>from their own book</span>}
-                      </td>
-                      <td style={num}>{r.lines.length}</td>
-                      <td style={num}>{inr(r.lines.reduce((a, l) => a + l.eGross, 0))}</td>
-                      <td style={{ ...num, color: C.amber }}>{inr(r.lines.reduce((a, l) => a + l.dTotal, 0))}</td>
-                      <td style={{ ...num, color: C.ink }}>{inr(r.lines.reduce((a, l) => a + l.payable, 0))}</td>
-                      <td style={{ ...num, color: C.stone }}>
-                        {inr(r.lines.reduce((a, l) => a + (l.erEsi || 0) + (l.erPf || 0) + (l.erOther || 0), 0))}
-                      </td>
-                    </tr>
-                  ))}
-                </React.Fragment>
+              {byCompany.map(c => (
+                <tr key={c.id}>
+                  <td style={{ ...cell, font: `600 12.5px ${sans}`, color: C.ink, whiteSpace: "normal" }}>{c.name}</td>
+                  <td style={num}>{c.sheets}</td>
+                  <td style={num}>{c.people}</td>
+                  <td style={num}>{inr(c.gross)}</td>
+                  <td style={{ ...num, color: C.amber }}>{inr(c.deducted)}</td>
+                  <td style={{ ...num, fontWeight: 700, color: C.ink }}>{inr(c.paid)}</td>
+                  <td style={{ ...num, color: C.stone }}>{inr(c.employer)}</td>
+                </tr>
               ))}
+              <tr style={{ background: C.ink }}>
+                <td style={{ ...cell, font: `600 12.5px ${sans}`, color: "#fff", borderTop: "none" }}>All {byCompany.length} companies together</td>
+                <td style={{ ...num, color: "#fff", borderTop: "none" }}>{all.sheets}</td>
+                <td style={{ ...num, color: "#fff", borderTop: "none" }}>{all.people}</td>
+                <td style={{ ...num, color: "#fff", borderTop: "none" }}>{inr(all.gross)}</td>
+                <td style={{ ...num, color: "#F0C270", borderTop: "none" }}>{inr(all.deducted)}</td>
+                <td style={{ ...num, color: "#fff", fontWeight: 700, borderTop: "none" }}>{inr(all.paid)}</td>
+                <td style={{ ...num, color: "#B9C4D6", borderTop: "none" }}>{inr(all.employer)}</td>
+              </tr>
             </tbody>
           </table>
-        </div>
-      </Card>
-      <div style={{ font: `11px ${sans}`, color: C.stone, marginTop: 9, lineHeight: 1.6 }}>
-        "Paid out" is what left as salary — earned, less every reduction, plus days beyond the month.
-        The company's own share of E.S.I. and P.F. is on top of that and does not reach anybody's bank account.
+        </Card>
+      )}
+      <div style={{ font: `11px ${sans}`, color: C.stone, margin: "0 0 24px", lineHeight: 1.6 }}>
+        "Payslips" counts every line on every sheet, so somebody paid in two months is counted twice —
+        it is a count of payslips, not of people.
+      </div>
+
+      {/* --------------------------------------------------------- by month */}
+      <Eyebrow>Month by month</Eyebrow>
+      <div style={{ font: `12px ${sans}`, color: C.stone, margin: "4px 0 10px" }}>
+        Every sheet that was sent, newest first. Open any one to get the same file Accounts was given.
+      </div>
+      <div style={{ display: "grid", gap: 14 }}>
+        {byMonth.map(m => (
+          <Card key={m.month} pad={0}>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap", padding: "13px 16px", background: C.paper, borderBottom: `1px solid ${C.line}` }}>
+              <span style={{ font: `600 15px ${serif}`, color: C.ink }}>{m.month}</span>
+              <span style={{ font: `11px ${sans}`, color: C.stone }}>{m.people} payslip{m.people === 1 ? "" : "s"}</span>
+              <span style={{ marginLeft: "auto", font: `600 15px ${mono}`, color: C.green }}>{inr(m.paid)}</span>
+              <span style={{ font: `10px ${sans}`, color: C.stone, width: mob ? "100%" : "auto" }}>paid to employees</span>
+            </div>
+            {m.runs.map(r => {
+              const paid = r.lines.reduce((a, l) => a + l.payable, 0);
+              const held = r.lines.reduce((a, l) => a + l.dTotal, 0);
+              const share = r.lines.reduce((a, l) => a + (l.erEsi || 0) + (l.erPf || 0) + (l.erOther || 0), 0);
+              const draft = r.status === "draft";
+              return (
+                <div key={r.id} style={{ padding: "12px 16px", borderTop: `1px solid ${C.lineSoft}`, display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center", background: draft ? C.goldTint : "transparent" }}>
+                  <div style={{ flex: 1, minWidth: 190 }}>
+                    <div style={{ font: `600 12.5px ${sans}`, color: C.ink }}>
+                      {nameOf(r.company)} {draft && <Pill tone="gold">draft — not sent</Pill>}
+                    </div>
+                    <div style={{ font: `11px ${sans}`, color: C.stone, marginTop: 3, lineHeight: 1.5 }}>
+                      {/* A month loaded from the company's own book was not
+                          released by anybody here, so nobody is named for it. */}
+                      {draft
+                        ? "Worked out but not released. It is not counted in anything above."
+                        : r.source === "imported"
+                          ? <>Loaded from the company's own salary book{r.releasedAt ? `, ${fmtDate(r.releasedAt)}` : ""}. {r.lines.length} payslip{r.lines.length === 1 ? "" : "s"}.</>
+                          : <>Sent to Accounts{r.releasedAt ? ` on ${fmtDate(r.releasedAt)}` : ""}{r.releasedBy ? ` by ${r.releasedBy}` : ""}. {r.lines.length} payslip{r.lines.length === 1 ? "" : "s"}.</>}
+                    </div>
+                  </div>
+                  <div style={{ textAlign: "right", minWidth: 120 }}>
+                    <div style={{ font: `600 14px ${mono}`, color: draft ? C.stone : C.ink }}>{inr(paid)}</div>
+                    <div style={{ font: `10px ${sans}`, color: C.stone }}>
+                      {held ? `${inr(held)} held back` : "nothing held back"}{share ? ` · ${inr(share)} company share` : ""}
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
+                    <GoldButton small ghost onClick={() => onSheet(r)}>
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                        <Download size={12} /> {draft ? "Draft sheet" : "The sheet sent"}
+                      </span>
+                    </GoldButton>
+                    <button onClick={() => onOpen(r)} style={{ ...softBtn, font: `600 11px ${sans}` }}>
+                      {draft ? "Open and finish it" : "Look at the lines"}
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </Card>
+        ))}
+      </div>
+
+      <div style={{ font: `11px ${sans}`, color: C.stone, marginTop: 14, lineHeight: 1.7 }}>
+        "Paid to employees" is what left as salary — earned, less everything held back, plus any days
+        beyond the month. The company's own share of E.S.I. and P.F. sits on top of that and never
+        reaches anybody's bank account, so it is shown apart rather than added in.
+        {drafts.length > 0 && ` ${drafts.length} month${drafts.length === 1 ? " is" : "s are"} still a draft and counted in none of these totals.`}
       </div>
     </div>
   );

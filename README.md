@@ -261,13 +261,19 @@ that is off with the rule on it says somebody looked.
 
 ### 9. What has gone out, and the sheet that brings people in
 
-The Payroll screen works out **one month of one company**, which is how a payroll
-is done. The other question — *how much went out in August?* — was not
-answerable anywhere: you had to open each company in turn and add the four
-numbers up yourself. **What has gone out**, at the foot of the Payroll screen,
-answers it: every month, newest first, with each company under it, and only
-released runs counted towards the total. A draft is listed separately and marked,
-because adding it would report money that has not left.
+The Payroll screen does two jobs and they are kept apart, because a screen where
+the history and the working copy share a table is a screen where somebody edits
+last month by accident. **Work out a month** is one month of one company, which
+is how a payroll is done. **What has gone out** — which is what the screen opens
+on — is the record: every sheet Accounts has been given, what each company paid
+its own people, and what the group paid altogether, with the same file
+re-downloadable from any row. It is read only; nothing on it opens an editor,
+and the server refuses an edit to a released run regardless.
+
+That question was not answerable anywhere before: you opened each company in
+turn and added the four numbers up yourself. Only released runs are counted. A
+draft is listed separately and marked, because reporting it as money that has
+gone out is the one mistake the view exists to prevent.
 
 Building it found a real defect. `PayRunLine` was unique on `(runId, name)`, and
 two different people called **Parveen Kumar** are paid by SRG on the same August
