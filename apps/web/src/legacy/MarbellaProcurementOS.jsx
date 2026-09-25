@@ -296,7 +296,6 @@ const VEND_ALIASES = {
 const VEND_SAMPLE = `Party Name,Material,GSTIN,PAN,Contact Person,Mobile,Email,Credit,City\nBharat Cement Agency,Cement,03ABCDE1234F1Z5,ABCDE1234F,Rakesh Kumar,9814000011,rakesh@bharatcement.in,30 days,Mohali\nBansal Hardware,Hardware,03PQRSX9876G2Z1,PQRSX9876G,Vinod Bansal,9815000022,sales@bansalhw.com,15 days,Chandigarh\nSaini Tiles & Sanitary,Finishes,,,Harpreet Saini,9876500033,,COD,Zirakpur\nDeep Electricals,MEP,03LMNOP4567H3Z9,LMNOP4567H,Deepak,9814500044,deep.elec@gmail.com,45 days,Panchkula`;
 const BILLS_SEED = [];
 const POS = [];
-const SITES = [];
 /* Spend by category, ₹ Cr. Adds up from the expense ledger once it has entries. */
 const SPEND_CAT = [];
 const WELCOME_LINES = [
@@ -904,7 +903,7 @@ function ExportPanel({ title, filterNote, cols, rows, trail, userKey, onClose, r
   const mob = useIsMobile(); const { activeFirm } = useProc();
   const u = desk(userKey);
   const empId = ((typeof EMPLOYEES !== "undefined" ? EMPLOYEES : []).find(p => p.name === u.name) || {}).id || `MB-${(u.dept || "GEN").slice(0, 3).toUpperCase()}-0001`;
-  const [fmt, setFmt] = useState("excel");
+  const [fmt, setFmt] = useState("csv");
   const [period, setPeriod] = useState("current");
   const [withTrail, setWithTrail] = useState(false);
   const [withAttach, setWithAttach] = useState(false);
@@ -936,7 +935,7 @@ function ExportPanel({ title, filterNote, cols, rows, trail, userKey, onClose, r
     ["", ""],
   ];
   const doExport = () => {
-    if (fmt === "csv" || fmt === "excel") {
+    if (fmt === "csv") {
       const lines = [];
       head.forEach(h => lines.push(h.map(csvCell).join(",")));
       lines.push(cols.map(csvCell).join(","));
@@ -947,7 +946,7 @@ function ExportPanel({ title, filterNote, cols, rows, trail, userKey, onClose, r
         trail.forEach(t => lines.push(t.map(csvCell).join(",")));
       }
       lines.push(""); lines.push(csvCell("Marbella Group — internal. Do not forward outside the company."));
-      downloadFile(`${fileBase}.${fmt === "csv" ? "csv" : "xls"}`, lines.join("\n"), fmt === "csv" ? "text/csv" : "application/vnd.ms-excel");
+      downloadFile(`${fileBase}.csv`, lines.join("\n"), "text/csv");
     } else {
       const esc = (x) => String(x == null ? "" : x).replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
       const doc = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${esc(title)}</title><style>
@@ -1004,7 +1003,11 @@ function ExportPanel({ title, filterNote, cols, rows, trail, userKey, onClose, r
 
         <label style={{ ...lbl, fontSize: 9 }}>Format</label>
         <div style={{ display: "flex", gap: 7, margin: "6px 0 12px", flexWrap: "wrap" }}>
-          {[["excel", "Excel"], ["csv", "CSV"], ["pdf", "PDF"]].map(([k, l]) => (
+          {/* There were three chips here and two of them did the same thing:
+              "Excel" and "CSV" produced identical comma-separated text, and the
+              Excel one named it .xls, which it was not. One chip now, honestly
+              named — Excel opens a CSV. */}
+          {[["csv", "Spreadsheet · CSV"], ["pdf", "PDF"]].map(([k, l]) => (
             <button key={k} onClick={() => setFmt(k)} style={{ cursor: "pointer", border: `1px solid ${fmt === k ? C.gold : C.line}`, background: fmt === k ? C.goldTint : "#fff", color: fmt === k ? C.goldDeep : C.stone, borderRadius: 20, padding: "7px 14px", font: `600 12px ${sans}` }}>{l}</button>
           ))}
         </div>
@@ -1665,7 +1668,7 @@ function FilePreview({ title, meta, lines = [], onClose }) {
         </div>
         <div style={{ display: "flex", gap: 10, marginTop: 14, flexWrap: "wrap" }}>
           <GoldButton small ghost onClick={() => printThis()}><span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Printer size={13} /> Print</span></GoldButton>
-          <GoldButton small ghost onClick={() => { downloadFile(`${String(meta || title).replace(/\s+/g, "-")}.txt`, `MARBELLA GROUP\n${title}\n${meta || ""}\n\n${lines.map(([k, v]) => `${k}: ${v}`).join("\n")}`); toast("Downloaded", "green"); }}><span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Download size={13} /> Download</span></GoldButton>
+          <GoldButton small ghost onClick={async () => { if (await downloadFile(`${String(meta || title).replace(/\s+/g, "-")}.txt`, `MARBELLA GROUP\n${title}\n${meta || ""}\n\n${lines.map(([k, v]) => `${k}: ${v}`).join("\n")}`)) toast("Downloaded", "green"); }}><span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Download size={13} /> Download</span></GoldButton>
           <GoldButton small onClick={onClose}>Close</GoldButton>
         </div>
       </div>
@@ -1796,7 +1799,7 @@ function BossView() {
      not exist. Invented numbers anywhere are bad; invented MONEY on the screen
      of the person who signs things is the kind that gets acted on. They are
      computed now, and they read zero until there is something to count. */
-  const { me, pos = [], expenses = [], invoices = [], vendors = [], people = [], firms = [], holds = [] } = useProc();
+  const { me, pos = [], expenses = [], invoices = [], vendors = [], people = [], firms = [], holds = [], projects = [], companies = [] } = useProc();
   const [approvals, setApprovals] = useState([]);
   const headcount = people.filter(p => (p.status || "active") === "active").length;
   const openPos = pos.filter(p => String(p.status || "").toLowerCase() !== "closed").length;
@@ -1857,21 +1860,39 @@ function BossView() {
       {/* Approved colour themes — Chairman only */}
       <div style={{ marginBottom: 18 }}><ColourThemes /></div>
 
-      {/* Sites — construction in full swing */}
+      {/* The three cards here were driven by SITES, which is an empty array —
+          the prototype's invented sites and their invented percentages. The
+          company's own projects are on the server; a project with no progress
+          recorded says so rather than showing a bar somebody made up. */}
       <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr" : "repeat(3,1fr)", gap: 14, marginBottom: 18 }}>
-        {SITES.map((s, i) => (
-          <Card key={i} pad={18}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-              <HardHat size={16} color={s.prog === 0 ? C.stone : C.gold} /><Pill tone="stone">{s.area}</Pill>
-              <span style={{ marginLeft: "auto" }}>{s.prog === 0 ? <Pill tone="amber">Pre-construction</Pill> : <span style={{ font: `600 13px ${sans}`, color: C.ink }}>{s.prog}%</span>}</span>
-            </div>
-            <div style={{ font: `600 13px ${sans}`, marginBottom: 8, lineHeight: 1.3 }}>{s.name}</div>
-            <div style={{ height: 6, background: C.lineSoft, borderRadius: 3, overflow: "hidden" }}>
-              <div style={{ width: `${s.prog}%`, height: "100%", background: C.gold }} />
-            </div>
-            <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8, font: `12px ${sans}`, color: C.stone }}><span>{s.note}</span><span>{s.cost}</span></div>
-          </Card>
-        ))}
+        {projects.length === 0 && (
+          <Card pad={18}><div style={{ font: `13px ${sans}`, color: C.stone }}>No project on file yet. They are added on the Companies screen.</div></Card>
+        )}
+        {projects.map((s) => {
+          const co = companies.find(c => c.id === s.company);
+          const onIt = people.filter(p => p.status !== "exited" && p.office === s.id).length;
+          return (
+            <Card key={s.id} pad={18}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+                <HardHat size={16} color={C.gold} />
+                <Pill tone="stone">{s.short || s.name}</Pill>
+                <span style={{ marginLeft: "auto" }}>
+                  {s.reraStatus === "received"
+                    ? <Pill tone="green">RERA on file</Pill>
+                    : <Pill tone="amber">RERA not yet</Pill>}
+                </span>
+              </div>
+              <div style={{ font: `600 13px ${sans}`, marginBottom: 6, lineHeight: 1.3 }}>{s.name}</div>
+              {/* There was a progress bar here, filled from a percentage typed
+                  into this file. Nobody records progress against a project, so
+                  there is nothing to draw and it says so. */}
+              <div style={{ font: `12px ${sans}`, color: C.stone, lineHeight: 1.6 }}>
+                {(co && co.name) || "No company against it"}<br />
+                {onIt > 0 ? `${onIt} on the roster here` : "Nobody posted here yet"}
+              </div>
+            </Card>
+          );
+        })}
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr" : "1.4fr 1fr", gap: 18 }}>
@@ -5440,11 +5461,19 @@ function PODoc({ po, firm, onClose }) {
 }
 
 function CreatePO({ prefill, onClose }) {
-  const mob = useIsMobile(); const { addPO, activeFirm, saveDraft, dropDraft, catalog, learnItem, vendors, issueGatePass } = useProc();
+  const mob = useIsMobile(); const { addPO, activeFirm, saveDraft, dropDraft, catalog, learnItem, vendors = [], projects = [], issueGatePass } = useProc();
   const [regOpen, setRegOpen] = useState(false);
-  const [vendor, setVendor] = useState(prefill?.vendor || VENDORS[0].name);
+  /* `VENDORS[0].name` and `SITES[0].name`. Both of those lists are empty arrays
+     in this file — they were the prototype's invented suppliers and sites — so
+     opening this form threw before it rendered a single field, and "New PO",
+     the one thing the purchasing screen is for, did nothing but break the
+     screen. Both lists come from the server now, and an empty one is a sentence
+     rather than a crash. */
+  const siteList = projects.map(p => p.name);
+  const vendorList = vendors.map(v => v.name);
+  const [vendor, setVendor] = useState(prefill?.vendor || vendorList[0] || "");
   const [terms, setTerms] = useState(prefill?.terms || "30 days");
-  const [site, setSite] = useState(prefill?.site || SITES[0].name);
+  const [site, setSite] = useState(prefill?.site || siteList[0] || "");
   const [rows, setRows] = useState(prefill?.item ? [{ item: prefill.item, qty: prefill.qty || "", unit: "", rate: prefill.amount ? String(prefill.amount) : "", from: "" }] : [{ item: "", qty: "", unit: "", rate: "", from: "" }]);
   const [focus, setFocus] = useState(null);
   const [bulkOpen, setBulkOpen] = useState(false);
@@ -5532,7 +5561,7 @@ function CreatePO({ prefill, onClose }) {
         )}
 
         <label style={lbl}>Vendor</label>
-        <select value={vendor} onChange={e => setVendor(e.target.value)} style={sel}>{[...new Set([vendor, ...VENDORS.map(v => v.name)])].map(v => <option key={v}>{v}</option>)}</select>
+        <select value={vendor} onChange={e => setVendor(e.target.value)} style={sel}>{vendorList.length === 0 && <option value="">No vendor on file — add one on the Vendors screen</option>}{[...new Set([vendor, ...vendorList].filter(Boolean))].map(v => <option key={v}>{v}</option>)}</select>
         {vendor && !vendors.some(v => v.name.trim().toLowerCase() === vendor.trim().toLowerCase()) && (
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", background: C.amberSoft, border: `1px solid ${C.amber}`, borderRadius: 10, padding: "9px 12px", margin: "8px 0 4px", font: `12px ${sans}`, color: C.inkSoft }}>
             <TriangleAlert size={15} color={C.amber} style={{ flexShrink: 0 }} /><div style={{ flex: 1, minWidth: 150 }}><b>{vendor}</b> isn't a registered vendor. Register them to keep the record clean.</div>
@@ -5597,7 +5626,7 @@ function CreatePO({ prefill, onClose }) {
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 14 }}>
           <div><label style={lbl}>Payment terms</label><select value={terms} onChange={e => setTerms(e.target.value)} style={sel}>{["COD", "15 days", "30 days", "45 days", "Weekly"].map(t => <option key={t}>{t}</option>)}</select></div>
-          <div><label style={lbl}>Charge to site</label><select value={site} onChange={e => setSite(e.target.value)} style={sel}>{SITES.map(s => <option key={s.name}>{s.name}</option>)}</select></div>
+          <div><label style={lbl}>Charge to site</label><select value={site} onChange={e => setSite(e.target.value)} style={sel}>{siteList.length === 0 && <option value="">No project on file</option>}{siteList.map(s => <option key={s}>{s}</option>)}</select></div>
         </div>
         <div style={{ display: "flex", gap: 10, marginTop: 8, alignItems: "center", flexWrap: "wrap" }}>
           <GoldButton onClick={submit}>Raise PO · {filled.length} item{filled.length !== 1 ? "s" : ""} · {inr(total)}</GoldButton>
@@ -5709,10 +5738,13 @@ function detectCat(text) {
   return { cat: null, commodity: false, brands: [], note: "" };
 }
 function IntentRequest({ userKey = "purchase" }) {
-  const mob = useIsMobile(); const { activeFirm } = useProc();
+  const mob = useIsMobile(); const { activeFirm, projects = [] } = useProc();
   const u = desk(userKey);
   const [reqId] = useState(() => "MB-RQ-" + (5200 + Math.floor(Math.random() * 700)));
-  const blank = () => ({ particular: "", brand: "", qty: "", unit: "", loc: (SITES[0] && SITES[0].name) || "", spot: "", desc: "" });
+  /* "Where will it be used?" was filled from SITES, an empty array, so the
+     dropdown had nothing in it and the answer was always blank. */
+  const siteList = projects.map(p => p.name);
+  const blank = () => ({ particular: "", brand: "", qty: "", unit: "", loc: siteList[0] || "", spot: "", desc: "" });
   const [items, setItems] = useState([blank()]);
   const [quotes, setQuotes] = useState([]);
   const [shots, setShots] = useState({});
@@ -5785,7 +5817,7 @@ function IntentRequest({ userKey = "purchase" }) {
               <div><label style={{ ...lbl, fontSize: 9 }}>Unit</label><input value={x.unit} onChange={e => upd(i, { unit: e.target.value })} placeholder="bags / sq ft / nos" style={{ ...cell, marginTop: 5 }} /></div>
             </div>
             <div style={{ display: mob ? "block" : "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 10 }}>
-              <div><label style={{ ...lbl, fontSize: 9 }}>Where will it be used?</label><select value={x.loc} onChange={e => upd(i, { loc: e.target.value })} style={{ ...sel, margin: "5px 0 0" }}>{SITES.map(s => <option key={s.name}>{s.name}</option>)}</select></div>
+              <div><label style={{ ...lbl, fontSize: 9 }}>Where will it be used?</label><select value={x.loc} onChange={e => upd(i, { loc: e.target.value })} style={{ ...sel, margin: "5px 0 0" }}>{siteList.length === 0 && <option value="">No project on file</option>}{siteList.map(x => <option key={x}>{x}</option>)}</select></div>
               <div>{mob && <div style={{ height: 8 }} />}<label style={{ ...lbl, fontSize: 9 }}>Exact spot (optional)</label><input value={x.spot} onChange={e => upd(i, { spot: e.target.value })} placeholder="e.g. Tower A rooftop / 3rd floor" style={{ ...cell, marginTop: 5 }} /></div>
             </div>
             <label style={{ ...lbl, fontSize: 9 }}>Description / spec</label>
@@ -5819,12 +5851,13 @@ function IntentRequest({ userKey = "purchase" }) {
 }
 
 function FreshSheet({ userKey }) {
-  const mob = useIsMobile(); const { activeFirm } = useProc();
+  const mob = useIsMobile(); const { activeFirm, projects = [] } = useProc();
+  const siteList = projects.map(p => p.name);
   const u = desk(userKey);
   const pm = USERS.purchase;
   const blank = () => ({ particular: "", brand: "", qty: "", unit: "", need: "", remark: "" });
   const [rows, setRows] = useState([blank(), blank(), blank()]);
-  const [site, setSite] = useState((SITES[0] && SITES[0].name) || "");
+  const [site, setSite] = useState(siteList[0] || "");
   const [stage, setStage] = useState("fill");
   const [to, setTo] = useState("purchase@marbellagroup.in");
   const [note, setNote] = useState("");
@@ -5906,7 +5939,7 @@ function FreshSheet({ userKey }) {
       <div style={{ font: `12px ${sans}`, color: C.stone, marginBottom: 14 }}>Write it like you would on paper. It comes out on the Marbella letterhead in your name, and you get a final look before it goes.</div>
       <div style={{ maxWidth: 300, marginBottom: 14 }}>
         <label style={{ ...lbl, fontSize: 9 }}>Site</label>
-        <select value={site} onChange={e => setSite(e.target.value)} style={{ ...sel, margin: "5px 0 0" }}>{SITES.map(s => <option key={s.name}>{s.name}</option>)}</select>
+        <select value={site} onChange={e => setSite(e.target.value)} style={{ ...sel, margin: "5px 0 0" }}>{siteList.length === 0 && <option value="">No project on file</option>}{siteList.map(x => <option key={x}>{x}</option>)}</select>
       </div>
       {!mob && (
         <div style={{ display: "grid", gridTemplateColumns: "22px 1.6fr 1fr 60px 62px 1fr 22px", gap: 7, padding: "0 2px" }}>
@@ -7530,15 +7563,57 @@ function printThis() {
 function callNumber(number, who) {
   const n = String(number || "").replace(/[^\d+]/g, "");
   if (!n) { toast(`No number on file for ${who || "them"}.`, "amber"); return; }
-  try {
-    window.location.href = `tel:${n}`;
-  } catch {
-    toast(`Call ${n}`, "gold");
-  }
+  /* `tel:` opens the dialler on a phone. On a desktop, and inside the shared
+     preview link, the browser refuses it and refuses it SILENTLY — no error to
+     catch, so the old fallback below never ran and the button simply did
+     nothing. The number is shown either way, so there is always something to
+     ring even when the handoff does not happen. */
+  toast(`${who ? who + " · " : ""}${n}`, "gold");
+  try { window.location.href = `tel:${n}`; } catch { /* the toast is the fallback */ }
 }
 
-function downloadFile(name, text, mime = "text/plain") {
-  try { const blob = new Blob([text], { type: mime }); const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1500); } catch (e) { toast("Download blocked in preview — works on device", "amber"); }
+/**
+ * Hand a generated file to whoever is looking at the screen.
+ *
+ * The blob-and-click below is what a browser wants. Inside the shared preview
+ * link it is blocked, and blocked SILENTLY — no exception, so the old `catch`
+ * never ran and every download button in that link did nothing at all while
+ * looking like it had worked. That is the link the company actually opens.
+ *
+ * So: ask the viewer first, if there is one, and only fall back to the browser.
+ * Either way the person is told when nothing was saved.
+ */
+async function downloadFile(name, text, mime = "text/plain") {
+  const saver = (typeof window !== "undefined" && window.claude && window.claude.use)
+    ? await window.claude.use("downloads").catch(() => null)
+    : null;
+  if (saver) {
+    try {
+      await saver.save({ filename: name, data: text });
+      return true;
+    } catch (e) {
+      const code = e && e.code;
+      if (code === "declined") return false;            // they said no; that is an answer
+      if (code === "rejected_extension") {
+        toast(`A .${String(name).split(".").pop()} cannot be saved from this link. Open the app itself for it.`, "amber");
+        return false;
+      }
+      toast("That file could not be saved from this link. Open the app itself for it.", "amber");
+      return false;
+    }
+  }
+  try {
+    const blob = new Blob([text], { type: mime });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1500);
+    return true;
+  } catch {
+    toast("This browser would not save the file.", "amber");
+    return false;
+  }
 }
 function buildVCard(p) {
   const parts = p.name.trim().split(" "); const last = parts.length > 1 ? parts[parts.length - 1] : ""; const first = parts.slice(0, parts.length > 1 ? -1 : 1).join(" ");
@@ -7649,7 +7724,7 @@ function CardPrintDoc({ p, onClose }) {
 /* ---------- Shareable business card (vCard) ---------- */
 function ShareCard({ p, onClose }) {
   const mob = useIsMobile();
-  const save = () => { downloadFile(`${p.name.replace(/\s+/g, "-")}-Marbella.vcf`, buildVCard(p), "text/vcard"); toast("Contact card saved — opens in Contacts", "green"); };
+  const save = async () => { if (await downloadFile(`${p.name.replace(/\s+/g, "-")}-Marbella.vcf`, buildVCard(p), "text/vcard")) toast("Contact card saved — opens in Contacts", "green"); };
   const share = (where) => toast(`On a phone this opens ${where} with the card attached`, "gold");
   return (
     <Overlay onClose={onClose} width={440}>
@@ -8218,10 +8293,10 @@ function LetterForm({ tmpl, person, onBack }) {
                 selected there is no GSTIN and no RERA number to put on it, so
                 the button says which project to pick rather than sending a
                 letter with two blanks where a registration should be. */}
-            <GoldButton disabled={isGroup(activeFirm)} onClick={() => {
+            <GoldButton disabled={isGroup(activeFirm)} onClick={async () => {
               if (isGroup(activeFirm)) { toast(PICK_A_PROJECT, "amber"); return; }
-              downloadFile(`${tmpl.name.replace(/\s+/g, "-")}${v.name ? "-" + v.name.replace(/\s+/g, "-") : ""}.txt`, `MARBELLA GROUP\n${activeFirm.firm}\n${activeFirm.addr}\nGSTIN ${activeFirm.gstin} · RERA ${activeFirm.rera}\n\n${body}\n\n${hrSignature}`);
-              toast("Letter downloaded", "green");
+              const saved = await downloadFile(`${tmpl.name.replace(/\s+/g, "-")}${v.name ? "-" + v.name.replace(/\s+/g, "-") : ""}.txt`, `MARBELLA GROUP\n${activeFirm.firm}\n${activeFirm.addr}\nGSTIN ${activeFirm.gstin} · RERA ${activeFirm.rera}\n\n${body}\n\n${hrSignature}`);
+              if (saved) toast("Letter downloaded", "green");
             }}><span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Download size={14} /> Download</span></GoldButton>
             <GoldButton ghost onClick={() => { setIssued(true); logHR(`Issued ${tmpl.name}${v.name ? " — " + v.name : ""}`); toast("Marked as issued — logged", "gold"); }}>{issued ? "Issued ✓" : "Mark as issued"}</GoldButton>
           </div>
@@ -11512,11 +11587,11 @@ function BulkImportView() {
               <input type="file" accept=".xlsx,.csv,.tsv,.txt" onChange={onFile} style={{ display: "none" }} />
             </label>
             <GoldButton ghost small onClick={() => { setRaw(mode === "add" ? SAMPLE_CSV : UPDATE_SAMPLE_CSV); toast("Sample loaded — press Read", "gold"); }}>Use a sample</GoldButton>
-            <GoldButton ghost small onClick={() => {
+            <GoldButton ghost small onClick={async () => {
               const cols = (mode === "add" ? IMP_FIELDS : UPD_FIELDS);
-              downloadFile(`Marbella-${mode === "add" ? "new-people" : "fill-in-blanks"}.csv`,
-                cols.map(f => f.label).join(",") + "\n", "text/csv");
-              toast("Template downloaded — fill it in and upload it back", "green");
+              if (await downloadFile(`Marbella-${mode === "add" ? "new-people" : "fill-in-blanks"}.csv`,
+                cols.map(f => f.label).join(",") + "\n", "text/csv"))
+                toast("Template downloaded — fill it in and upload it back", "green");
             }}>Get the blank template</GoldButton>
             {mode === "fill" && (
               <GoldButton ghost small onClick={() => {

@@ -103,6 +103,30 @@ through a new `POST /invoices/:id/flag`, sealed with the reason. Payables reads
 the invoices. The two that genuinely cannot be done — the inbox sync and the
 26Q — say so plainly and stop pretending.
 
+Then the same sweep against the other desks, in the shareable build, and it
+found the worst one of the lot: **"New PO" on the purchase desk threw before it
+drew a single field.** `VENDORS[0].name` and `SITES[0].name` — both of those
+lists are empty arrays in this file, the prototype's invented suppliers and
+sites — so the one thing the purchasing screen exists for broke the screen.
+Both read the server now, and an empty list is a sentence in the dropdown
+rather than a crash. The same empty `SITES` was behind three more pickers with
+no options at all ("Where will it be used?", "Charge to site" on the fresh
+sheet) and the three site cards on the Chairman's first screen, which drew a
+progress bar from a percentage typed into this file. The cards show what a
+project record actually holds — the company that owns it, its RERA status, how
+many people are posted there — and say when nothing is recorded.
+
+Two things in the shared link could never work and failed silently, which is
+worse than failing. `downloadFile` built a blob and clicked an anchor; the
+artifact viewer blocks that without throwing, so every download button in the
+link the company actually opens did nothing while looking like it had worked —
+the payroll sheet Accounts is sent, the blank intake template, a contact card.
+It goes through the viewer's own save now, and says so when a file cannot be
+saved. `tel:` links are refused the same way; the number is shown either way,
+so there is always something to ring. And the export panel offered "Excel" and
+"CSV" as two chips that produced byte-identical text, the Excel one named
+`.xls`, which it was not.
+
 Two more things came out of it. `ProcProvider.tsx` (546 lines) and the
 self-contained `App` that used to close this file (244 lines) were both second
 providers that nothing mounted — two answers to "what is true", only one of them
