@@ -612,3 +612,93 @@ describe('changing what somebody is on', () => {
     }
   });
 });
+
+/**
+ * A day off is not an absence.
+ *
+ * The attendance import writes a row for EVERY calendar day of the month, so a
+ * person's own weekly off arrives at the engine looking exactly like a day they
+ * failed to turn up: no punch in, no punch out. `payableDays` had no notion of
+ * a weekly off, so it docked them — four or five days a month, about 2,700
+ * rupees on a gross of 20,000, off somebody who had worked every day they were
+ * rostered. August was imported from the company's own sheets, so nobody has
+ * actually been short-paid; the first month HR pressed "work this out from
+ * attendance" would have been the first month somebody was.
+ */
+describe('somebody’s own day off', () => {
+  // June 2026 began on a Monday, so these four are its Sundays.
+  const SUNDAYS = ['07 Jun 2026', '14 Jun 2026', '21 Jun 2026', '28 Jun 2026'];
+
+  it('is not docked when it is their weekly off', () => {
+    const d = payableDays({
+      monthDays: 30,
+      onMachine: true,
+      absentDates: SUNDAYS,
+      holidayDates: [],
+      offDay: 'Sunday',
+    });
+    expect(d.lost).toBe(0);
+    expect(d.days).toBe(30);
+    expect(d.why).toMatch(/4 their weekly off/);
+  });
+
+  it('is still docked when it is somebody else’s', () => {
+    const d = payableDays({
+      monthDays: 30,
+      onMachine: true,
+      absentDates: SUNDAYS,
+      holidayDates: [],
+      offDay: 'Saturday',
+    });
+    expect(d.lost).toBe(4);
+  });
+
+  it('counts a genuine absence on a working day as before', () => {
+    const d = payableDays({
+      monthDays: 30,
+      onMachine: true,
+      absentDates: ['08 Jun 2026', '09 Jun 2026', ...SUNDAYS],
+      holidayDates: [],
+      offDay: 'Sunday',
+    });
+    expect(d.lost).toBe(2);
+    expect(d.days).toBe(28);
+  });
+
+  it('says so plainly when the off day moves on a roster', () => {
+    const d = payableDays({
+      monthDays: 30,
+      onMachine: true,
+      absentDates: SUNDAYS,
+      holidayDates: [],
+      offDay: 'Rotational',
+    });
+    // Nothing on the record says WHICH day it moved to, so the days are still
+    // counted — and the reason says why, rather than letting somebody believe
+    // their off days were allowed for.
+    expect(d.lost).toBe(4);
+    expect(d.why).toMatch(/roster/i);
+  });
+
+  it('behaves exactly as it used to when no off day is recorded', () => {
+    const d = payableDays({
+      monthDays: 30,
+      onMachine: true,
+      absentDates: SUNDAYS,
+      holidayDates: [],
+    });
+    expect(d.lost).toBe(4);
+  });
+
+  it('does not double-count a holiday that falls on their day off', () => {
+    const d = payableDays({
+      monthDays: 30,
+      onMachine: true,
+      absentDates: SUNDAYS,
+      holidayDates: ['07 Jun 2026'],
+      offDay: 'Sunday',
+    });
+    expect(d.lost).toBe(0);
+    expect(d.days).toBe(30);
+  });
+});

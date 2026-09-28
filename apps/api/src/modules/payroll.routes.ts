@@ -601,6 +601,11 @@ export const payrollRoutes: FastifyPluginAsyncZod = async (app) => {
             onMachine: onMachine.has(p.id),
             absentDates: absent.get(p.id) ?? [],
             holidayDates,
+            /* Their own day off. The import writes a row for every calendar
+               day, so without this a Sunday with no punch looked exactly like
+               an absence and was docked — four or five days a month off
+               somebody who had worked every day they were rostered. */
+            offDay: p.offDay,
           });
           const line = computeLine(
             policy,

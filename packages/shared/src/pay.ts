@@ -19,6 +19,8 @@
  * gross a rupee or two away from the one Accounts has, every month, for ever.
  */
 
+import { parseDisplayDate } from './validation.js';
+
 export type PayPolicyKind = 'percent' | 'stated';
 
 export interface PayPolicy {
@@ -394,6 +396,31 @@ function builtIn(
  * they get the full month — which is what happens today, and is honest about
  * it rather than paying nobody. The caller shows that as "no attendance".
  */
+/** Sunday first, the way `Date.getUTCDay()` counts. */
+const WEEKDAYS = [
+  'sunday',
+  'monday',
+  'tuesday',
+  'wednesday',
+  'thursday',
+  'friday',
+  'saturday',
+] as const;
+
+/**
+ * Is that date the person's own weekly off?
+ *
+ * Only for a named day. "Rotational" and "None — site roster" mean the day
+ * moves, and nothing on the record says where it moved to that week, so they
+ * are not guessed at — see the note in `payableDays`.
+ */
+function isWeeklyOff(date: string, offDay: string | undefined): boolean {
+  const want = WEEKDAYS.indexOf(String(offDay ?? '').trim().toLowerCase() as (typeof WEEKDAYS)[number]);
+  if (want < 0) return false;
+  const d = parseDisplayDate(date);
+  return d !== null && d.getUTCDay() === want;
+}
+
 export function payableDays(args: {
   monthDays: number;
   onMachine: boolean;
@@ -403,6 +430,16 @@ export function payableDays(args: {
   holidayDates: readonly string[];
   /** Days HR has granted as paid leave. */
   paidLeave?: number;
+  /**
+   * The person's weekly off — "Sunday", "Saturday", "Rotational", or nothing.
+   *
+   * The attendance import writes a row for EVERY calendar day, so a person's
+   * own day off arrives here looking exactly like an absence: no punch in, no
+   * punch out. Without this, somebody who worked every day they were rostered
+   * lost four or five days' pay a month — about 2,700 rupees on a gross of
+   * 20,000 — for the offence of taking their Sunday.
+   */
+  offDay?: string;
 }): { days: number; lost: number; why: string } {
   if (!args.onMachine) {
     return {
@@ -412,11 +449,22 @@ export function payableDays(args: {
     };
   }
   const holiday = new Set(args.holidayDates);
-  const unpaid = args.absentDates.filter((d) => !holiday.has(d));
+  const offs = args.absentDates.filter((d) => isWeeklyOff(d, args.offDay));
+  const unpaid = args.absentDates.filter(
+    (d) => !holiday.has(d) && !isWeeklyOff(d, args.offDay),
+  );
   const covered = Math.min(args.paidLeave ?? 0, unpaid.length);
   const lost = unpaid.length - covered;
   const parts = [`${unpaid.length} day${unpaid.length === 1 ? '' : 's'} absent`];
+  if (offs.length) parts.push(`${offs.length} their weekly off`);
   if (covered) parts.push(`${covered} covered by leave`);
+  /* A roster that moves cannot be checked against a weekday, so those days are
+     still counted — and the reason says so, rather than letting somebody
+     believe their off days were allowed for when they were not. */
+  const rota = /rotational|roster/i.test(String(args.offDay ?? ''));
+  if (rota && args.absentDates.length) {
+    parts.push('weekly off is on a roster, so it cannot be told from an absence here');
+  }
   return {
     days: Math.max(0, args.monthDays - lost),
     lost,
