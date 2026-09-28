@@ -25,7 +25,7 @@ import {
   REISSUE_KEYS,
   ROLE_KEYS,
 } from './constants.js';
-import { EMPLOYEE_ID_SHAPE } from './validation.js';
+import { EMPLOYEE_ID_SHAPE, aadhaarOK, panCheck } from './validation.js';
 
 /* --------------------------------------------------------------- primitives */
 
@@ -195,9 +195,42 @@ export const salaryAtJoining = z.object({
  * failed. It takes a salary too, because the moment HR knows the employee ID is
  * the moment she knows what they are being paid.
  */
+/**
+ * Identity documents.
+ *
+ * These live in their own table and travel on their own route, never in the
+ * bootstrap payload: regulated data should move when somebody asks for it and
+ * not before, and the asking is what gets written into the ledger. The enrolment
+ * form has always DEMANDED a PAN and an Aadhaar before it would go on, and there
+ * was nowhere on the server to put either — `createPersonBody` did not carry
+ * them, so Zod stripped them and the screen said the person was enrolled.
+ */
+export const kycBody = z.object({
+  /** Stored as twelve digits. The check digit is verified, not just the length. */
+  aadhaar: z
+    .string()
+    .trim()
+    .max(20)
+    .default('')
+    .transform((v) => v.replace(/\D/g, ''))
+    .refine((v) => v === '' || aadhaarOK(v), {
+      message: 'That Aadhaar number cannot be right — twelve digits, and its own check digit has to add up.',
+    }),
+  pan: z
+    .string()
+    .trim()
+    .toUpperCase()
+    .max(10)
+    .default('')
+    .refine((v) => v === '' || panCheck(v).level === 'ok', {
+      message: 'A PAN is ten characters: five letters, four digits, one letter.',
+    }),
+  address: z.string().trim().max(500).default(''),
+});
+
 export const createPersonBody = personCore
   .partial({ id: true, status: true, perf: true, reportsTo: true })
-  .extend({ salary: salaryAtJoining.optional() });
+  .extend({ salary: salaryAtJoining.optional(), kyc: kycBody.optional() });
 
 /**
  * Everything a person record can be patched with. Identity is never patched

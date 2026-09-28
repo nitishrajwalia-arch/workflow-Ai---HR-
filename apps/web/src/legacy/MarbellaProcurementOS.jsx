@@ -1,8 +1,8 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { ProcCtx, useProc } from "../proc/context.js";
 import {
-  INTAKE_FIELDS, INTAKE_UPDATE_FIELDS, matchColumns, proposeBreakUp, reductionsFor,
-  rollOutSheet, xlsxToSheet,
+  INTAKE_FIELDS, INTAKE_UPDATE_FIELDS, aadhaarCheck, matchColumns, panCheck, proposeBreakUp,
+  reductionsFor, rollOutSheet, xlsxToSheet,
 } from "@marbella/shared";
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, ResponsiveContainer, Cell, Tooltip,
@@ -7869,6 +7869,10 @@ function EnrollPerson({ onClose }) {
   const guard = () => {
     if (step === 0 && (!f.name.trim() || !f.designation.trim())) return toast("Add a name and designation", "amber");
     if (step === 1 && (!f.pan.trim() || !f.aadhaar.trim())) return toast("PAN and Aadhaar are required", "amber");
+    /* Checked HERE, on the step they were typed on. Both used to be taken as
+       given, thrown away by the server's schema, and never seen again. */
+    if (step === 1 && panCheck(f.pan).level === "error") return toast(panCheck(f.pan).msg, "red");
+    if (step === 1 && aadhaarCheck(f.aadhaar).level === "error") return toast(aadhaarCheck(f.aadhaar).msg, "red");
     if (step === 1 && f.drives && !f.dl.trim()) return toast("Add the driving licence number", "amber");
     if (step === 2 && !f.joinDate.trim()) return toast("Add the joining date", "amber");
     if (step === 2 && !f.employer) return toast("Pick the company that pays them", "amber");
@@ -7891,6 +7895,11 @@ function EnrollPerson({ onClose }) {
       ...(gross > 0
         ? { salary: { gross, medical, esiOn: f.esiOn, pfOn: f.pfOn, pfWages: 0, note: f.salaryNote.trim() } }
         : {}),
+      /* The form will not go past step 2 without a PAN and an Aadhaar, and for
+         as long as this object did not carry them the server's schema stripped
+         both — so HR typed a regulated number, was shown it back on the
+         confirmation screen, and it was never stored anywhere. */
+      kyc: { aadhaar: f.aadhaar.trim(), pan: f.pan.trim(), address: f.address.trim() },
     };
     const saved = await addPerson(p);
     /* Their personal number and email were collected on the first step and then
@@ -7970,8 +7979,11 @@ function EnrollPerson({ onClose }) {
 
         {step === 1 && (<>
           <div style={two}>
-            <div style={gap}><L>PAN *</L><input value={f.pan} onChange={e => set("pan", e.target.value.toUpperCase())} placeholder="ABCDE1234F" style={{ ...cell, marginTop: 5, fontFamily: mono }} /></div>
-            <div><L>Aadhaar *</L><input value={f.aadhaar} onChange={e => set("aadhaar", e.target.value)} placeholder="0000 0000 0000" style={{ ...cell, marginTop: 5, fontFamily: mono }} /></div>
+            <div style={gap}><CheckedField label="PAN *" mono value={f.pan} onChange={v => set("pan", v.toUpperCase())}
+              placeholder="ABCDE1234F" check={panCheck} /></div>
+            <div><CheckedField label="Aadhaar *" mono value={f.aadhaar} onChange={v => set("aadhaar", v)}
+              placeholder="0000 0000 0000" hint="Checked against its own check digit — a number one digit out belongs to somebody else."
+              check={(v) => aadhaarCheck(v)} /></div>
           </div>
           <div style={{ font: `600 11px ${sans}`, color: C.inkDeep, margin: "14px 0 6px" }}>Two government photo IDs</div>
           <div style={two}>
@@ -8529,8 +8541,13 @@ function FullProfile({ p, onClose }) {
   const [fileOpen, setFileOpen] = useState(null);
   const [liveCam, setLiveCam] = useState(null);
   const [revising, setRevising] = useState(false);
+  /* Identity papers are fetched only when somebody asks for them. They are not
+     in the world the provider holds, so they are not in the payload the
+     shareable preview is built from, and the asking is sealed in the ledger. */
+  const [papers, setPapers] = useState(null);
+  const [opening, setOpening] = useState(false);
   const mob = useIsMobile();
-  const { activeFirm, salaries = {}, payRuns = [] } = useProc();
+  const { activeFirm, salaries = {}, payRuns = [], readKyc } = useProc();
   const s = buildStory(p);
   /* What they are on, and what they were actually paid. Both real: the first
      from the salary record, the second off the sheets Accounts was given. */
@@ -8578,9 +8595,45 @@ function FullProfile({ p, onClose }) {
               <Row k="With us" v={s.years >= 1 ? `${s.years} year${s.years > 1 ? "s" : ""}` : "Under a year"} />
               <Row k="Department" v={`${p.dept} · ${p.type}`} />
               <Row k="Status" v={p.status === "active" ? "Active" : p.status === "pending" ? "Pending — not yet staff" : "Exited"} tone={p.status === "active" ? C.green : p.status === "pending" ? C.amber : C.stone} />
-              <Row k="PAN" v={s.pan || "not on this screen"} tone={s.pan ? C.ink : C.stone} />
-              <Row k="Aadhaar" v={s.aadhaar ? "on file" : "not on this screen"} tone={s.aadhaar ? C.ink : C.stone} />
-              <Row k="Address" v={s.address || "not on this screen"} tone={s.address ? C.ink : C.stone} />
+              {/* These read "not on this screen" for everybody, always. The
+                  company's own PAN and Aadhaar for all 126 people have been in
+                  the database since the import, and no route could reach them —
+                  so HR could not see one, and the enrolment form, which refuses
+                  to go on without them, threw away every one it was given.
+
+                  They are asked for now, one person at a time, and the server
+                  writes down who looked. */}
+              {papers ? (<>
+                <Row k="PAN" v={papers.pan || "none on file"} tone={papers.pan ? C.ink : C.stone} />
+                <Row k="Aadhaar" v={papers.aadhaar ? papers.aadhaar.replace(/(\d{4})(?=\d)/g, "$1 ") : "none on file"} tone={papers.aadhaar ? C.ink : C.stone} />
+                <Row k="Address" v={papers.address || "none on file"} tone={papers.address ? C.ink : C.stone} />
+                {(papers.aadhaarCheck?.level === "error" || papers.panCheck?.level === "error") && (
+                  <div style={{ background: C.redSoft, border: `1px solid ${C.red}`, borderRadius: 9, padding: 10, marginTop: 8, font: `11px ${sans}`, color: C.ink, lineHeight: 1.55 }}>
+                    <b style={{ color: C.red }}>This will not pass a P.F. or E.S.I. filing.</b><br />
+                    {papers.aadhaarCheck?.level === "error" && <>Aadhaar — {papers.aadhaarCheck.msg}<br /></>}
+                    {papers.panCheck?.level === "error" && <>PAN — {papers.panCheck.msg}</>}
+                  </div>
+                )}
+                <div style={{ font: `10px ${sans}`, color: C.stone, marginTop: 8, lineHeight: 1.5 }}>
+                  It is written in the ledger that you opened these, and when.
+                </div>
+              </>) : (
+                <div style={{ paddingTop: 8 }}>
+                  <GoldButton small ghost disabled={opening} onClick={async () => {
+                    setOpening(true);
+                    const got = await readKyc(p.id);
+                    setOpening(false);
+                    if (got) setPapers(got);
+                  }}>
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                      <LockIcon size={13} /> {opening ? "Opening\u2026" : "Show identity documents"}
+                    </span>
+                  </GoldButton>
+                  <div style={{ font: `10px ${sans}`, color: C.stone, marginTop: 7, lineHeight: 1.5 }}>
+                    PAN, Aadhaar and home address. HR only, and opening them is recorded.
+                  </div>
+                </div>
+              )}
               <Row k="Phone" v={p.phone} />
               <Row k="Email" v={p.email} />
             </Sec>

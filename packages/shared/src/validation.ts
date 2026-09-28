@@ -285,6 +285,82 @@ export function panCheck(raw: unknown): CheckResult {
   return { level: 'ok', msg: 'Shape is right. Only the income tax portal confirms it is live.' };
 }
 
+/* ---------------------------------------------------------------- AADHAAR */
+
+/**
+ * Aadhaar carries a Verhoeff check digit — the whole twelve digits, last one
+ * included, run through the tables below and must come out at zero.
+ *
+ * This matters more than a length check: an Aadhaar number typed one digit
+ * wrong is a number that belongs to somebody else. It cannot say whether the
+ * number is live — only UIDAI can — so a well-formed one says exactly that.
+ */
+const VERHOEFF_D = [
+  [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+  [1, 2, 3, 4, 0, 6, 7, 8, 9, 5],
+  [2, 3, 4, 0, 1, 7, 8, 9, 5, 6],
+  [3, 4, 0, 1, 2, 8, 9, 5, 6, 7],
+  [4, 0, 1, 2, 3, 9, 5, 6, 7, 8],
+  [5, 9, 8, 7, 6, 0, 4, 3, 2, 1],
+  [6, 5, 9, 8, 7, 1, 0, 4, 3, 2],
+  [7, 6, 5, 9, 8, 2, 1, 0, 4, 3],
+  [8, 7, 6, 5, 9, 3, 2, 1, 0, 4],
+  [9, 8, 7, 6, 5, 4, 3, 2, 1, 0],
+];
+const VERHOEFF_P = [
+  [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+  [1, 5, 7, 6, 2, 8, 3, 0, 9, 4],
+  [5, 8, 0, 3, 7, 9, 6, 1, 4, 2],
+  [8, 9, 1, 6, 0, 4, 3, 5, 2, 7],
+  [9, 4, 5, 3, 1, 2, 6, 8, 7, 0],
+  [4, 2, 8, 6, 5, 7, 3, 9, 0, 1],
+  [2, 7, 9, 3, 8, 0, 6, 4, 1, 5],
+  [7, 0, 4, 6, 9, 1, 3, 2, 5, 8],
+];
+
+export function verhoeffOK(digits: string): boolean {
+  let c = 0;
+  const rev = digits.split('').reverse();
+  for (let i = 0; i < rev.length; i++) {
+    const d = Number(rev[i]);
+    if (!Number.isInteger(d) || d < 0 || d > 9) return false;
+    const p = VERHOEFF_P[i % 8]?.[d];
+    const next = p === undefined ? undefined : VERHOEFF_D[c]?.[p];
+    if (next === undefined) return false;
+    c = next;
+  }
+  return c === 0;
+}
+
+/** Digits only — Aadhaar is written in groups of four and stored without them. */
+export const normaliseAadhaar = (s: unknown): string => String(s ?? '').replace(/\D/g, '');
+
+export function aadhaarCheck(raw: unknown, opts: { required?: boolean } = {}): CheckResult {
+  const raw2 = String(raw ?? '').trim();
+  if (!raw2)
+    return opts.required
+      ? { level: 'error', msg: 'Aadhaar is needed. It is what P.F. and E.S.I. are filed against.' }
+      : { level: 'none' };
+  const d = normaliseAadhaar(raw2);
+  if (/[^\d\s-]/.test(raw2))
+    return { level: 'error', msg: 'An Aadhaar number is digits only.' };
+  if (d.length !== 12)
+    return {
+      level: 'error',
+      msg: `An Aadhaar number is twelve digits. This one has ${d.length}.`,
+    };
+  if (d[0] === '0' || d[0] === '1')
+    return { level: 'error', msg: 'No Aadhaar number starts with a 0 or a 1.' };
+  if (!verhoeffOK(d))
+    return {
+      level: 'error',
+      msg: 'That fails its own check digit — one of the twelve is wrong. Read it back off the card.',
+    };
+  return { level: 'ok', msg: 'Check digit is right. Only UIDAI confirms it is live.' };
+}
+
+export const aadhaarOK = (s: unknown): boolean => aadhaarCheck(s).level === 'ok';
+
 /* ------------------------------------------------------------------- RERA */
 
 const RERA_SHAPE = /^[A-Z]{2}RERA[-\s]?[A-Z0-9]{3,10}[-\s]?[A-Z0-9]{4,12}$/i;

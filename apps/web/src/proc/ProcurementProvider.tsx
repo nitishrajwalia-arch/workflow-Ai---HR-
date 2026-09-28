@@ -850,6 +850,35 @@ export function ProcurementProvider({ children, toast }: Props) {
           (x) => ({ ...x, salaries: { ...x.salaries, [pid]: { ...x.salaries[pid], ...sal } } }),
           () => api.put(`/salaries/${pid}`, { ...w.salaries[pid], ...sal }),
         ),
+      /**
+       * Identity papers, fetched one person at a time.
+       *
+       * Deliberately NOT part of the world the provider holds: Aadhaar, PAN and
+       * a home address should travel when somebody asks for them and not before,
+       * and the asking is sealed in the ledger by the server. Keeping them out
+       * of the bootstrap payload is also what keeps them out of the shareable
+       * preview, which is built from exactly that payload.
+       */
+      readKyc: (pid: string) =>
+        api
+          .get<{
+            aadhaar: string;
+            pan: string;
+            address: string;
+            aadhaarCheck: { level: string; msg?: string };
+            panCheck: { level: string; msg?: string };
+          }>(`/people/${pid}/kyc`)
+          .catch((err) => {
+            toast(err instanceof ApiError ? err.full : 'Those could not be opened.', 'red');
+            return null;
+          }),
+
+      setKyc: (pid: string, v: { aadhaar: string; pan: string; address: string }) =>
+        api.put(`/people/${pid}/kyc`, v).catch((err) => {
+          toast(err instanceof ApiError ? err.full : 'That did not save.', 'red');
+          return null;
+        }),
+
       setContact: (pid: string, c: any) =>
         optimistic(
           (x) => ({ ...x, contacts: { ...x.contacts, [pid]: { ...x.contacts[pid], ...c } } }),

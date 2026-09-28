@@ -11,7 +11,14 @@
  * into the ledger. Changing their office is an ordinary edit.
  */
 
-import { ACTIVATION_REQUIRES, asPayPolicy, proposeBreakUp, schemas } from '@marbella/shared';
+import {
+  ACTIVATION_REQUIRES,
+  aadhaarCheck,
+  asPayPolicy,
+  panCheck,
+  proposeBreakUp,
+  schemas,
+} from '@marbella/shared';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import { bothForms, nowStamp } from '../lib/dates.js';
@@ -185,6 +192,21 @@ export const peopleRoutes: FastifyPluginAsyncZod = async (app) => {
             kind: 'salary',
             subject: person.id,
             detail: `Salary agreed for ${person.name} at joining.`,
+            who: me.name,
+          });
+        }
+
+        /* The enrolment form REQUIRES a PAN and an Aadhaar before it will move
+           past its second step, and until now there was nowhere on the server
+           to put either: `createPersonBody` did not carry them, so Zod stripped
+           them and the screen still said the person was enrolled. HR typed a
+           regulated number, was shown it back, and it was gone. */
+        if (b.kyc && (b.kyc.aadhaar || b.kyc.pan || b.kyc.address)) {
+          await tx.kyc.create({ data: { personId: person.id, ...b.kyc } });
+          await appendInTx(tx, {
+            kind: 'doc',
+            subject: person.id,
+            detail: `Identity documents for ${person.name} were recorded at joining.`,
             who: me.name,
           });
         }
@@ -488,6 +510,108 @@ export const peopleRoutes: FastifyPluginAsyncZod = async (app) => {
         reports: reports.map(serialisePerson),
         headcount: reports.length,
       };
+    },
+  );
+
+  /* --------------------------------------------------------- identity papers */
+
+  /**
+   * Aadhaar, PAN and the home address.
+   *
+   * These deliberately do NOT ride in `/bootstrap` with everything else. Two
+   * reasons, and both are the point:
+   *
+   *  · The bootstrap payload is what the shareable preview is built from. Every
+   *    field in it has to be scrubbed by hand afterwards, and a field somebody
+   *    forgets to scrub is a leak. Regulated data that never enters the payload
+   *    cannot leak out of it.
+   *  · Reading somebody's Aadhaar should be a deliberate act, and a deliberate
+   *    act can be recorded. Loading a screen should not be.
+   *
+   * So: HR only, one person at a time, and every read is sealed into the ledger
+   * with who looked and whose papers they looked at — never the numbers.
+   */
+  app.get(
+    '/people/:id/kyc',
+    {
+      preHandler: app.requireRole('HR'),
+      schema: {
+        tags: ['people'],
+        summary: "Read someone's identity documents",
+        description:
+          'HR only. Every read is written into the ledger with who asked. The numbers ' +
+          'themselves are never written to the ledger.',
+        params: z.object({ id: schemas.employeeId }),
+        response: { 200: z.any(), 404: schemas.errorBody },
+      },
+    },
+    async (req) => {
+      const me = requireUser(req);
+      const person = await db.person.findUnique({ where: { id: req.params.id } });
+      if (!person) throw notFound(`Employee ${req.params.id}`);
+
+      return db.$transaction(async (tx) => {
+        const row = await tx.kyc.findUnique({ where: { personId: person.id } });
+        await appendInTx(tx, {
+          kind: 'doc',
+          subject: person.id,
+          detail: `Identity documents for ${person.name} were opened.`,
+          who: me.name,
+        });
+        return {
+          personId: person.id,
+          aadhaar: row?.aadhaar ?? '',
+          pan: row?.pan ?? '',
+          address: row?.address ?? '',
+          /* What the numbers on file actually are, so HR is told about a bad
+             one rather than finding out when a P.F. return is rejected. */
+          aadhaarCheck: aadhaarCheck(row?.aadhaar ?? ''),
+          panCheck: panCheck(row?.pan ?? ''),
+        };
+      });
+    },
+  );
+
+  app.put(
+    '/people/:id/kyc',
+    {
+      preHandler: app.requireRole('HR'),
+      schema: {
+        tags: ['people'],
+        summary: "Record someone's identity documents",
+        description:
+          'HR only. An Aadhaar number is checked against its own check digit and a PAN ' +
+          'against its shape; a number that cannot be right is refused rather than stored.',
+        params: z.object({ id: schemas.employeeId }),
+        body: schemas.kycBody,
+        response: { 200: z.any(), 404: schemas.errorBody },
+      },
+    },
+    async (req) => {
+      const me = requireUser(req);
+      const b = req.body;
+      const person = await db.person.findUnique({ where: { id: req.params.id } });
+      if (!person) throw notFound(`Employee ${req.params.id}`);
+
+      return db.$transaction(async (tx) => {
+        const row = await tx.kyc.upsert({
+          where: { personId: person.id },
+          create: { personId: person.id, ...b },
+          update: b,
+        });
+        // WHAT changed and WHO changed it. Never the numbers: an audit trail
+        // must not become a second copy of the thing it is auditing.
+        const named = [b.aadhaar && 'Aadhaar', b.pan && 'PAN', b.address && 'address']
+          .filter(Boolean)
+          .join(', ');
+        await appendInTx(tx, {
+          kind: 'doc',
+          subject: person.id,
+          detail: `Identity documents for ${person.name} were recorded${named ? ` — ${named}` : ''}.`,
+          who: me.name,
+        });
+        return { personId: row.personId, aadhaar: row.aadhaar, pan: row.pan, address: row.address };
+      });
     },
   );
 };
