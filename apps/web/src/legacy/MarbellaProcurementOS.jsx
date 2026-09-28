@@ -9368,28 +9368,55 @@ function dayStatus(r, shift) {
   if (early) return { key: "early", label: "Left early", tone: "amber", worked };
   return { key: "ok", label: "On time", tone: "green", worked };
 }
-function attSummary(id, att, shift) {
-  const days = att[id] || [];
+/** Sunday first, the way `Date.getUTCDay()` counts. */
+const WEEK_DAYS = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
+/* The import writes a row for every calendar day, so somebody's own weekly off
+   arrives here indistinguishable from a day they did not turn up. Counting it
+   as an absence made a person who worked their full roster read 86% — and that
+   percentage is three tenths of the score they are judged on. */
+const isOffDay = (dateStr, offDay) => {
+  const want = WEEK_DAYS.indexOf(String(offDay || "").trim().toLowerCase());
+  if (want < 0) return false;
+  const m = String(dateStr || "").match(/^(\d{1,2}) ([A-Za-z]{3}) (\d{4})$/);
+  if (!m) return false;
+  const mi = VMONTHS.findIndex(x => x.toLowerCase() === m[2].toLowerCase());
+  if (mi < 0) return false;
+  return new Date(Date.UTC(Number(m[3]), mi, Number(m[1]))).getUTCDay() === want;
+};
+function attSummary(id, att, shift, offDay) {
+  const all = att[id] || [];
+  /* Their day off is neither present nor absent — it is not a day they were
+     expected, so it belongs in neither half of the percentage. */
+  const offs = all.filter(r => isOffDay(r.date, offDay)).length;
+  const days = all.filter(r => !isOffDay(r.date, offDay));
   let present = 0, absent = 0, late = 0, incomplete = 0, mins = 0;
   days.forEach(r => { const s = dayStatus(r, shift); if (s.key === "absent") absent++; else { present++; mins += s.worked; if (s.key === "late" || s.key === "early") late++; if (s.key === "nocheckout" || s.key === "nocheckin") incomplete++; } });
   const total = days.length || 1;
   const reqMins = present * (shift.hours * 60);
-  return { present, absent, late, incomplete, mins, reqMins, pct: Math.round(present / total * 100), days };
+  return { present, absent, late, incomplete, mins, reqMins, offs, pct: Math.round(present / total * 100), days };
 }
 function taskStats(name, hrTasks) {
   const mine = hrTasks.filter(t => t.who === name);
   return { done: mine.filter(t => t.done).length, total: mine.length };
 }
 function scoreOf(p, att, hrTasks) {
-  const sum = attSummary(p.id, att, p.shift || DEFAULT_SHIFT);
-  const attPct = (att[p.id] && att[p.id].length) ? sum.pct : 88;
+  const sum = attSummary(p.id, att, p.shift || DEFAULT_SHIFT, p.offDay);
+  /* Somebody the machine has never seen used to be handed 88% — a number with
+     no source, worth three tenths of their score. There is nothing to score, so
+     the attendance part is left out of the reckoning instead of invented. */
+  const hasAtt = !!(att[p.id] && att[p.id].length);
+  const attPct = hasAtt ? sum.pct : null;
   const ts = taskStats(p.name, hrTasks);
   const taskRate = ts.total ? ts.done / ts.total : 0.72;
-  const perfPart = (p.perf / 100) * 10 * 0.5;
-  const attPart = (attPct / 100) * 10 * 0.3;
-  const taskPart = taskRate * 10 * 0.2;
+  /* With no attendance the weights are shared out over what IS known, so the
+     score still reads out of ten rather than being quietly capped at seven. */
+  const wPerf = hasAtt ? 0.5 : 0.5 / 0.7;
+  const wTask = hasAtt ? 0.2 : 0.2 / 0.7;
+  const perfPart = (p.perf / 100) * 10 * wPerf;
+  const attPart = hasAtt ? (attPct / 100) * 10 * 0.3 : 0;
+  const taskPart = taskRate * 10 * wTask;
   const score = Math.max(0, Math.min(10, perfPart + attPart + taskPart));
-  return { score: Math.round(score * 10) / 10, attPct, done: ts.done, total: ts.total, perfPart, attPart, taskPart };
+  return { score: Math.round(score * 10) / 10, attPct, hasAtt, done: ts.done, total: ts.total, perfPart, attPart, taskPart };
 }
 
 /* ---- column auto-mapping (multi-language) ---- */
@@ -9683,7 +9710,7 @@ function IncentiveBanner({ userKey }) {
 function AttendanceScoreCard({ p }) {
   const { att, hrTasks } = useProc();
   const shift = p.shift || DEFAULT_SHIFT;
-  const sum = attSummary(p.id, att, shift);
+  const sum = attSummary(p.id, att, shift, p.offDay);
   const sc = scoreOf(p, att, hrTasks);
   const days = att[p.id] || [];
   return (
@@ -9702,7 +9729,11 @@ function AttendanceScoreCard({ p }) {
           </div>
           <div style={{ display: "flex", gap: 14, font: `12px ${sans}`, color: C.inkSoft, marginBottom: 12, flexWrap: "wrap" }}>
             <span>Worked <b style={{ color: C.ink }}>{hhmm(sum.mins)}</b></span>
-            <span>Present <b style={{ color: C.ink }}>{sum.present}/{days.length}</b></span>
+            {/* Out of the days they were EXPECTED. `days.length` counts every
+                calendar day the import wrote, their own day off included, so
+                somebody working a full roster read 22/30. */}
+            <span>Present <b style={{ color: C.ink }}>{sum.present}/{sum.present + sum.absent}</b></span>
+            {sum.offs > 0 && <span>Their off <b style={{ color: C.ink }}>{sum.offs}</b></span>}
             <span>Late <b style={{ color: sum.late ? C.amber : C.ink }}>{sum.late}</b></span>
             {sum.incomplete > 0 && <span>No-checkout <b style={{ color: C.amber }}>{sum.incomplete}</b></span>}
           </div>
@@ -9713,7 +9744,7 @@ function AttendanceScoreCard({ p }) {
         <div style={{ flex: 1, height: 8, background: C.lineSoft, borderRadius: 4, overflow: "hidden" }}><div style={{ width: `${sc.score * 10}%`, height: "100%", background: sc.score >= 8 ? C.green : sc.score >= 6 ? C.gold : C.red }} /></div>
         <div style={{ font: `600 15px ${mono}`, color: C.ink }}>{sc.score.toFixed(1)}<span style={{ font: `11px ${sans}`, color: C.stone }}>/10</span></div>
       </div>
-      <div style={{ font: `10px ${sans}`, color: C.stone, marginTop: 6 }}>Blend of performance ({Math.round(sc.perfPart * 10) / 10}), attendance ({Math.round(sc.attPart * 10) / 10}) &amp; tasks {sc.total ? `${sc.done}/${sc.total}` : "—"} ({Math.round(sc.taskPart * 10) / 10}).</div>
+      <div style={{ font: `10px ${sans}`, color: C.stone, marginTop: 6 }}>{sc.hasAtt ? <>Blend of performance ({Math.round(sc.perfPart * 10) / 10}), attendance ({Math.round(sc.attPart * 10) / 10}) &amp; tasks {sc.total ? `${sc.done}/${sc.total}` : "\u2014"} ({Math.round(sc.taskPart * 10) / 10}).</> : <>The machine has no attendance for them, so this is performance and tasks only \u2014 it used to hand them 88% for a month nobody recorded.</>}</div>
     </Card>
   );
 }
