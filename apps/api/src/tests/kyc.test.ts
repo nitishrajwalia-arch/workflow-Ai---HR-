@@ -169,3 +169,115 @@ describe('the papers never ride in the bootstrap payload', () => {
     expect(raw).not.toContain('"kyc"');
   });
 });
+
+/**
+ * The rest of what the enrolment form asks.
+ *
+ * Fifteen questions whose answers had nowhere to go: the weekly off, the
+ * probation, the conditions agreed, where they worked before, the driving
+ * licence for whoever drives as part of the work, the two photo IDs, and
+ * whether the address on file is the one on the Aadhaar. HR filled them in,
+ * the screen said the person was enrolled, and Zod dropped every one.
+ */
+describe('enrolling somebody keeps what they were asked', () => {
+  const NEW_ID = 'MB-ADM-0099';
+
+  it('stores the terms, the prior job and the rest of the papers', async () => {
+    await db.kyc.deleteMany({ where: { personId: NEW_ID } });
+    await db.person.deleteMany({ where: { id: NEW_ID } });
+    const office = await db.office.findFirst();
+    const company = await db.company.findFirst();
+    expect(office && company).toBeTruthy();
+    try {
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/v1/people',
+        headers: auth(token),
+        payload: {
+          id: NEW_ID,
+          name: 'A Test Joiner',
+          designation: 'Rider',
+          dept: 'Admin',
+          type: 'Staff',
+          joined: '01 Oct 2026',
+          office: office!.id,
+          employer: company!.id,
+          offDay: 'Rotational',
+          probation: '6 months',
+          conditions: 'Owns the bike. Fuel reimbursed monthly.',
+          prevEmployer: 'Ansal Housing',
+          prevRole: 'Delivery rider',
+          prevFrom: 'Jan 2024',
+          prevTo: 'Sep 2026',
+          kyc: {
+            aadhaar: '2767 8628 6748',
+            pan: 'ABCDE1234F',
+            address: '12 Some Road, Mohali',
+            addressMatchesAadhaar: 'Yes',
+            drives: true,
+            dl: 'PB65 2020 001234',
+            dlExpires: '01 Jan 2030',
+            idType1: 'Voter ID',
+            idNo1: 'ABC1234567',
+            idType2: 'Passport',
+            idNo2: 'Z1234567',
+          },
+        },
+      });
+      expect(res.statusCode).toBe(201);
+
+      const row = await db.person.findUnique({ where: { id: NEW_ID } });
+      expect(row?.offDay).toBe('Rotational');
+      expect(row?.probation).toBe('6 months');
+      expect(row?.conditions).toMatch(/Owns the bike/);
+      expect(row?.prevEmployer).toBe('Ansal Housing');
+      expect(row?.prevRole).toBe('Delivery rider');
+      expect(row?.prevFrom).toBe('Jan 2024');
+      expect(row?.prevTo).toBe('Sep 2026');
+
+      const papers = await db.kyc.findUnique({ where: { personId: NEW_ID } });
+      expect(papers?.aadhaar).toBe('276786286748');
+      expect(papers?.pan).toBe('ABCDE1234F');
+      expect(papers?.drives).toBe(true);
+      expect(papers?.dl).toBe('PB65 2020 001234');
+      expect(papers?.dlExpires).toBe('01 Jan 2030');
+      expect(papers?.idNo1).toBe('ABC1234567');
+      expect(papers?.idType2).toBe('Passport');
+      expect(papers?.addressMatchesAadhaar).toBe('Yes');
+
+      // And they come back out again, so the profile can show them.
+      const back = await get(`/people/${NEW_ID}`);
+      const body = back.json<{ offDay: string; prevEmployer: string; probation: string }>();
+      expect(body.offDay).toBe('Rotational');
+      expect(body.prevEmployer).toBe('Ansal Housing');
+      expect(body.probation).toBe('6 months');
+    } finally {
+      await db.kyc.deleteMany({ where: { personId: NEW_ID } });
+      await db.person.deleteMany({ where: { id: NEW_ID } });
+    }
+  });
+
+  it('refuses the whole enrolment when the Aadhaar cannot be right', async () => {
+    const office = await db.office.findFirst();
+    const company = await db.company.findFirst();
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/people',
+      headers: auth(token),
+      payload: {
+        id: NEW_ID,
+        name: 'A Test Joiner',
+        designation: 'Rider',
+        dept: 'Admin',
+        type: 'Staff',
+        joined: '01 Oct 2026',
+        office: office!.id,
+        employer: company!.id,
+        kyc: { aadhaar: '2767 8628 6749', pan: '', address: '' },
+      },
+    });
+    expect(res.statusCode).toBe(400);
+    // And nobody was half-created on the way out.
+    expect(await db.person.findUnique({ where: { id: NEW_ID } })).toBeNull();
+  });
+});

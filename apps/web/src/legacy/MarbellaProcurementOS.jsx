@@ -7808,7 +7808,7 @@ function EnrollPerson({ onClose }) {
   const [step, setStep] = useState(0);
   const [f, setF] = useState({
     name: "", designation: "", dept: DEPARTMENTS[0], type: "Staff", phone: "", email: "",
-    face: false, pan: "", aadhaar: "", id1: "Voter ID", id1no: "", id2: "Passport", id2no: "",
+    pan: "", aadhaar: "", id1: "Voter ID", id1no: "", id2: "Passport", id2no: "",
     drives: false, dl: "", dlExp: "", address: "", addrMatch: "",
     joinDate: "", joinTime: "09:00", hours: "9", offDay: "Sunday", salary: "", probation: "3 months", conditions: "",
     // Who pays them, where they are posted, and who they answer to. The server
@@ -7899,7 +7899,22 @@ function EnrollPerson({ onClose }) {
          as long as this object did not carry them the server's schema stripped
          both — so HR typed a regulated number, was shown it back on the
          confirmation screen, and it was never stored anywhere. */
-      kyc: { aadhaar: f.aadhaar.trim(), pan: f.pan.trim(), address: f.address.trim() },
+      /* The rest of what this form asks and used to throw away. The weekly off
+         decides whether a missing day is an absence; probation decides when
+         they are confirmed; the offer letter has a line for it. */
+      offDay: f.offDay,
+      probation: f.probation,
+      conditions: f.conditions.trim(),
+      prevEmployer: f.exCo.trim(),
+      prevRole: f.exRole.trim(),
+      prevFrom: f.exFrom.trim(),
+      prevTo: f.exTo.trim(),
+      kyc: {
+        aadhaar: f.aadhaar.trim(), pan: f.pan.trim(), address: f.address.trim(),
+        addressMatchesAadhaar: f.addrMatch,
+        drives: f.drives, dl: f.dl.trim(), dlExpires: f.dlExp.trim(),
+        idType1: f.id1, idNo1: f.id1no.trim(), idType2: f.id2, idNo2: f.id2no.trim(),
+      },
     };
     const saved = await addPerson(p);
     /* Their personal number and email were collected on the first step and then
@@ -7955,10 +7970,14 @@ function EnrollPerson({ onClose }) {
               {f.face ? <Check size={24} color={C.green} /> : <ScanFace size={24} color={C.stone} />}
             </div>
             <div style={{ flex: 1, minWidth: 150 }}>
-              <div style={{ font: `600 13px ${sans}`, color: C.ink }}>Face ID</div>
-              <div style={{ font: `11px ${sans}`, color: C.stone }}>{f.face ? "Face captured — used on the ID card and for gate attendance." : "Capture the face for the ID card and gate attendance."}</div>
+              <div style={{ font: `600 13px ${sans}`, color: C.ink }}>Photograph</div>
+              {/* This said "Capture face", toasted "Face captured", and set a
+                  boolean. Nothing was captured — the camera component it needed
+                  was taken out — and the boolean was dropped with the rest of
+                  this form. Somebody reading the screen would believe a
+                  biometric had been taken and stored. */}
+              <div style={{ font: `11px ${sans}`, color: C.stone }}>Their photograph goes on the ID card. It is attached on the card bureau screen once the employee ID exists — there is no camera on this form.</div>
             </div>
-            <GoldButton small ghost={f.face} onClick={() => { set("face", !f.face); toast(f.face ? "Face capture cleared" : "Face captured", f.face ? "stone" : "green"); }}>{f.face ? "Retake" : "Capture face"}</GoldButton>
           </div>
           <Field label="Full name" hint="As it should appear on the ID card." value={f.name} onChange={v => set("name", v)} placeholder="e.g. Bhola Prasad" />
           <Field label="Designation" hint="Their role — e.g. Mason, Site Engineer, Guard." value={f.designation} onChange={v => set("designation", v)} placeholder="e.g. Mason" />
@@ -8594,6 +8613,8 @@ function FullProfile({ p, onClose }) {
               <Row k="Joined on" v={p.joined} />
               <Row k="With us" v={s.years >= 1 ? `${s.years} year${s.years > 1 ? "s" : ""}` : "Under a year"} />
               <Row k="Department" v={`${p.dept} · ${p.type}`} />
+              <Row k="Weekly off" v={p.offDay || "not recorded"} tone={p.offDay ? C.ink : C.stone} />
+              {p.probation && <Row k="Probation" v={p.probation} />}
               <Row k="Status" v={p.status === "active" ? "Active" : p.status === "pending" ? "Pending — not yet staff" : "Exited"} tone={p.status === "active" ? C.green : p.status === "pending" ? C.amber : C.stone} />
               {/* These read "not on this screen" for everybody, always. The
                   company's own PAN and Aadhaar for all 126 people have been in
@@ -8656,9 +8677,14 @@ function FullProfile({ p, onClose }) {
               {/* A CV filename built from their name, a Google Form "response", a
                   quiz score and a previous employer picked from four real firms
                   all used to sit here, none of it recorded anywhere. */}
-              {s.exCo || s.exRole ? (<>
-                <Row k="Previous company" v={s.exCo} />
-                <Row k="Was working as" v={s.exRole} />
+              {/* These read `s.exCo` / `s.exRole` off buildStory, which only ever
+                  had them on the enrolment success screen. The record carries
+                  them now, so the card below no longer sends HR to a form that
+                  throws the answer away. */}
+              {p.prevEmployer || p.prevRole ? (<>
+                <Row k="Previous company" v={p.prevEmployer} />
+                <Row k="Was working as" v={p.prevRole} />
+                {(p.prevFrom || p.prevTo) && <Row k="Between" v={[p.prevFrom, p.prevTo].filter(Boolean).join(" and ")} />}
               </>) : (
                 <div style={{ font: `12px ${sans}`, color: C.stone, lineHeight: 1.6 }}>
                   Nothing is on file about where they worked before, and no application document has

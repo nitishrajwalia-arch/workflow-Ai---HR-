@@ -146,6 +146,15 @@ export const peopleRoutes: FastifyPluginAsyncZod = async (app) => {
             ...(b.shift
               ? { shiftIn: b.shift.in, shiftOut: b.shift.out, shiftHours: b.shift.hours }
               : {}),
+            // Asked for on the enrolment form, and until now dropped between
+            // the form and the table because this schema did not name them.
+            offDay: b.offDay,
+            probation: b.probation,
+            conditions: b.conditions,
+            prevEmployer: b.prevEmployer,
+            prevRole: b.prevRole,
+            prevFrom: b.prevFrom,
+            prevTo: b.prevTo,
           },
           include: personInclude,
         });

@@ -48,6 +48,16 @@ export interface BootstrapPerson {
   reportsToNote: string;
   photo: string | null;
   shift: { in: string; out: string; hours: number };
+  /** The weekly off — attendance cannot tell a day off from an absence without it. */
+  offDay: string;
+  /** The terms agreed at joining. The offer letter has a line for the probation. */
+  probation: string;
+  conditions: string;
+  /** Where they worked before, which the profile has always had a card for. */
+  prevEmployer: string;
+  prevRole: string;
+  prevFrom: string;
+  prevTo: string;
   imported: boolean;
 }
 

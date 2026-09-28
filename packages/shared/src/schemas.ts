@@ -162,6 +162,19 @@ export const personCore = z.object({
   notes: z.array(note).default([]),
   photo: z.string().url().nullable().default(null),
   shift: shift.optional(),
+
+  /* Everything below is asked on the enrolment form and, until now, dropped
+     by this schema in silence: Zod strips what it does not name. */
+
+  /** The weekly off. Attendance cannot tell a day off from an absence without it. */
+  offDay: z.string().trim().max(40).default('Sunday'),
+  probation: z.string().trim().max(60).default(''),
+  conditions: z.string().trim().max(2000).default(''),
+  /** Where they worked before, which the profile has a card for and no data behind. */
+  prevEmployer: z.string().trim().max(200).default(''),
+  prevRole: z.string().trim().max(200).default(''),
+  prevFrom: z.string().trim().max(30).default(''),
+  prevTo: z.string().trim().max(30).default(''),
 });
 
 /**
@@ -226,6 +239,17 @@ export const kycBody = z.object({
       message: 'A PAN is ten characters: five letters, four digits, one letter.',
     }),
   address: z.string().trim().max(500).default(''),
+  /** Whether that address is the one printed on the Aadhaar. */
+  addressMatchesAadhaar: z.string().trim().max(40).default(''),
+  /** The licence, for whoever drives as part of the work. */
+  drives: z.boolean().default(false),
+  dl: z.string().trim().toUpperCase().max(30).default(''),
+  dlExpires: z.string().trim().max(30).default(''),
+  /** The two photo IDs taken at enrolment, each with what kind it is. */
+  idType1: z.string().trim().max(40).default(''),
+  idNo1: z.string().trim().max(40).default(''),
+  idType2: z.string().trim().max(40).default(''),
+  idNo2: z.string().trim().max(40).default(''),
 });
 
 export const createPersonBody = personCore

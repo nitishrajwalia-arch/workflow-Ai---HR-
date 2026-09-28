@@ -218,6 +218,24 @@ model Person {
   shiftOut   String @default("18:30")
   shiftHours Float  @default(9)
 
+  /// The weekly off. Attendance cannot tell an absence from a day off without
+  /// it, and the enrolment form has always asked — then dropped the answer.
+  offDay String @default("Sunday")
+
+  /// The terms agreed at joining. The offer-letter template has a "Probation"
+  /// line and there was nothing on the record to fill it from.
+  probation  String @default("")
+  conditions String @default("")
+
+  /// Where they worked before. The profile has a card for this that reads
+  /// "Nothing is on file about where they worked before... It is asked for on
+  /// the enrolment form, and can be added there" — and the form threw it away,
+  /// so following that instruction changed nothing, for ever.
+  prevEmployer String @default("")
+  prevRole     String @default("")
+  prevFrom     String @default("")
+  prevTo       String @default("")
+
   /// WHERE THEY SIT.
   officeId String
   office   Office @relation(fields: [officeId], references: [id], onDelete: Restrict)
@@ -284,11 +302,30 @@ model PersonNote {
 /// DPDP Act 2023 — it is stored because an employer needs it for PF, ESI and
 /// TDS, and it is read by HR and above only.
 model Kyc {
-  personId  String   @id
-  person    Person   @relation(fields: [personId], references: [id], onDelete: Cascade)
-  aadhaar   String   @default("")
-  pan       String   @default("")
-  address   String   @default("")
+  personId String @id
+  person   Person @relation(fields: [personId], references: [id], onDelete: Cascade)
+  aadhaar  String @default("")
+  pan      String @default("")
+  address  String @default("")
+
+  /// Whether the address above is the one printed on the Aadhaar. HR is asked
+  /// at enrolment and the answer decides which proof a bank or the P.F. office
+  /// will accept, so it is worth more than the tick it was.
+  addressMatchesAadhaar String @default("")
+
+  /// A driving licence, for the people who drive as part of the work. Asked for
+  /// on the enrolment form, and until now thrown away with everything else on
+  /// that step — which for a rider is the one document that matters.
+  drives    Boolean @default(false)
+  dl        String  @default("")
+  dlExpires String  @default("")
+
+  /// The two photo IDs taken at enrolment, each with what kind it is.
+  idType1 String @default("")
+  idNo1   String @default("")
+  idType2 String @default("")
+  idNo2   String @default("")
+
   updatedAt DateTime @updatedAt
 
   @@map("kyc")

@@ -52,6 +52,15 @@ export function serialisePerson(p: PersonWithRelations): BootstrapPerson {
     reportsToNote: p.reportsToNote,
     photo: p.photo,
     shift: { in: p.shiftIn, out: p.shiftOut, hours: p.shiftHours },
+    // The terms agreed at joining, and where they worked before. None of these
+    // are regulated, so unlike the identity papers they travel with the person.
+    offDay: p.offDay,
+    probation: p.probation,
+    conditions: p.conditions,
+    prevEmployer: p.prevEmployer,
+    prevRole: p.prevRole,
+    prevFrom: p.prevFrom,
+    prevTo: p.prevTo,
     imported: p.imported,
   };
 }
