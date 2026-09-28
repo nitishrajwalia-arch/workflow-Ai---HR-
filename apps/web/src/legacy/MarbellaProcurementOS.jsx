@@ -209,7 +209,23 @@ function VehicleFigure({ type, w = 72 }) {
   }
 }
 
-function useIsMobile(bp = 760) {  const [m, setM] = useState(typeof window !== "undefined" ? window.innerWidth < bp : false);
+/**
+ * Is the screen too narrow for the desk layout?
+ *
+ * The threshold was 760, which is the width of a large phone — so every tablet
+ * held upright got the DESK layout, and the desk layout does not fit. An iPad
+ * Mini in portrait is 768 wide and the page came out 915: a third of the screen
+ * taken by the sidebar, "Purchase ·" cut off mid-word, half the announcements
+ * column past the right edge, and the whole dashboard needing a sideways scroll
+ * to read. An iPad Pro 11 upright was worse.
+ *
+ * 1024 puts every tablet in portrait onto the stacked layout, which is the one
+ * that was built to fit a narrow screen, and leaves every tablet in landscape
+ * and every laptop on the desk layout, which is the one that needs the width.
+ * Measured at ten real device sizes, not chosen by eye — see the sweep in the
+ * commit that changed this.
+ */
+function useIsMobile(bp = 1024) {  const [m, setM] = useState(typeof window !== "undefined" ? window.innerWidth < bp : false);
   useEffect(() => { const f = () => setM(window.innerWidth < bp); window.addEventListener("resize", f); f(); return () => window.removeEventListener("resize", f); }, [bp]);
   return m;
 }
@@ -593,7 +609,11 @@ export function Login({ onLogin, desks = [], direct = false }) {
               color: C.stone, marginBottom: 9 }}>
               {direct ? "Open a desk" : "Fill in an Employee ID"}
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr 1fr" : "1fr 1fr", gap: 7 }}>
+            {/* minmax(0, 1fr), not 1fr: the second line of each desk is nowrap, so a
+                plain 1fr track takes its full unwrapped width as a minimum and the
+                pair of columns pushed the sign-in screen 90px wider than a 360px
+                phone. The ellipsis can only do its job if the track may shrink. */}
+            <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 7 }}>
               {desks.map(d => (
                 <button key={d.key} type="button" disabled={busy}
                   onClick={() => { setId(d.id); if (direct) submit(d.id, pw || "preview"); }}
@@ -987,7 +1007,7 @@ function ExportPanel({ title, filterNote, cols, rows, trail, userKey, onClose, r
       <div style={{ padding: mob ? 18 : 24 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
           <Download size={17} color={C.gold} /><Eyebrow>Export</Eyebrow>
-          <button onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
+          <button data-icon-btn onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
         </div>
         <h2 style={{ font: `400 20px ${serif}`, margin: "4px 0 4px" }}>{title}</h2>
         <div style={{ font: `12px ${sans}`, color: C.stone, marginBottom: 14 }}>
@@ -1112,7 +1132,7 @@ function CameraLive({ cam, onClose, onLogged }) {
       <div style={{ padding: mob ? 16 : 22 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
           <Video size={17} color={C.gold} /><Eyebrow>Live view</Eyebrow>
-          <button onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
+          <button data-icon-btn onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
         </div>
         <CamFrame cam={cam} big />
         <div style={{ display: "flex", alignItems: "flex-start", gap: 10, marginTop: 12, flexWrap: "wrap" }}>
@@ -1181,7 +1201,7 @@ function CameraWall({ compact }) {
           <div style={{ padding: mob ? 18 : 22 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
               <Video size={16} color={C.gold} /><Eyebrow>Assign the camera</Eyebrow>
-              <button onClick={() => setAssign(null)} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
+              <button data-icon-btn onClick={() => setAssign(null)} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
             </div>
             <h2 style={{ font: `400 19px ${serif}`, margin: "4px 0 4px" }}>{assign.place}</h2>
             <div style={{ font: `12px ${sans}`, color: C.stone, marginBottom: 12 }}>Whoever this camera is assigned to will see it on their own profile, and will know when it is watched.</div>
@@ -1234,7 +1254,7 @@ function CastPanel({ tab, onClose }) {
       <div style={{ padding: mob ? 18 : 24 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
           <Share2 size={17} color={C.gold} /><Eyebrow>Cast this screen</Eyebrow>
-          <button onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
+          <button data-icon-btn onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
         </div>
 
         {stage === "pick" && (<>
@@ -1577,7 +1597,7 @@ export function Shell({ userKey: realKey, onLogout }) {
             <div style={{ font: `600 11px ${sans}`, letterSpacing: "0.18em" }}>MARBELLA</div>
             <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 12 }}>
               <div style={{ width: 28, height: 28, borderRadius: "50%", background: TIER_COLOR[tier], display: "grid", placeItems: "center", color: "#fff", font: `700 12px ${serif}` }}>{u.name[0]}</div>
-              <button onClick={onLogout} style={{ background: "none", border: "none", color: "#8793A8", cursor: "pointer", display: "grid", placeItems: "center" }}><LogOut size={17} /></button>
+              <button data-icon-btn onClick={onLogout} style={{ background: "none", border: "none", color: "#8793A8", cursor: "pointer", display: "grid", placeItems: "center" }}><LogOut size={17} /></button>
             </div>
           </div>
           <div style={{ display: "flex", gap: 8, padding: "0 12px 12px", overflowX: "auto", width: "100%", maxWidth: "100vw", boxSizing: "border-box", scrollbarWidth: "none" }}>
@@ -1589,7 +1609,7 @@ export function Shell({ userKey: realKey, onLogout }) {
         <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", background: "#fff", borderBottom: `1px solid ${C.line}` }}>
           <MasterSearch /><Clock12 compact />
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 16px", background: "#fff", borderBottom: `1px solid ${C.line}` }}>
+        <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 10, padding: "10px 16px", background: "#fff", borderBottom: `1px solid ${C.line}` }}>
           <FirmSwitcher compact /><span style={{ font: `11px ${sans}`, color: C.stone }}>uploads file here</span>
           {canCalc && <button onClick={() => setShowCalc(true)} style={{ marginLeft: "auto", cursor: "pointer", border: `1px solid ${C.line}`, background: "#fff", borderRadius: 20, padding: "7px 11px", display: "inline-flex", alignItems: "center", gap: 6, color: C.goldDeep, font: `600 12px ${sans}` }}><Calculator size={13} /> ₹ Calc</button>}
           <button onClick={() => setCasting(true)} title="Cast to a screen" style={{ cursor: "pointer", border: `1px solid ${C.line}`, background: "#fff", borderRadius: 20, padding: "7px 11px", display: "inline-flex", alignItems: "center", gap: 6, color: C.goldDeep, font: `600 12px ${sans}` }}><Share2 size={13} /> Cast</button>
@@ -1652,7 +1672,7 @@ function FilePreview({ title, meta, lines = [], onClose }) {
       <div style={{ padding: mob ? 18 : 24 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
           <FileText size={18} color={C.gold} /><Eyebrow>Document</Eyebrow>
-          <button onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
+          <button data-icon-btn onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
         </div>
         <div style={{ background: "#fff", border: `1px solid ${C.line}`, borderRadius: 12, padding: mob ? 14 : 20 }}>
           <DocHead firm={activeFirm} title={title} docId={meta} compact />
@@ -1708,7 +1728,7 @@ function ConfirmAction({ title, intro, lines = [], confirmLabel, doneTitle, done
       <div style={{ padding: mob ? 18 : 24 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
           <FileCheck size={18} color={C.gold} /><Eyebrow>Check before it goes</Eyebrow>
-          <button onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
+          <button data-icon-btn onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
         </div>
         <h2 style={{ font: `400 20px ${serif}`, margin: "4px 0 4px" }}>{title}</h2>
         {intro && <div style={{ font: `12px ${sans}`, color: C.stone, marginBottom: 12 }}>{intro}</div>}
@@ -2116,7 +2136,7 @@ function ClaimDoc({ po, userKey, onClose }) {
       <div style={{ padding: mob ? 18 : 24 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
           <FileText size={18} color={C.gold} /><Eyebrow>{over ? "Excess supply notice" : "Credit note request"}</Eyebrow>
-          <button onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
+          <button data-icon-btn onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
         </div>
 
         {/* letterhead preview */}
@@ -2198,7 +2218,7 @@ function HoldModal({ row, onClose }) {
       <div style={{ padding: mob ? 18 : 24 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
           <Lock size={17} color={C.gold} /><Eyebrow>Hold stock</Eyebrow>
-          <button onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
+          <button data-icon-btn onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
         </div>
         <h2 style={{ font: `400 20px ${serif}`, margin: "4px 0 4px" }}>Keep {row.item} back</h2>
         <div style={{ font: `12px ${sans}`, color: C.stone, marginBottom: 14 }}>The store will see it as "do not give out". A hold is temporary — two weeks at the most.</div>
@@ -2403,7 +2423,7 @@ function ReviewFlagged({ onClose }) {
       <div style={{ padding: mob ? 18 : 24 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
           <Flag size={18} color={C.gold} /><Eyebrow>Flagged records</Eyebrow>
-          <button onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
+          <button data-icon-btn onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
         </div>
         <h2 style={{ font: `400 21px ${serif}`, margin: "4px 0 4px" }}>{open.length ? `${open.length} record${open.length > 1 ? "s" : ""} holding your score back` : "Everything is clean"}</h2>
         <div style={{ font: `12px ${sans}`, color: C.stone, marginBottom: 12 }}>Clear these and approvals stop waiting on paperwork.</div>
@@ -2749,7 +2769,7 @@ function StoreView({ userKey = "store" }) {
                 <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 18, flexWrap: "wrap" }}>
                   <Package size={16} color={C.gold} /><div style={{ font: `600 14px ${sans}` }}>{pick.item}</div>
                   <span style={{ font: `12px ${mono}`, color: C.stone }}>{pick.id} · {pick.qty}</span>
-                  <button onClick={reset} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={16} /></button>
+                  <button data-icon-btn onClick={reset} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={16} /></button>
                 </div>
                 {step === 1 && (
                   <div>
@@ -2844,7 +2864,7 @@ function EvidenceRow({ ev, setEv }) {
             <span key={i} style={{ display: "inline-flex", alignItems: "center", gap: 5, background: C.goldTint, border: `1px solid ${C.goldSoft}`, borderRadius: 20, padding: "4px 9px", font: `11px ${sans}`, color: C.goldDeep }}>
               {x.kind === "Photo" ? <Camera size={11} /> : x.kind === "Video" ? <Video size={11} /> : <Mic size={11} />}
               {x.kind} · {x.at}
-              <button onClick={() => setEv(e => e.filter((_, k) => k !== i))} style={{ background: "none", border: "none", cursor: "pointer", color: C.stone, padding: 0 }}><X size={11} /></button>
+              <button data-icon-btn onClick={() => setEv(e => e.filter((_, k) => k !== i))} style={{ background: "none", border: "none", cursor: "pointer", color: C.stone, padding: 0 }}><X size={11} /></button>
             </span>
           ))}
         </div>
@@ -3126,7 +3146,7 @@ function GateCapture({ guard, shots, setShots }) {
                 <div style={{ font: `10px ${mono}`, color: C.stone }}>{sh.stamp}</div>
                 <div style={{ font: `10px ${sans}`, color: C.stone }}>{sh.post}</div>
               </div>
-              <button onClick={() => setShots(s => s.filter((_, k) => k !== i))} style={{ background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={14} /></button>
+              <button data-icon-btn onClick={() => setShots(s => s.filter((_, k) => k !== i))} style={{ background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={14} /></button>
             </div>
           ))}
         </div>
@@ -3182,7 +3202,7 @@ function ScanGate({ pass, walkin, guard, onClose, onDone }) {
       <div style={{ padding: mob ? 18 : 24 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
           <ScanLine size={18} color={C.gold} /><Eyebrow>Gate check</Eyebrow>
-          <button onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
+          <button data-icon-btn onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
         </div>
 
         {stage === "scan" && (
@@ -3455,7 +3475,7 @@ function DocIntake({ onClose, onFiled }) {
       <div style={{ padding: mob ? 16 : 24 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
           <Upload size={18} color={C.gold} /><Eyebrow>Feed the ledger</Eyebrow>
-          <button onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
+          <button data-icon-btn onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
         </div>
 
         {stage === "drop" && (<>
@@ -3614,7 +3634,7 @@ function SaleProfile({ s, onClose, onReminder }) {
       <div style={{ padding: mob ? 18 : 24 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
           <Users size={17} color={C.gold} /><Eyebrow>Buyer &amp; payment plan</Eyebrow>
-          <button onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
+          <button data-icon-btn onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
         </div>
         <DocHead firm={activeFirm} title={`${s.buyer} — ${s.unit}`} docId={s.id} compact />
         <div style={{ display: mob ? "block" : "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
@@ -3693,7 +3713,7 @@ function ReminderCompose({ s, m, onClose, onQueue }) {
       <div style={{ padding: mob ? 18 : 24 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
           <Send size={17} color={C.gold} /><Eyebrow>Payment reminder</Eyebrow>
-          <button onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
+          <button data-icon-btn onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
         </div>
         <h2 style={{ font: `400 20px ${serif}`, margin: "4px 0 4px" }}>To {s.buyer} · {inr(m.amt)}</h2>
         <div style={{ font: `12px ${sans}`, color: C.stone, marginBottom: 12 }}>Nothing goes to a buyer without the Chairman's approval. This is queued, not sent.</div>
@@ -3801,7 +3821,7 @@ function AddBuyer({ onClose, onAdd }) {
       <div style={{ padding: mob ? 18 : 24 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
           <UserPlus size={17} color={C.gold} /><Eyebrow>Add a buyer</Eyebrow>
-          <button onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
+          <button data-icon-btn onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
         </div>
         <h2 style={{ font: `400 20px ${serif}`, margin: "4px 0 4px" }}>Who has bought, and on what plan.</h2>
         <div style={{ font: `12px ${sans}`, color: C.stone, marginBottom: 14 }}>Once the plan is set, the app works out every instalment for you and can chase it on its own.</div>
@@ -3886,7 +3906,7 @@ GSTIN ${activeFirm.gstin}`);
       <div style={{ padding: mob ? 18 : 24 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
           <Send size={17} color={C.gold} /><Eyebrow>Raise a payment</Eyebrow>
-          <button onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
+          <button data-icon-btn onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
         </div>
         {stage === "who" ? (<>
           <h2 style={{ font: `400 20px ${serif}`, margin: "4px 0 4px" }}>Ask anybody for money owed.</h2>
@@ -4191,7 +4211,7 @@ function ReminderApprovals() {
       ))}
       {see && <Overlay onClose={() => setSee(null)} width={560}><div style={{ padding: mob ? 18 : 24 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}><Send size={16} color={C.gold} /><Eyebrow>{see.subj}</Eyebrow>
-          <button onClick={() => setSee(null)} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button></div>
+          <button data-icon-btn onClick={() => setSee(null)} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button></div>
         <div style={{ background: "#fff", border: `1px solid ${C.line}`, borderRadius: 11, padding: 14, font: `13px/1.65 ${sans}`, color: C.ink, whiteSpace: "pre-wrap" }}>{see.body}</div>
         <div style={{ marginTop: 12 }}><GoldButton small onClick={() => setSee(null)}>Close</GoldButton></div>
       </div></Overlay>}
@@ -4272,7 +4292,7 @@ function ExpenseDetail({ r, onClose }) {
       <div style={{ padding: mob ? 18 : 24 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
           <FileText size={17} color={C.gold} /><Eyebrow>Expense entry</Eyebrow>
-          <button onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
+          <button data-icon-btn onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
         </div>
         <DocHead firm={activeFirm} title={r.party} docId={r.id} compact />
 
@@ -4566,7 +4586,7 @@ function PeopleView() {
               <div style={{ flex: 1, minWidth: 0 }}><div style={{ font: `600 13px ${sans}` }}>{e.name}</div><div style={{ font: `12px ${mono}`, color: C.stone }}>{e.id} · {e.dept}</div></div>
               {e.quality == null ? <Pill tone="gold"><Crown size={10} style={{ verticalAlign: "-1px", marginRight: 3 }} />Admin</Pill>
                 : <Pill tone={e.quality >= 90 ? "green" : e.quality >= 75 ? "gold" : "red"}>{e.quality}% clean</Pill>}
-              <button onClick={() => setInvestigate(e)} style={{ cursor: "pointer", background: "none", border: "none", color: C.gold, display: "grid", placeItems: "center" }}><ChevronRight size={18} /></button>
+              <button data-icon-btn onClick={() => setInvestigate(e)} style={{ cursor: "pointer", background: "none", border: "none", color: C.gold, display: "grid", placeItems: "center" }}><ChevronRight size={18} /></button>
             </div>
           ))}
           {/* This said "+ 53 more across 8 departments", flat, under a list that
@@ -4615,7 +4635,7 @@ function PeopleView() {
           <div onClick={e => e.stopPropagation()} style={{ width: mob ? "100%" : 420, background: C.paper, height: "100%", padding: mob ? 20 : 26, borderLeft: `3px solid ${C.gold}`, overflowY: "auto" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <Eyebrow><Eye size={11} style={{ verticalAlign: "-1px", marginRight: 5 }} />Investigate</Eyebrow>
-              <button onClick={() => setInvestigate(null)} style={{ background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
+              <button data-icon-btn onClick={() => setInvestigate(null)} style={{ background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
             </div>
             <h2 style={{ font: `400 24px ${serif}`, margin: "12px 0 2px" }}>{investigate.name}</h2>
             <div style={{ font: `13px ${mono}`, color: C.stone, marginBottom: 18 }}>{investigate.id} · {investigate.dept}</div>
@@ -4660,7 +4680,7 @@ function SubDetail({ sub, userKey, onClose }) {
       <div style={{ padding: mob ? 16 : 22 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
           <History size={18} color={C.gold} /><Eyebrow>Submission</Eyebrow>
-          <button onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
+          <button data-icon-btn onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
         </div>
         <h2 style={{ font: `400 20px ${serif}`, margin: "2px 0 2px" }}>{sub.title}</h2>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", font: `12px ${sans}`, color: C.stone, marginBottom: 14 }}>
@@ -4731,7 +4751,7 @@ function SendDoc({ userKey, onClose }) {
       <div style={{ padding: mob ? 16 : 22 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
           <Send size={18} color={C.gold} /><Eyebrow>Send a document</Eyebrow>
-          <button onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
+          <button data-icon-btn onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
         </div>
         <h2 style={{ font: `400 20px ${serif}`, margin: "2px 0 12px" }}>Hand a file to a department</h2>
         <label style={lbl}>What is it</label><input value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g. May cement bills" style={{ ...inp, margin: "6px 0 14px" }} />
@@ -4804,7 +4824,7 @@ function VendorAccount({ name, onClose }) {
 
   if (!bills.length) return (
     <Overlay onClose={onClose} width={560}><div style={{ padding: 24 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 10 }}><Building2 size={18} color={C.gold} /><Eyebrow>Vendor account</Eyebrow><button onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button></div>
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}><Building2 size={18} color={C.gold} /><Eyebrow>Vendor account</Eyebrow><button data-icon-btn onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button></div>
       <h2 style={{ font: `400 22px ${serif}`, margin: "6px 0 4px" }}>{name}</h2>
       <p style={{ font: `13px ${sans}`, color: C.stone }}>No billing history on file for this vendor yet. Once bills or PDFs are logged against them, the ledger, first-purchase date and analysis appear here automatically.</p>
     </div></Overlay>
@@ -4847,7 +4867,7 @@ function VendorAccount({ name, onClose }) {
       <div style={{ padding: mob ? 16 : 22 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
           <Building2 size={18} color={C.gold} /><Eyebrow>Vendor account</Eyebrow>
-          <button onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
+          <button data-icon-btn onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 4 }}>
           <h2 style={{ font: `400 24px ${serif}`, margin: 0 }}>{name}</h2>
@@ -4961,7 +4981,7 @@ function VendorImport({ onClose }) {
       <div style={{ padding: mob ? 16 : 22 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
           <Upload size={18} color={C.gold} /><Eyebrow>Import vendor list</Eyebrow>
-          <button onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
+          <button data-icon-btn onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
         </div>
         <p style={{ font: `12px ${sans}`, color: C.stone, marginBottom: 14, lineHeight: 1.5 }}>Already keep vendors in Excel? Export it and drop it here (save as CSV). The app breaks it down into our fields; any extra columns are parked aside, not lost.</p>
         <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
@@ -5033,7 +5053,7 @@ function VerifyVendor({ v, onClose }) {
       <div style={{ padding: mob ? 16 : 22 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
           <ShieldCheck size={18} color={C.gold} /><Eyebrow>Verify vendor</Eyebrow>
-          <button onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
+          <button data-icon-btn onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
         </div>
         <h2 style={{ font: `400 20px ${serif}`, margin: "2px 0 2px" }}>{v.name}</h2>
         <div style={{ font: `12px ${sans}`, color: C.stone, marginBottom: 14 }}>{v.code} · {v.cat}</div>
@@ -5102,7 +5122,7 @@ function AddVendor({ prefill, onClose }) {
       <div style={{ padding: mob ? 16 : 22 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
           <UserPlus size={18} color={C.gold} /><Eyebrow>Add a vendor</Eyebrow>
-          <button onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
+          <button data-icon-btn onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
         </div>
         <h2 style={{ font: `400 21px ${serif}`, margin: "2px 0 4px" }}>Enrol a new supplier</h2>
         <div style={{ font: `12px ${sans}`, color: C.stone, marginBottom: 14 }}>Anyone can add a vendor. They go on the ledger straight away as <b>unverified</b> — run the OTP check whenever you're ready to make them a verified vendor.</div>
@@ -5260,7 +5280,7 @@ function SendToVendor({ po, firm, onClose, userKey = "purchase" }) {
     <Overlay onClose={onClose} width={560}><div style={{ padding: mob ? 16 : 22 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
         <Send size={18} color={C.gold} /><Eyebrow>Send to vendor</Eyebrow>
-        <button onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
+        <button data-icon-btn onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
       </div>
       <h2 style={{ font: `400 21px ${serif}`, margin: "2px 0 2px" }}>Shoot {po.id} to {po.vendor}</h2>
       <div style={{ font: `12px ${sans}`, color: C.stone, marginBottom: 14 }}>Check the covering email and the attachment, then send. It goes by email and WhatsApp in one press.</div>
@@ -5366,7 +5386,7 @@ function FigureHelper({ onClose }) {
     <Overlay onClose={onClose} width={440}><div style={{ padding: mob ? 14 : 20 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
         <Calculator size={18} color={C.gold} /><Eyebrow>Figure helper</Eyebrow>
-        <button onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
+        <button data-icon-btn onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
       </div>
       <h2 style={{ font: `400 20px ${serif}`, margin: "2px 0 10px" }}>Calculator — reads in crore &amp; lakh</h2>
 
@@ -5536,7 +5556,7 @@ function CreatePO({ prefill, onClose }) {
       <div style={{ padding: mob ? 16 : 24 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
           <FileText size={18} color={C.gold} /><Eyebrow>New purchase order</Eyebrow>
-          <button onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
+          <button data-icon-btn onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
         </div>
         <h2 style={{ font: `400 22px ${serif}`, margin: "4px 0 4px" }}>Raise a PO</h2>
         <div style={{ font: `12px ${sans}`, color: C.stone, marginBottom: 12 }}>Filing under <b style={{ color: C.ink }}>{activeFirm.short}</b> · {activeFirm.rera}{saved ? " · saved as draft" : ""}</div>
@@ -5607,14 +5627,14 @@ function CreatePO({ prefill, onClose }) {
                       <div><label style={{ ...lbl, fontSize: 9 }}>Qty</label><input value={r.qty} onChange={e => upd(i, { qty: e.target.value })} style={cellInp} /></div>
                       <div><label style={{ ...lbl, fontSize: 9 }}>Unit</label><input value={r.unit} onChange={e => upd(i, { unit: e.target.value })} style={cellInp} /></div>
                       <div><label style={{ ...lbl, fontSize: 9 }}>Rate</label><input value={r.rate} onChange={e => upd(i, { rate: e.target.value, from: "" })} style={{ ...cellInp, fontFamily: mono }} /></div>
-                      <button onClick={() => delRow(i)} style={{ background: "none", border: "none", cursor: "pointer", color: C.stone, paddingBottom: 8 }}><X size={16} /></button>
+                      <button data-icon-btn onClick={() => delRow(i)} style={{ background: "none", border: "none", cursor: "pointer", color: C.stone, paddingBottom: 8 }}><X size={16} /></button>
                     </div>
                   ) : (<>
                     <input value={r.qty} onChange={e => upd(i, { qty: e.target.value })} style={cellInp} />
                     <input value={r.unit} onChange={e => upd(i, { unit: e.target.value })} placeholder="—" style={cellInp} />
                     <input value={r.rate} onChange={e => upd(i, { rate: e.target.value, from: "" })} style={{ ...cellInp, fontFamily: mono }} />
                     <div style={{ textAlign: "right", font: `13px ${mono}`, color: C.ink }}>{inr(rowAmt(r))}</div>
-                    <button onClick={() => delRow(i)} style={{ background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={15} /></button>
+                    <button data-icon-btn onClick={() => delRow(i)} style={{ background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={15} /></button>
                   </>)}
                   {mob && <div style={{ textAlign: "right", font: `12px ${mono}`, color: C.goldDeep, marginTop: 6 }}>{inr(rowAmt(r))}</div>}
                 </div>
@@ -5686,14 +5706,24 @@ function RequirementForm({ from = "Maintenance", prefillItem = "", onDone, compa
     </div>
   );
 }
+/* `gap: 12` four times over, plus a 36px avatar and two buttons, came to more
+   than a 360px phone has — and 360 is what a Galaxy A or a Redmi is, which is
+   what most of the site carries. Every Call button on this screen ended 22px
+   past the right edge, unreachable, with no scroll to bring it back. The gaps
+   close up and the name wraps instead. */
 function CallRow({ p, i }) {
   const [act, setAct] = useState(null);
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 0", borderTop: i ? `1px solid ${C.lineSoft}` : "none" }}>
+    <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "12px 0", borderTop: i ? `1px solid ${C.lineSoft}` : "none", flexWrap: "nowrap" }}>
       <div style={{ width: 36, height: 36, borderRadius: "50%", background: C.lineSoft, color: C.inkSoft, display: "grid", placeItems: "center", font: `700 13px ${serif}`, flexShrink: 0 }}>{p.name[0]}</div>
-      <div style={{ flex: 1, minWidth: 0 }}><div style={{ font: `600 13px ${sans}` }}>{p.name}</div><div style={{ font: `12px ${sans}`, color: C.stone }}>{p.role} · {p.phone}</div></div>
-      {p.wa && <button onClick={() => setAct({ title: `WhatsApp ${p.name}`, intro: "This opens WhatsApp on YOUR phone or desktop with their chat ready. It does not send anything by itself, and it does not go from a company account — there is no company WhatsApp behind this yet.", lines: [["Opens a chat with", `${p.name} · ${p.phone}`], ["Sent from", "your own WhatsApp"], ["Sent automatically", "nothing — you type it"]], confirmLabel: "Open WhatsApp", onConfirm: () => { window.open(`https://wa.me/${String(p.phone).replace(/\D/g, "")}`, "_blank", "noopener"); return true; }, doneTitle: "WhatsApp opened", doneBody: `Their chat is open in another tab. Type it and send it yourself.` })} title="WhatsApp" style={{ cursor: "pointer", width: 36, height: 36, borderRadius: 10, border: `1px solid ${C.line}`, background: "#fff", display: "grid", placeItems: "center", color: C.green }}><MessageCircle size={16} /></button>}
-      <GreenButton small onClick={() => callNumber(p.phone || p.mobile, p.name)}><Phone size={14} /> Call</GreenButton>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ font: `600 13px ${sans}`, overflowWrap: "anywhere" }}>{p.name}</div>
+        <div style={{ font: `12px ${sans}`, color: C.stone, overflowWrap: "anywhere" }}>{p.role} · {p.phone}</div>
+      </div>
+      {p.wa && <button data-icon-btn onClick={() => setAct({ title: `WhatsApp ${p.name}`, intro: "This opens WhatsApp on YOUR phone or desktop with their chat ready. It does not send anything by itself, and it does not go from a company account — there is no company WhatsApp behind this yet.", lines: [["Opens a chat with", `${p.name} · ${p.phone}`], ["Sent from", "your own WhatsApp"], ["Sent automatically", "nothing — you type it"]], confirmLabel: "Open WhatsApp", onConfirm: () => { window.open(`https://wa.me/${String(p.phone).replace(/\D/g, "")}`, "_blank", "noopener"); return true; }, doneTitle: "WhatsApp opened", doneBody: `Their chat is open in another tab. Type it and send it yourself.` })} title="WhatsApp" style={{ cursor: "pointer", width: 36, height: 36, borderRadius: 10, border: `1px solid ${C.line}`, background: "#fff", display: "grid", placeItems: "center", color: C.green }}><MessageCircle size={16} /></button>}
+      <span style={{ flexShrink: 0 }}>
+        <GreenButton small onClick={() => callNumber(p.phone || p.mobile, p.name)}><Phone size={14} /> Call</GreenButton>
+      </span>
       {act && <ConfirmAction {...act} onClose={() => setAct(null)} />}
     </div>
   );
@@ -5793,7 +5823,7 @@ function IntentRequest({ userKey = "purchase" }) {
           <div key={i} style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 12, padding: mob ? 12 : 14, position: "relative" }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
               <span style={{ font: `600 11px ${sans}`, color: C.goldDeep }}>Item {i + 1}</span>
-              {items.length > 1 && <button onClick={() => del(i)} style={{ background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={15} /></button>}
+              {items.length > 1 && <button data-icon-btn onClick={() => del(i)} style={{ background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={15} /></button>}
             </div>
             <label style={{ ...lbl, fontSize: 9 }}>Particular *</label>
             <input value={x.particular} onChange={e => upd(i, { particular: e.target.value })} placeholder="e.g. Water tank 2000 L / TMT 12 mm / Vitrified tile" style={{ ...cell, margin: "5px 0 10px" }} />
@@ -5825,7 +5855,7 @@ function IntentRequest({ userKey = "purchase" }) {
             <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
               <label style={{ ...softBtn, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6, font: `600 11px ${sans}` }}><Camera size={13} /> Add a photo of this item<input type="file" accept="image/*" multiple onChange={e => { const n = [...e.target.files].map(g => g.name); setShots(s2 => ({ ...s2, [i]: [...(s2[i] || []), ...n] })); }} style={{ display: "none" }} /></label>
               {(shots[i] || []).map((n, k) => (
-                <span key={k} style={{ display: "inline-flex", alignItems: "center", gap: 5, background: C.goldTint, border: `1px solid ${C.goldSoft}`, borderRadius: 20, padding: "4px 9px", font: `11px ${sans}`, color: C.goldDeep }}><Camera size={11} /> {n}<button onClick={() => setShots(s2 => ({ ...s2, [i]: s2[i].filter((_, j) => j !== k) }))} style={{ background: "none", border: "none", cursor: "pointer", color: C.stone, padding: 0 }}><X size={11} /></button></span>
+                <span key={k} style={{ display: "inline-flex", alignItems: "center", gap: 5, background: C.goldTint, border: `1px solid ${C.goldSoft}`, borderRadius: 20, padding: "4px 9px", font: `11px ${sans}`, color: C.goldDeep }}><Camera size={11} /> {n}<button data-icon-btn onClick={() => setShots(s2 => ({ ...s2, [i]: s2[i].filter((_, j) => j !== k) }))} style={{ background: "none", border: "none", cursor: "pointer", color: C.stone, padding: 0 }}><X size={11} /></button></span>
               ))}
             </div>
           </div>
@@ -5839,7 +5869,7 @@ function IntentRequest({ userKey = "purchase" }) {
           <label style={{ ...softBtn, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6 }}><Upload size={13} /> Attach files<input type="file" multiple onChange={e => { const names = [...e.target.files].map(f => f.name); setQuotes(q => [...q, ...names]); }} style={{ display: "none" }} /></label>
           <label style={{ ...softBtn, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6 }}><Camera size={13} /> Add photos<input type="file" accept="image/*" multiple onChange={e => { const names = [...e.target.files].map(f => f.name); setQuotes(q => [...q, ...names]); }} style={{ display: "none" }} /></label>
         </div>
-        {quotes.length > 0 && <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10 }}>{quotes.map((q, i) => <span key={i} style={{ display: "inline-flex", alignItems: "center", gap: 5, background: "#fff", border: `1px solid ${C.line}`, borderRadius: 20, padding: "4px 10px", font: `11px ${sans}`, color: C.inkSoft }}><FileText size={11} /> {q}<button onClick={() => setQuotes(qs => qs.filter((_, k) => k !== i))} style={{ background: "none", border: "none", cursor: "pointer", color: C.stone, padding: 0 }}><X size={11} /></button></span>)}</div>}
+        {quotes.length > 0 && <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10 }}>{quotes.map((q, i) => <span key={i} style={{ display: "inline-flex", alignItems: "center", gap: 5, background: "#fff", border: `1px solid ${C.line}`, borderRadius: 20, padding: "4px 10px", font: `11px ${sans}`, color: C.inkSoft }}><FileText size={11} /> {q}<button data-icon-btn onClick={() => setQuotes(qs => qs.filter((_, k) => k !== i))} style={{ background: "none", border: "none", cursor: "pointer", color: C.stone, padding: 0 }}><X size={11} /></button></span>)}</div>}
       </div>
 
       <div style={{ display: "flex", gap: 10, marginTop: 16, alignItems: "center", flexWrap: "wrap" }}>
@@ -5950,7 +5980,7 @@ function FreshSheet({ userKey }) {
         {rows.map((r, i) => (
           <div key={i} style={{ background: mob ? C.paper : "transparent", border: mob ? `1px solid ${C.line}` : "none", borderRadius: mob ? 10 : 0, padding: mob ? 10 : 0 }}>
             {mob ? (<>
-              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}><span style={{ font: `600 11px ${sans}`, color: C.goldDeep }}>Line {i + 1}</span>{rows.length > 1 && <button onClick={() => del(i)} style={{ background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={14} /></button>}</div>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}><span style={{ font: `600 11px ${sans}`, color: C.goldDeep }}>Line {i + 1}</span>{rows.length > 1 && <button data-icon-btn onClick={() => del(i)} style={{ background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={14} /></button>}</div>
               <input value={r.particular} onChange={e => upd(i, { particular: e.target.value })} placeholder="Particular" style={{ ...cell, marginBottom: 6 }} />
               <input value={r.brand} onChange={e => upd(i, { brand: e.target.value })} placeholder="Brand / spec" style={{ ...cell, marginBottom: 6 }} />
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginBottom: 6 }}>
@@ -5967,7 +5997,7 @@ function FreshSheet({ userKey }) {
                 <input value={r.qty} onChange={e => upd(i, { qty: e.target.value })} placeholder="Qty" style={cell} />
                 <input value={r.unit} onChange={e => upd(i, { unit: e.target.value })} placeholder="Unit" style={cell} />
                 <input value={r.need} onChange={e => upd(i, { need: e.target.value })} placeholder="Needed by" style={cell} />
-                {rows.length > 1 ? <button onClick={() => del(i)} style={{ background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={14} /></button> : <div />}
+                {rows.length > 1 ? <button data-icon-btn onClick={() => del(i)} style={{ background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={14} /></button> : <div />}
               </div>
             )}
             {!mob && <input value={r.remark} onChange={e => upd(i, { remark: e.target.value })} placeholder="Remarks (optional)" style={{ ...cell, marginTop: 5, marginLeft: 29, width: "calc(100% - 29px)" }} />}
@@ -6503,7 +6533,7 @@ function GatePassModal({ po, firm, onClose }) {
   return (
     <Overlay onClose={onClose} width={480}>
       <div style={{ position: "relative" }}>
-        <button onClick={onClose} style={{ position: "absolute", top: 14, right: 14, zIndex: 2, background: "rgba(255,255,255,.16)", border: "none", borderRadius: 8, cursor: "pointer", color: "#fff", padding: 6, display: "grid", placeItems: "center" }}><X size={16} /></button>
+        <button data-icon-btn onClick={onClose} style={{ position: "absolute", top: 14, right: 14, zIndex: 2, background: "rgba(255,255,255,.16)", border: "none", borderRadius: 8, cursor: "pointer", color: "#fff", padding: 6, display: "grid", placeItems: "center" }}><X size={16} /></button>
         <GatePassDoc po={po} firm={firm} />
         <div style={{ padding: "0 20px 20px", display: "flex", gap: 8, flexWrap: "wrap" }}>
           <GoldButton small onClick={() => setAct({ title: "Issue the gate pass", intro: "This said the driver would get it on WhatsApp. Nothing is sent to anybody — there is no WhatsApp behind this. What it does is put the delivery on the gate's screen, which is the half that matters, and give you the pass to print or show.", lines: [["Order", po.id], ["Vendor", po.vendor], ["Goes to", "the gate's screen, straight away"], ["NOT sent to", "the driver — print it or show him this"]], confirmLabel: already ? "Already on the gate" : "Put it on the gate", tone: "green", onConfirm: already ? () => true : () => issueGatePass({ id: "GP-" + String(po.id).replace(/^PO-/, ""), po: po.id, vendor: po.vendor, items: po.item || "", total: po.amt || po.total || 0 }), doneTitle: "The gate can see it", doneBody: "Security has the expected delivery on their screen. Print this pass or show it to the driver yourself." })}><span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Send size={13} /> Issue to driver</span></GoldButton>
@@ -6572,7 +6602,7 @@ function Bubble({ m, onChip, onSpeak }) {
       <div style={{ maxWidth: "88%" }}>
         <div style={{ background: me ? C.ink : "#fff", color: me ? "#fff" : C.ink, border: me ? "none" : `1px solid ${C.line}`, borderRadius: 12, padding: "10px 12px", font: `13px ${sans}`, lineHeight: 1.5 }}>
           {m.text}
-          {!me && m.text && <button onClick={() => onSpeak(m.text)} title="Read aloud" style={{ marginLeft: 6, background: "none", border: "none", cursor: "pointer", color: C.stone, verticalAlign: "-3px" }}><Volume2 size={14} /></button>}
+          {!me && m.text && <button data-icon-btn onClick={() => onSpeak(m.text)} title="Read aloud" style={{ marginLeft: 6, background: "none", border: "none", cursor: "pointer", color: C.stone, verticalAlign: "-3px" }}><Volume2 size={14} /></button>}
         </div>
         {!me && m.viz && <div style={{ marginTop: 8 }}><BotViz m={m} /></div>}
         {!me && m.chips && <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>{BOT_SAMPLES.map(s => <button key={s} onClick={() => onChip(s)} style={{ cursor: "pointer", border: `1px solid ${C.line}`, background: "#fff", color: C.inkSoft, font: `600 11px ${sans}`, padding: "6px 10px", borderRadius: 16 }}>{s}</button>)}</div>}
@@ -6605,15 +6635,15 @@ export function Assistant() {
         <div style={{ background: `linear-gradient(150deg, #2A4C7C, ${C.inkDeep})`, color: "#fff", padding: "14px 16px", display: "flex", alignItems: "center", gap: 10 }}>
           <div style={{ width: 34, height: 34, borderRadius: 10, background: "rgba(199,161,98,.22)", display: "grid", placeItems: "center" }}><Sparkles size={17} color={C.gold} /></div>
           <div style={{ flex: 1 }}><div style={{ font: `600 13px ${sans}` }}>Marbella Co-pilot</div><div style={{ font: `11px ${sans}`, color: "#A9B7CE" }}>Ask how to · or ask for a number</div></div>
-          <button onClick={() => setOpen(false)} style={{ background: "none", border: "none", color: "#A9B7CE", cursor: "pointer" }}><X size={18} /></button>
+          <button data-icon-btn onClick={() => setOpen(false)} style={{ background: "none", border: "none", color: "#A9B7CE", cursor: "pointer" }}><X size={18} /></button>
         </div>
         <div ref={scroller} style={{ flex: 1, overflowY: "auto", padding: 14, display: "flex", flexDirection: "column", gap: 12 }}>
           {msgs.map((m, i) => <Bubble key={i} m={m} onChip={send} onSpeak={speak} />)}
         </div>
         <div style={{ borderTop: `1px solid ${C.line}`, background: "#fff", padding: 10, display: "flex", alignItems: "center", gap: 8 }}>
-          <button onClick={listen} title="Speak" style={{ width: 40, height: 40, borderRadius: 10, border: `1px solid ${listening ? C.gold : C.line}`, background: listening ? C.goldTint : "#fff", cursor: "pointer", display: "grid", placeItems: "center", color: listening ? C.goldDeep : C.inkSoft, flexShrink: 0 }}><Mic size={18} /></button>
+          <button data-icon-btn onClick={listen} title="Speak" style={{ width: 40, height: 40, borderRadius: 10, border: `1px solid ${listening ? C.gold : C.line}`, background: listening ? C.goldTint : "#fff", cursor: "pointer", display: "grid", placeItems: "center", color: listening ? C.goldDeep : C.inkSoft, flexShrink: 0 }}><Mic size={18} /></button>
           <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === "Enter" && send()} placeholder={listening ? "Listening…" : "Type or tap the mic"} style={{ flex: 1, minWidth: 0, border: `1px solid ${C.line}`, borderRadius: 10, padding: "10px 12px", font: `13px ${sans}`, outline: "none", color: C.ink }} />
-          <button onClick={() => send()} style={{ width: 40, height: 40, borderRadius: 10, border: "none", background: C.ink, color: "#fff", cursor: "pointer", display: "grid", placeItems: "center", flexShrink: 0 }}><Send size={17} /></button>
+          <button data-icon-btn onClick={() => send()} style={{ width: 40, height: 40, borderRadius: 10, border: "none", background: C.ink, color: "#fff", cursor: "pointer", display: "grid", placeItems: "center", flexShrink: 0 }}><Send size={17} /></button>
         </div>
       </div>
     )}
@@ -6717,7 +6747,7 @@ function RaisePR({ prefill, onClose, userKey = "store" }) {
       <div style={{ padding: mob ? 20 : 26 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
           <ClipboardList size={18} color={C.gold} /><Eyebrow>Store → Purchase</Eyebrow>
-          <button onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
+          <button data-icon-btn onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
         </div>
         <h2 style={{ font: `400 22px ${serif}`, margin: "4px 0 4px" }}>Raise a purchase request</h2>
         <div style={{ font: `12px ${sans}`, color: C.stone, marginBottom: 14 }}>Tell purchase what to buy — list everything, they source it and raise the POs.</div>
@@ -6742,7 +6772,7 @@ function RaisePR({ prefill, onClose, userKey = "store" }) {
             <div key={i} style={{ background: "#fff", border: `1px solid ${C.line}`, borderRadius: 12, padding: mob ? 12 : 14 }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
                 <span style={{ font: `600 11px ${sans}`, color: C.goldDeep }}>Item {i + 1}</span>
-                {items.length > 1 && <button onClick={() => del(i)} style={{ background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={15} /></button>}
+                {items.length > 1 && <button data-icon-btn onClick={() => del(i)} style={{ background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={15} /></button>}
               </div>
               <label style={{ ...lbl, fontSize: 9 }}>What do you want?</label>
               <input value={x.particular} onChange={e => upd(i, { particular: e.target.value })} placeholder="e.g. Waterproofing membrane" style={{ ...cell, margin: "5px 0 10px" }} />
@@ -6932,7 +6962,7 @@ function ReceiveShipment({ onClose }) {
       <div style={{ padding: mob ? 18 : 24 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
           <Package size={18} color={C.gold} /><Eyebrow>Receive shipment</Eyebrow>
-          <button onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
+          <button data-icon-btn onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
         </div>
         <h2 style={{ font: `400 21px ${serif}`, margin: "4px 0 4px" }}>What has arrived?</h2>
         <div style={{ font: `12px ${sans}`, color: C.stone, marginBottom: 14 }}>Scan the gate pass, or type anything you can see — PO number, invoice number, vendor name, even the material. We'll find it in the records.</div>
@@ -7023,7 +7053,7 @@ function OverrideGate({ cap, asking, onClose, onPass }) {
       <div style={{ padding: mob ? 18 : 24 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
           <Lock size={17} color={C.red} /><Eyebrow color={C.red}>Site limit reached</Eyebrow>
-          <button onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
+          <button data-icon-btn onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
         </div>
         <h2 style={{ font: `400 20px ${serif}`, margin: "4px 0 8px" }}>Only the Chairman can allow this.</h2>
         <div style={{ background: C.redSoft, border: `1px solid ${C.red}`, borderRadius: 11, padding: 12, marginBottom: 14, font: `12px ${sans}`, color: C.inkSoft, lineHeight: 1.6 }}>
@@ -7131,7 +7161,7 @@ function AddItem({ userKey = "store", onClose, onAdd }) {
       <div style={{ padding: mob ? 18 : 24 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
           <Boxes size={17} color={C.gold} /><Eyebrow>New item</Eyebrow>
-          <button onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
+          <button data-icon-btn onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
         </div>
         <h2 style={{ font: `400 20px ${serif}`, margin: "4px 0 4px" }}>Put something new on the shelf.</h2>
         <div style={{ font: `12px ${sans}`, color: C.stone, marginBottom: 14 }}>Once it is here, anyone can ask for it, the gate can receive it, and it counts towards what the store holds.</div>
@@ -7298,7 +7328,7 @@ function VoiceRecorder({ onClip }) {
   );
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 10, border: `1px solid ${C.line}`, background: "#fff", borderRadius: 12, padding: "10px 14px" }}>
-      <button onClick={play} style={{ cursor: "pointer", border: "none", background: C.ink, color: "#fff", width: 34, height: 34, borderRadius: "50%", display: "grid", placeItems: "center" }}><Play size={15} /></button>
+      <button data-icon-btn onClick={play} style={{ cursor: "pointer", border: "none", background: C.ink, color: "#fff", width: 34, height: 34, borderRadius: "50%", display: "grid", placeItems: "center" }}><Play size={15} /></button>
       <span style={{ font: `600 13px ${sans}` }}>Voice note · {clip.dur}</span>
       <button onClick={reset} style={{ marginLeft: "auto", cursor: "pointer", border: "none", background: "none", color: C.stone, font: `600 12px ${sans}` }}>Re-record</button>
     </div>
@@ -7338,7 +7368,7 @@ function ReportModal({ by, onClose }) {
       <div style={{ padding: mob ? 20 : 26 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
           <Flag size={18} color={C.gold} /><Eyebrow>Report something</Eyebrow>
-          <button onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
+          <button data-icon-btn onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
         </div>
         <h2 style={{ font: `400 22px ${serif}`, margin: "4px 0 4px" }}>Something's off? Tell us.</h2>
         <div style={{ font: `12px ${sans}`, color: C.stone, marginBottom: 16 }}>Goes straight to management, not the whole team.</div>
@@ -7357,7 +7387,7 @@ function ReportModal({ by, onClose }) {
         </button>
         {media && <div style={{ marginBottom: 12, position: "relative" }}>
           {media.type === "image" ? <img src={media.url} alt="" style={{ width: "100%", maxHeight: 200, objectFit: "cover", borderRadius: 12, display: "block" }} /> : <video src={media.url} controls style={{ width: "100%", maxHeight: 220, borderRadius: 12, display: "block" }} />}
-          <button onClick={() => setMedia(null)} style={{ position: "absolute", top: 8, right: 8, background: "rgba(0,0,0,.55)", border: "none", color: "#fff", borderRadius: 8, cursor: "pointer", padding: 5, display: "grid", placeItems: "center" }}><X size={14} /></button>
+          <button data-icon-btn onClick={() => setMedia(null)} style={{ position: "absolute", top: 8, right: 8, background: "rgba(0,0,0,.55)", border: "none", color: "#fff", borderRadius: 8, cursor: "pointer", padding: 5, display: "grid", placeItems: "center" }}><X size={14} /></button>
         </div>}
         <VoiceRecorder onClip={setClip} />
         <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
@@ -7383,7 +7413,7 @@ function Annotator({ media, onClose }) {
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
           <Pencil size={17} color={C.gold} /><Eyebrow>Mark up</Eyebrow>
           <span style={{ font: `12px ${sans}`, color: C.stone }}>Draw on the photo to point things out</span>
-          <button onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
+          <button data-icon-btn onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
         </div>
         <div style={{ position: "relative", borderRadius: 12, overflow: "hidden", lineHeight: 0 }}>
           <img src={media.url} alt="" onLoad={fit} draggable={false} style={{ width: "100%", display: "block", userSelect: "none" }} />
@@ -7524,7 +7554,7 @@ function TaskModal({ title, icon: Icon = Sparkles, onClose, children }) {
       <div style={{ padding: mob ? 18 : 24 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
           <Icon size={18} color={C.gold} /><Eyebrow>{title}</Eyebrow>
-          <button onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
+          <button data-icon-btn onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
         </div>
         {children}
       </div>
@@ -7704,7 +7734,7 @@ function CardPrintDoc({ p, onClose }) {
       <div style={{ padding: mob ? 18 : 24 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
           <Printer size={18} color={C.gold} /><Eyebrow>Print-ready card · Zebra / PVC</Eyebrow>
-          <button onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
+          <button data-icon-btn onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
         </div>
         <p style={{ font: `12px ${sans}`, color: C.stone, marginBottom: 16, lineHeight: 1.5 }}>Standard CR80 card — front &amp; back. Send the artwork straight to your Zebra printer. A press-ready file (300&nbsp;DPI, correct card size, with a real scannable QR) is provided alongside this app as a separate download.</p>
         <div style={{ display: "flex", gap: 18, flexWrap: "wrap", justifyContent: "center" }}>
@@ -7731,7 +7761,7 @@ function ShareCard({ p, onClose }) {
       <div style={{ padding: mob ? 18 : 24 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
           <Share2 size={18} color={C.gold} /><Eyebrow>Share your card</Eyebrow>
-          <button onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
+          <button data-icon-btn onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
         </div>
         <div style={{ background: "#fff", border: `1px solid ${C.line}`, borderRadius: 16, padding: 20, boxShadow: "0 8px 24px rgba(22,52,95,.1)" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -7953,7 +7983,7 @@ function EnrollPerson({ onClose }) {
       <div style={{ padding: mob ? 18 : 24 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
           <UserPlus size={18} color={C.gold} /><Eyebrow>Enrol a person</Eyebrow>
-          <button onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
+          <button data-icon-btn onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
         </div>
         {/* stepper */}
         <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 14 }}>
@@ -8443,7 +8473,7 @@ function ReviseSalary({ p, sal, onClose }) {
       <div style={{ padding: mob ? 18 : 24 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
           <TrendingUp size={17} color={C.goldDeep} /><Eyebrow>Salary revision</Eyebrow>
-          <button onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
+          <button data-icon-btn onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
         </div>
         <h2 style={{ font: `400 20px ${serif}`, margin: "4px 0 4px" }}>What is {p.name} on now?</h2>
         <div style={{ font: `12px ${sans}`, color: C.stone, marginBottom: 16 }}>
@@ -8603,7 +8633,7 @@ function FullProfile({ p, onClose }) {
       <div style={{ padding: mob ? 18 : 24 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
           <UserPlus size={17} color={C.gold} /><Eyebrow>Full profile</Eyebrow>
-          <button onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
+          <button data-icon-btn onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
         </div>
         <DocHead firm={activeFirm} title={`${p.name} — ${p.designation}`} docId={p.id} compact />
 
@@ -8888,7 +8918,7 @@ function ConfirmStaff({ p, onClose }) {
       <div style={{ padding: mob ? 16 : 22 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
           <ShieldCheck size={18} color={C.gold} /><Eyebrow>Confirm as staff</Eyebrow>
-          <button onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
+          <button data-icon-btn onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
         </div>
         <h2 style={{ font: `400 21px ${serif}`, margin: "4px 0 6px" }}>{p.name}</h2>
         <div style={{ font: `12px ${mono}`, color: C.stone, marginBottom: 14 }}>{p.id} · {p.dept}</div>
@@ -8951,7 +8981,7 @@ function PersonProfile({ p, onClose }) {
           {p.status === "pending"
             ? <Pill tone="amber">Pending — not yet staff</Pill>
             : <Pill tone={active ? "green" : "red"}>{active ? "Active" : `Exited ${p.exitedOn || ""}`}</Pill>}
-          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
+          <button data-icon-btn onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
         </div>
 
         {p.status === "pending" && (
@@ -9494,7 +9524,7 @@ function AttendanceImport({ onClose }) {
       <div style={{ padding: mob ? 16 : 22 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
           <Upload size={18} color={C.gold} /><Eyebrow>Import attendance</Eyebrow>
-          <button onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
+          <button data-icon-btn onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
         </div>
         <p style={{ font: `12px ${sans}`, color: C.stone, marginBottom: 14, lineHeight: 1.5 }}>Pick your machine, drop its export (CSV/Excel — any of them can produce it). The app auto-detects the columns, even in another language. Confirm once and it's remembered for that source.</p>
         <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr" : "1fr 1fr", gap: 12, marginBottom: 12 }}>
@@ -9596,7 +9626,7 @@ function PackageCreate({ onClose }) {
       <div style={{ padding: mob ? 16 : 22 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
           <Award size={18} color={C.gold} /><Eyebrow>Open an incentive package</Eyebrow>
-          <button onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
+          <button data-icon-btn onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
         </div>
         <p style={{ font: `12px ${sans}`, color: C.stone, marginBottom: 14 }}>You propose it → the Chairman approves → it goes live on the chosen department's dashboards. The most deserving person surfaces automatically.</p>
         <Field label="Package name" hint="What people will see." value={f.name} onChange={v => set("name", v)} placeholder="e.g. Quarter Star — Purchase" />
@@ -9824,7 +9854,7 @@ function getJourney(id, userKey) {
 function CoachBeacon({ on, onOpen }) {
   const mob = useIsMobile();
   if (!on) return (
-    <button onClick={onOpen} aria-label="Turn guidance on" style={{ position: "fixed", left: mob ? 14 : 22, bottom: mob ? 14 : 22, zIndex: 68, width: 34, height: 34, borderRadius: "50%", border: `1px solid ${C.line}`, background: "#fff", color: C.stone, cursor: "pointer", display: "grid", placeItems: "center", boxShadow: "0 6px 16px rgba(22,52,95,.18)" }}><HelpCircle size={17} /></button>
+    <button data-icon-btn onClick={onOpen} aria-label="Turn guidance on" style={{ position: "fixed", left: mob ? 14 : 22, bottom: mob ? 14 : 22, zIndex: 68, width: 34, height: 34, borderRadius: "50%", border: `1px solid ${C.line}`, background: "#fff", color: C.stone, cursor: "pointer", display: "grid", placeItems: "center", boxShadow: "0 6px 16px rgba(22,52,95,.18)" }}><HelpCircle size={17} /></button>
   );
   return (
     <button onClick={onOpen} aria-label="Show me how" style={{ position: "fixed", left: mob ? 14 : 22, bottom: mob ? 14 : 22, zIndex: 68, cursor: "pointer", border: "none", borderRadius: 26, padding: mob ? "0" : "0 16px 0 0", height: mob ? 52 : 52, width: mob ? 52 : "auto", background: `linear-gradient(135deg, ${C.gold}, ${C.goldDeep})`, color: "#fff", display: "inline-flex", alignItems: "center", gap: 10, boxShadow: "0 10px 26px rgba(199,161,98,.5)", animation: "mbglow 2.8s ease-in-out infinite" }}>
@@ -9845,7 +9875,7 @@ function CoachPanel({ userKey, onPick, onClose, coachOn, setCoachOn }) {
         <div style={{ background: `linear-gradient(135deg, ${C.gold}, ${C.goldDeep})`, color: "#fff", padding: "16px 18px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <GraduationCap size={22} /><div style={{ font: `700 15px ${sans}` }}>Show me how</div>
-            <button onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", color: "#fff", cursor: "pointer", opacity: .9 }}><X size={18} /></button>
+            <button data-icon-btn onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", color: "#fff", cursor: "pointer", opacity: .9 }}><X size={18} /></button>
           </div>
           <div style={{ font: `12px ${sans}`, opacity: .92, marginTop: 4 }}>Tell me what you want to do — I'll point at every button.</div>
         </div>
@@ -10028,7 +10058,7 @@ function EventRow({ e, people, onDel }) {
         </div>
         {e.note && <div style={{ font: `12px ${sans}`, color: C.inkSoft, marginTop: 3 }}>{e.note}</div>}
       </div>
-      {onDel && <button onClick={() => onDel(e.id)} style={{ background: "none", border: "none", cursor: "pointer", color: C.stone, flexShrink: 0 }}><X size={15} /></button>}
+      {onDel && <button data-icon-btn onClick={() => onDel(e.id)} style={{ background: "none", border: "none", cursor: "pointer", color: C.stone, flexShrink: 0 }}><X size={15} /></button>}
     </div>
   );
 }
@@ -10051,7 +10081,7 @@ function CreateEvent({ userKey, onClose }) {
       <div style={{ padding: mob ? 16 : 22 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
           <CalendarDays size={18} color={C.gold} /><Eyebrow>New on the calendar</Eyebrow>
-          <button onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
+          <button data-icon-btn onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
         </div>
         <Field label="What is it?" hint="Keep it short and clear." value={f.title} onChange={v => set("title", v)} placeholder="e.g. Vendor meeting — Ambuja" />
         <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr 1fr" : "1fr 1fr 1fr", gap: 12 }}>
@@ -10122,9 +10152,9 @@ function CalendarView({ userKey }) {
       <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr" : "1.15fr 1fr", gap: 16 }}>
         <Card pad={mob ? 12 : 16}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
-            <button onClick={() => setCur(c => c.m === 0 ? { y: c.y - 1, m: 11 } : { y: c.y, m: c.m - 1 })} style={{ ...softBtn, padding: "4px 9px" }}><ArrowLeft size={14} /></button>
+            <button data-icon-btn onClick={() => setCur(c => c.m === 0 ? { y: c.y - 1, m: 11 } : { y: c.y, m: c.m - 1 })} style={{ ...softBtn, padding: "4px 9px" }}><ArrowLeft size={14} /></button>
             <div style={{ font: `600 15px ${sans}`, color: C.ink, flex: 1, textAlign: "center" }}>{MONTHS[cur.m]} {cur.y}</div>
-            <button onClick={() => setCur(c => c.m === 11 ? { y: c.y + 1, m: 0 } : { y: c.y, m: c.m + 1 })} style={{ ...softBtn, padding: "4px 9px" }}><ArrowRight size={14} /></button>
+            <button data-icon-btn onClick={() => setCur(c => c.m === 11 ? { y: c.y + 1, m: 0 } : { y: c.y, m: c.m + 1 })} style={{ ...softBtn, padding: "4px 9px" }}><ArrowRight size={14} /></button>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0,1fr))", gap: 3 }}>
             {WD.map(d => <div key={d} style={{ textAlign: "center", font: `600 9px ${sans}`, color: C.stone, textTransform: "uppercase", padding: "2px 0" }}>{d[0]}</div>)}
@@ -10188,7 +10218,7 @@ function ConnectModal({ c, onClose }) {
         <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 10 }}>
           <div style={{ width: 44, height: 44, borderRadius: 12, background: c.tint, display: "grid", placeItems: "center", color: c.ink }}><Ic size={22} /></div>
           <div style={{ flex: 1 }}><div style={{ font: `600 15px ${sans}`, color: C.ink }}>Connect {c.name}</div><div style={{ font: `12px ${sans}`, color: C.stone }}>{c.tag}</div></div>
-          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
+          <button data-icon-btn onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
         </div>
         <div style={{ background: C.paper, borderRadius: 10, padding: "12px 14px", font: `12px ${sans}`, color: C.inkSoft, lineHeight: 1.6, marginBottom: 14 }}>
           Connecting signs in securely — {c.key === "claude" ? "with an API key" : "through the official sign-in (OAuth)"}. No password is ever stored in the app. Your developer flips this on once; after that it just works for everyone.
@@ -10447,7 +10477,7 @@ function DamagedSwap({ p, ver, onClose, onIssue }) {
       <div style={{ padding: mob ? 16 : 22 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
           <RotateCcw size={18} color={C.green} /><Eyebrow color={C.green}>Straight swap</Eyebrow>
-          <button onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
+          <button data-icon-btn onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
         </div>
         <h3 style={{ font: `400 20px ${serif}`, margin: "6px 0 4px", color: C.ink }}>{p.name} — replace a worn card</h3>
         <p style={{ font: `13px ${sans}`, color: C.inkSoft, margin: "0 0 16px", lineHeight: 1.55 }}>
@@ -10519,7 +10549,7 @@ function ReprintFlow({ p, ver, onClose, onIssue }) {
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
           <ShieldQuestion size={18} color={C.red} /><Eyebrow color={C.red}>Card unaccounted for</Eyebrow>
           <span style={{ marginLeft: "auto", font: `11px ${sans}`, color: C.stone }}>Step {step} of 3</span>
-          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
+          <button data-icon-btn onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
         </div>
         <div style={{ height: 4, background: C.lineSoft, borderRadius: 3, margin: "10px 0 16px" }}>
           <div style={{ width: `${(step / 3) * 100}%`, height: "100%", background: `linear-gradient(90deg, ${C.gold}, ${C.goldDeep})`, borderRadius: 3, transition: "width .25s" }} />
@@ -10763,7 +10793,7 @@ function CardBureauView() {
             onKeyDown={e => { if (e.key === "Enter" && (exact || hit[0])) setOpen((exact || hit[0]).id); }}
             placeholder="Scan the QR, or type an ID or a name — e.g. MB-SEC-0001"
             style={{ border: "none", outline: "none", background: "transparent", flex: 1, font: `14px ${sans}`, color: C.ink }} />
-          {q && <button onClick={() => setQ("")} style={{ background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={16} /></button>}
+          {q && <button data-icon-btn onClick={() => setQ("")} style={{ background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={16} /></button>}
         </div>
         {hit.length > 0 && (
           <div style={{ marginTop: 10 }}>
@@ -10792,7 +10822,7 @@ function CardBureauView() {
               <b>{open}</b> has a card on record but is no longer on the roster \u2014 they have left, or the ID was changed.
               Their card should be cancelled if it was never handed back.
             </div>
-            <button onClick={() => setOpen(null)} style={{ background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={15} /></button>
+            <button data-icon-btn onClick={() => setOpen(null)} style={{ background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={15} /></button>
           </div>
         )}
       </Card>
@@ -10864,7 +10894,7 @@ function OrgNode({ p, all, depth, expanded, toggle }) {
         </span>
         {count > 0 && <Pill tone="gold">{count} under</Pill>}
         {kids.length > 0 && (
-          <button onClick={() => toggle(p.id)} style={{ background: "none", border: "none", cursor: "pointer", color: C.stone, display: "grid", placeItems: "center" }}>
+          <button data-icon-btn onClick={() => toggle(p.id)} style={{ background: "none", border: "none", cursor: "pointer", color: C.stone, display: "grid", placeItems: "center" }}>
             <ChevronRight size={17} style={{ transform: open ? "rotate(90deg)" : "none", transition: "transform .18s" }} />
           </button>
         )}
@@ -11317,7 +11347,7 @@ function DeptRulesView() {
           <div style={{ padding: mob ? 16 : 22 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
               <CalendarClock size={18} color={C.gold} /><Eyebrow>{edit} — working hours</Eyebrow>
-              <button onClick={() => setEdit(null)} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
+              <button data-icon-btn onClick={() => setEdit(null)} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
               <div><label style={lbl}>In</label><input type="time" value={f.in} onChange={e => setF(s => ({ ...s, in: e.target.value }))} style={{ ...inp, margin: "6px 0 14px" }} /></div>
@@ -11956,7 +11986,7 @@ function ExitRunner({ ex, p, onClose }) {
       <div style={{ padding: mob ? 16 : 24 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
           <LogOut size={18} color={C.red} /><Eyebrow color={C.red}>Deboarding</Eyebrow>
-          <button onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
+          <button data-icon-btn onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
         </div>
         <h3 style={{ font: `400 21px ${serif}`, margin: "6px 0 3px", color: C.ink }}>{p.name}</h3>
         <div style={{ font: `12px ${sans}`, color: C.inkSoft, marginBottom: 16 }}>{p.designation} · {p.dept} · <span style={{ font: `600 12px ${mono}`, color: C.goldDeep }}>{p.id}</span></div>
@@ -12255,7 +12285,7 @@ function ExitsView() {
           <div style={{ padding: mob ? 16 : 22 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
               <LogOut size={18} color={C.red} /><Eyebrow color={C.red}>Who is leaving</Eyebrow>
-              <button onClick={() => setPick(false)} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
+              <button data-icon-btn onClick={() => setPick(false)} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
             </div>
             <input autoFocus value={q} onChange={e => setQ(e.target.value)} placeholder="Name or Employee ID" style={{ ...inp, margin: "0 0 12px" }} />
             {hits.map(p => (
@@ -12395,7 +12425,7 @@ function ProjectEditor({ existing, onClose }) {
       <div style={{ padding: mob ? 16 : 22 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
           <HardHat size={18} color={C.gold} /><Eyebrow>{existing ? "Edit project" : "New project"}</Eyebrow>
-          <button onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
+          <button data-icon-btn onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr" : "2fr 1fr", gap: 12 }}>
@@ -12467,7 +12497,7 @@ function CompanyEditor({ existing, onClose }) {
       <div style={{ padding: mob ? 16 : 22 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
           <Building2 size={18} color={C.gold} /><Eyebrow>{existing ? "Edit company" : "New company"}</Eyebrow>
-          <button onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
+          <button data-icon-btn onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
         </div>
         <Field label="Legal name" hint="Exactly as on the GST certificate — this is what prints on the offer and relieving letters."
           value={f.name} onChange={v => set("name", v)} placeholder="e.g. SRG Developers and Promoters" />
@@ -14147,7 +14177,7 @@ function PayLineEditor({ line, run, onClose, onSave }) {
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
           <Wallet size={18} color={C.gold} />
           <Eyebrow>{run.month}</Eyebrow>
-          <button onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
+          <button data-icon-btn onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
         </div>
         <h2 style={{ font: `400 22px ${serif}`, margin: "4px 0 2px", color: C.ink }}>{line.name}</h2>
         <div style={{ font: `12px ${sans}`, color: C.stone, marginBottom: 16 }}>
@@ -14203,7 +14233,7 @@ function PayLineEditor({ line, run, onClose, onSave }) {
               <input value={o.amount}
                 onChange={e => setOthers(xs => xs.map((x, k) => k === i ? { ...x, amount: e.target.value } : x))}
                 style={{ ...inp, margin: 0, fontFamily: mono, textAlign: "right" }} />
-              <button onClick={() => setOthers(xs => xs.filter((x, k) => k !== i))}
+              <button data-icon-btn onClick={() => setOthers(xs => xs.filter((x, k) => k !== i))}
                 title="Remove" style={{ background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={15} /></button>
             </div>
           ))}
@@ -14325,7 +14355,7 @@ function JDView() {
                     <span style={{ width: 6, height: 6, borderRadius: "50%", background: C.gold, marginTop: 13, flexShrink: 0 }} />
                     <textarea rows={1} value={d} onChange={e => setDraft(x => { const a = [...x.duties]; a[i] = e.target.value; return { ...x, duties: a }; })}
                       style={{ ...inp, margin: 0, fontSize: 13, resize: "vertical" }} />
-                    <button onClick={() => setDraft(x => ({ ...x, duties: x.duties.filter((_, j) => j !== i) }))}
+                    <button data-icon-btn onClick={() => setDraft(x => ({ ...x, duties: x.duties.filter((_, j) => j !== i) }))}
                       style={{ background: "none", border: "none", cursor: "pointer", color: C.stone, marginTop: 10 }}><X size={14} /></button>
                   </div>
                 ))}
@@ -14339,7 +14369,7 @@ function JDView() {
                     <span style={{ width: 6, height: 6, borderRadius: "50%", background: C.ink, marginTop: 13, flexShrink: 0 }} />
                     <textarea rows={1} value={d} onChange={e => setDraft(x => { const a = [...x.needs]; a[i] = e.target.value; return { ...x, needs: a }; })}
                       style={{ ...inp, margin: 0, fontSize: 13, resize: "vertical" }} />
-                    <button onClick={() => setDraft(x => ({ ...x, needs: x.needs.filter((_, j) => j !== i) }))}
+                    <button data-icon-btn onClick={() => setDraft(x => ({ ...x, needs: x.needs.filter((_, j) => j !== i) }))}
                       style={{ background: "none", border: "none", cursor: "pointer", color: C.stone, marginTop: 10 }}><X size={14} /></button>
                   </div>
                 ))}
@@ -14479,7 +14509,7 @@ function OrgCard({ p, all, depth, tilt, onOpen, selected, expanded, toggle, reve
               borderRadius: 20, padding: "4px 8px", flexShrink: 0 }}>{team}</span>
           )}
           {kids.length > 0 && (
-            <button onClick={(e) => { e.stopPropagation(); toggle(p.id); }}
+            <button data-icon-btn onClick={(e) => { e.stopPropagation(); toggle(p.id); }}
               style={{ background: "none", border: "none", cursor: "pointer", color: on ? "#fff" : C.stone, display: "grid", placeItems: "center", flexShrink: 0, transform: "translateZ(18px)" }}>
               <ChevronRight size={16} style={{ transform: open ? "rotate(90deg)" : "none", transition: "transform .2s" }} />
             </button>
@@ -14634,7 +14664,7 @@ function OrgView({ userKey = "hr" }) {
                   <div style={{ font: `12px ${sans}`, color: C.inkSoft, marginTop: 2 }}>{p.designation}</div>
                   <div style={{ font: `11px ${mono}`, color: C.goldDeep, marginTop: 3 }}>{p.id}</div>
                 </div>
-                <button onClick={() => setSel(null)} style={{ background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={17} /></button>
+                <button data-icon-btn onClick={() => setSel(null)} style={{ background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={17} /></button>
               </div>
 
               <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 14 }}>

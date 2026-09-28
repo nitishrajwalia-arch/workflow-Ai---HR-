@@ -2,9 +2,24 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#224A85" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+
+    <!-- Installable on a phone or a tablet: Android and Chrome read the
+         manifest, iOS reads the three apple- tags below and nothing else.
+         Both are needed, and neither is a substitute for the other. -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Marbella" />
+
+    <!-- viewport-fit=cover lets the page reach under the notch and the home
+         indicator; the safe-area insets in styles.css keep content clear of
+         both. Without it an iPhone letterboxes the app in black. -->
+    <meta name="format-detection" content="telephone=no" />
     <meta name="description" content="Marbella Group — people system." />
     <!-- This is an internal tool holding staff records. It must never be indexed. -->
     <meta name="robots" content="noindex, nofollow" />

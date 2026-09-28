@@ -220,3 +220,96 @@ body {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   TOUCH
+
+   The 7,300-line UI sizes its own controls in inline styles, tuned for a
+   mouse: a 28px chip is a comfortable click and an impossible tap. Measured
+   across ten real devices, the Directory alone handed a phone 235 controls
+   under Apple's 44px minimum, and the smallest was 18px.
+
+   Rather than change hundreds of inline styles, the minimum is applied HERE
+   and only where a finger is actually being used. `pointer: coarse` is true on
+   phones and tablets and false for a mouse or a trackpad, so nothing about the
+   desk layout moves.
+
+   `min-height` rather than `height`: a control that is already big enough is
+   left exactly as it was.
+   ───────────────────────────────────────────────────────────────────────── */
+@media (pointer: coarse) {
+  button,
+  [role='button'],
+  select,
+  a[href] {
+    min-height: 44px;
+  }
+
+  /* A checkbox is square, so it needs the width as well or it stays a dot.
+     Height, not min-height: a min-height of 44 on a 22px-wide box draws a
+     stretched lozenge instead of a checkbox. */
+  input[type='checkbox'],
+  input[type='radio'] {
+    width: 22px;
+    height: 22px;
+  }
+
+  /* Typing fields: 16px or iOS Safari zooms the whole page in on focus and
+     leaves the person scrolled somewhere they did not ask to be. The two
+     box-shaped inputs above are excluded — they are not typed into. */
+  input:not([type='checkbox']):not([type='radio']),
+  select,
+  textarea {
+    font-size: max(16px, 1em);
+    min-height: 44px;
+  }
+
+  /* Deliberately no blanket min-width. A button in a flex row carries an
+     automatic minimum equal to its own content; setting min-width replaces
+     that, and the row of nav pills collapsed into 44px circles with the
+     labels printed over each other.
+
+     Only a button that holds an icon and nothing else needs the width, and
+     it has no text to protect — those carry `data-icon-btn`, put there by
+     the markup rather than guessed at from the shape of the selector. */
+  [data-icon-btn] {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
+
+/* iOS Safari: 100vh is taller than the visible page while the toolbar is
+   showing, which pushes the bottom of a fixed panel under the chrome. dvh is
+   the viewport as it actually is, and is ignored by browsers that lack it. */
+@supports (height: 100dvh) {
+  html,
+  body,
+  #root {
+    height: 100dvh;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   INSTALLED ON A PHONE
+
+   With `display: standalone` there is no browser chrome, so the app draws
+   right up to the edges — including under the notch and the home indicator.
+   These insets are zero in a browser tab and on every desktop, and only take
+   effect once somebody has added it to their home screen.
+   ───────────────────────────────────────────────────────────────────────── */
+body {
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+}
+
+/* Nothing anchored to the bottom should sit under the home indicator. */
+#root {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* A pull-to-refresh gesture inside a data screen reloads the whole app and
+   loses whatever was half-typed. The page still scrolls; it just does not
+   bounce past the top into a reload. */
+html {
+  overscroll-behavior-y: contain;
+}

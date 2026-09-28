@@ -63,8 +63,13 @@ if (!scripts.length) {
   process.exit(1);
 }
 
+// The shell's own <meta> tags, not a copy of them written out here: the two
+// drifted, and the preview shipped for months without the viewport-fit and
+// theme-color the shell had been given.
+const metas = [...shell.matchAll(/<meta[^>]*>/gi)].map((m) => m[0]);
+
 const head =
-  `<title>${title}</title>\n` +
+  `${metas.join('\n')}\n<title>${title}</title>\n` +
   styles.map((css) => `<style>\n${css}\n</style>`).join('\n') +
   (styles.length ? '\n' : '');
 
@@ -75,9 +80,6 @@ const mb = (s) => `${(Buffer.byteLength(s) / 1048576).toFixed(2)} MB`;
 const full = `<!doctype html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="robots" content="noindex, nofollow">
 ${head}</head>
 <body>
 ${bodyMarkup}
