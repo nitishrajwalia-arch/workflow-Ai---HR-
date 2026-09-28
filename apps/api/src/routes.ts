@@ -18,6 +18,7 @@ import { ledgerRoutes } from './modules/ledger.routes.js';
 import { moneyRoutes } from './modules/money.routes.js';
 import { orgRoutes } from './modules/org.routes.js';
 import { payrollRoutes } from './modules/payroll.routes.js';
+import { assistantRoutes } from './assistant/mcp.routes.js';
 import { peopleRoutes } from './modules/people.routes.js';
 import { platformRoutes } from './modules/platform.routes.js';
 import { procurementRoutes } from './modules/procurement.routes.js';
@@ -45,4 +46,8 @@ export async function registerRoutes(app: FastifyInstance) {
   await app.register(gateRoutes);
   await app.register(moneyRoutes);
   await app.register(platformRoutes);
+
+  // The one connector ChatGPT and Claude both speak. Read-only, acting as the
+  // person who connected it; what it may touch is listed in assistant/permissions.ts.
+  await app.register(assistantRoutes);
 }
