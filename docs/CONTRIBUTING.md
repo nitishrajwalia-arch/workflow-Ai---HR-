@@ -134,6 +134,12 @@ npm run lint          # must be 0 errors; warnings are allowed
 npm test              # must be all green
 ```
 
+`npm test` wants a `TEST_DATABASE_URL` with the word *test* in it — the suite
+refuses to run against anything else, because it empties every table before it
+starts. It sets its own administrator password before seeding; if you have
+`BOOTSTRAP_ADMIN_PASSWORD` set to something else in your environment, unset it,
+drop the test database and run again.
+
 And if you touched anything the shareable preview carries:
 
 ```bash

@@ -40,6 +40,18 @@ export default async function setup() {
   }
 
   process.env.DATABASE_URL = url;
+
+  /* THE PASSWORD THE SUITE SIGNS IN WITH.
+     The seed makes a random one when BOOTSTRAP_ADMIN_PASSWORD is unset, which
+     is right for a real deployment and wrong here: the helper would then guess,
+     guess wrong eight times, and the account would lock. The failure that
+     reached the screen was "Too many wrong passwords", which points at the
+     password rather than at the missing variable, and costs somebody an hour.
+
+     So the suite sets its own, rather than depending on whatever is in the
+     developer's .env. `helpers.ts` reads the same variable. */
+  process.env.BOOTSTRAP_ADMIN_PASSWORD ??= 'DevPassword123!';
+
   const env = { ...process.env, DATABASE_URL: url };
 
   // Non-destructive: applies any migration the test database is missing.

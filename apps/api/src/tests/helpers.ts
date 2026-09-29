@@ -71,7 +71,18 @@ export async function signIn(
     payload: { identifier, password },
   });
   if (res.statusCode !== 200) {
-    throw new Error(`Sign-in failed (${res.statusCode}): ${res.body}`);
+    /* The unhelpful shape of this failure is worth heading off. Once eight
+       attempts have been refused the account locks, and every test after it
+       reports "Too many wrong passwords" — which describes the symptom and
+       points away from the cause. */
+    const hint =
+      res.statusCode === 429 || res.statusCode === 401
+        ? '\n\nThe seeded administrator password is not the one this suite signs in with. ' +
+          'The suite sets BOOTSTRAP_ADMIN_PASSWORD itself before seeding; if it is set to ' +
+          'something else in your environment, the seed used that and the account is now ' +
+          'locked. Unset it, drop the test database and run again.'
+        : '';
+    throw new Error(`Sign-in failed (${res.statusCode}): ${res.body}${hint}`);
   }
   const body = res.json<{ accessToken: string }>();
   const setCookie = res.headers['set-cookie'];
