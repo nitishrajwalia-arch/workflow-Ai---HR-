@@ -1369,7 +1369,13 @@ model HrTask {
 
 model Announcement {
   id        String   @id @default(cuid())
+  /// The heading HR types. The screen asked for one, refused to post without
+  /// one, and then threw it away: only `text` was ever sent.
+  title     String   @default("")
   text      String
+  /// Who it is for — Everyone, Staff, Site & Labour, Security. Also collected
+  /// on screen and also discarded until now.
+  audience  String   @default("Everyone")
   by        String   @default("")
   createdAt DateTime @default(now())
 

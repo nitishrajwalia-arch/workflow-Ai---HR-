@@ -374,15 +374,26 @@ export const platformRoutes: FastifyPluginAsyncZod = async (app) => {
       schema: {
         tags: ['platform'],
         summary: 'Put out a notice',
-        body: z.object({ text: z.string().trim().min(2).max(2000) }),
+        body: z.object({
+          title: z.string().trim().min(2).max(120),
+          text: z.string().trim().min(2).max(2000),
+          audience: z.string().trim().max(40).default('Everyone'),
+        }),
         response: { 201: z.any() },
       },
     },
     async (req, reply) => {
       const me = requireUser(req);
-      return reply
-        .status(201)
-        .send(await db.announcement.create({ data: { text: req.body.text, by: me.name } }));
+      return reply.status(201).send(
+        await db.announcement.create({
+          data: {
+            title: req.body.title,
+            text: req.body.text,
+            audience: req.body.audience,
+            by: me.name,
+          },
+        }),
+      );
     },
   );
 

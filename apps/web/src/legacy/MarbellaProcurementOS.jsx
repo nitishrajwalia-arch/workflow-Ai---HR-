@@ -863,7 +863,7 @@ function Views({ tab, userKey, onActAs, go = () => {} }) {
     {tab === "deptrules" && <DeptRulesView />}
     {tab === "letters" && <LettersView />}
     {tab === "attend" && <AttendanceView />}
-    {tab === "payroll" && <PayrollView />}
+    {tab === "payroll" && <PayrollView go={go} />}
     {tab === "incentives" && <IncentivesView userKey={userKey} />}
     {tab === "calendar" && <CalendarView userKey={userKey} />}
     {tab === "connect" && <ConnectionsView />}
@@ -5217,8 +5217,16 @@ function VendorsView() {
 /* ============================== SHARED: CREATE PO ============================== */
 function Overlay({ children, onClose, width = 560 }) {
   const mob = useIsMobile();
+  /* Escape closes it. Every panel in this file is this component, so one
+     listener here is the whole app — and a panel you can only get out of by
+     finding the small × is a panel people get stuck in. */
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === "Escape") { e.stopPropagation(); onClose && onClose(); } };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
   return (
-    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(23,41,74,.5)", zIndex: 80, display: "flex", justifyContent: mob ? "stretch" : "center", alignItems: mob ? "flex-end" : "center", padding: mob ? 0 : 20 }}>
+    <div onClick={onClose} role="dialog" aria-modal="true" style={{ position: "fixed", inset: 0, background: "rgba(23,41,74,.5)", zIndex: 80, display: "flex", justifyContent: mob ? "stretch" : "center", alignItems: mob ? "flex-end" : "center", padding: mob ? 0 : 20 }}>
       <div onClick={e => e.stopPropagation()} style={{ background: C.paper, width: mob ? "100%" : width, maxWidth: "100%", boxSizing: "border-box", maxHeight: mob ? "92vh" : "88vh", overflowY: "auto", overflowX: "hidden", borderRadius: mob ? "18px 18px 0 0" : 16, borderTop: `3px solid ${C.gold}`, boxShadow: "0 20px 60px rgba(0,0,0,.3)" }}>{children}</div>
     </div>
   );
@@ -8461,6 +8469,85 @@ function parseJoin(j) {
  * The split is proposed by the employer's own policy, exactly as at enrolment,
  * so a raise lands in the same shape as everything already on the books.
  */
+/**
+ * PUTTING A GOVERNMENT NUMBER RIGHT.
+ *
+ * Ten Aadhaar numbers on the roll are one digit out — they fail their own check
+ * digit, which means they belong to somebody else or to nobody. They have to be
+ * read off the physical card and typed again, and until now there was nowhere in
+ * the app to do it: the screen showed the wrong number and offered no way to
+ * change it. The route to save one had been there since the import with nothing
+ * calling it.
+ *
+ * The check runs as you type, so a number that would fail a P.F. filing is
+ * caught at the desk rather than by the filing.
+ */
+function CorrectPapers({ p, papers, onClose, onSaved, save }) {
+  const mob = useIsMobile();
+  const [aadhaar, setAadhaar] = useState(papers.aadhaar || "");
+  const [pan, setPan] = useState(papers.pan || "");
+  const [address, setAddress] = useState(papers.address || "");
+  const [busy, setBusy] = useState(false);
+  const aCheck = aadhaarCheck(aadhaar);
+  const pCheck = panCheck(pan);
+  const blocked = aCheck.level === "error" || pCheck.level === "error";
+  const tone = (c) => (c.level === "error" ? C.red : c.level === "warn" ? C.amber : C.green);
+
+  const commit = async () => {
+    setBusy(true);
+    const r = await save(p.id, { aadhaar: aadhaar.replace(/\s/g, ""), pan: pan.toUpperCase().trim(), address: address.trim() });
+    setBusy(false);
+    if (r !== null) {
+      toast(`${p.name}'s papers corrected. Who changed them is in the ledger.`, "green");
+      onSaved();
+    }
+  };
+
+  return (
+    <Overlay onClose={onClose} width={520}>
+      <div style={{ padding: mob ? 18 : 24 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
+          <PenLine size={17} color={C.gold} /><Eyebrow>Correct the papers</Eyebrow>
+          <button data-icon-btn onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
+        </div>
+        <h2 style={{ font: `400 21px ${serif}`, margin: "0 0 6px" }}>{p.name}</h2>
+        <p style={{ font: `12.5px ${sans}`, color: C.inkSoft, lineHeight: 1.6, margin: "0 0 16px" }}>
+          Read them off the card in front of you. A number that fails its own check digit is
+          refused here rather than by the P.F. filing three weeks later.
+        </p>
+
+        <label style={lbl}>Aadhaar</label>
+        <input value={aadhaar} onChange={e => setAadhaar(e.target.value)} placeholder="0000 0000 0000" style={{ ...inp, margin: "6px 0 4px" }} />
+        {aadhaar.trim() && (
+          <div style={{ font: `11px ${sans}`, color: tone(aCheck), marginBottom: 12 }}>{aCheck.msg || "Checks out."}</div>
+        )}
+
+        <label style={lbl}>PAN</label>
+        <input value={pan} onChange={e => setPan(e.target.value.toUpperCase())} placeholder="ABCDE1234F" style={{ ...inp, margin: "6px 0 4px" }} />
+        {pan.trim() && (
+          <div style={{ font: `11px ${sans}`, color: tone(pCheck), marginBottom: 12 }}>{pCheck.msg || "Checks out."}</div>
+        )}
+
+        <label style={lbl}>Address as on the Aadhaar</label>
+        <textarea value={address} onChange={e => setAddress(e.target.value)} rows={3}
+          style={{ ...inp, margin: "6px 0 14px", resize: "vertical" }} />
+
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <GoldButton disabled={busy || blocked} onClick={commit}>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Check size={14} /> Save the correction</span>
+          </GoldButton>
+          <button onClick={onClose} style={softBtn}>Leave it</button>
+        </div>
+        {blocked && (
+          <div style={{ font: `11px ${sans}`, color: C.red, marginTop: 10 }}>
+            Fix what is flagged above first — this is the check the government does.
+          </div>
+        )}
+      </div>
+    </Overlay>
+  );
+}
+
 function ReviseSalary({ p, sal, onClose }) {
   const mob = useIsMobile();
   const { setSalary, salaryPolicies = {}, deductionHeads = {}, companies = [] } = useProc();
@@ -8645,8 +8732,9 @@ function FullProfile({ p, onClose }) {
      shareable preview is built from, and the asking is sealed in the ledger. */
   const [papers, setPapers] = useState(null);
   const [opening, setOpening] = useState(false);
+  const [fixing, setFixing] = useState(null);
   const mob = useIsMobile();
-  const { activeFirm, salaries = {}, payRuns = [], readKyc } = useProc();
+  const { activeFirm, salaries = {}, payRuns = [], readKyc, setKyc } = useProc();
   const s = buildStory(p);
   /* What they are on, and what they were actually paid. Both real: the first
      from the salary record, the second off the sheets Accounts was given. */
@@ -8715,6 +8803,17 @@ function FullProfile({ p, onClose }) {
                     {papers.panCheck?.level === "error" && <>PAN — {papers.panCheck.msg}</>}
                   </div>
                 )}
+                {/* Ten of these numbers are one digit out and have to be put
+                    right off the physical card. Until now HR could read them
+                    and had nowhere to correct them — the route to save one had
+                    existed since the import with nothing calling it. */}
+                <div style={{ marginTop: 10 }}>
+                  <GoldButton small ghost onClick={() => setFixing(papers)}>
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                      <PenLine size={13} /> Correct these
+                    </span>
+                  </GoldButton>
+                </div>
                 <div style={{ font: `10px ${sans}`, color: C.stone, marginTop: 8, lineHeight: 1.5 }}>
                   It is written in the ledger that you opened these, and when.
                 </div>
@@ -8856,6 +8955,19 @@ function FullProfile({ p, onClose }) {
       </div>
       {fileOpen && <FilePreview title={fileOpen.title} meta={fileOpen.meta} onClose={() => setFileOpen(null)} />}
       {revising && <ReviseSalary p={p} sal={sal} onClose={() => setRevising(false)} />}
+      {fixing && (
+        <CorrectPapers
+          p={p}
+          papers={fixing}
+          onClose={() => setFixing(null)}
+          onSaved={async () => {
+            setFixing(null);
+            const got = await readKyc(p.id);
+            if (got) setPapers(got);
+          }}
+          save={setKyc}
+        />
+      )}
     </Overlay>
   );
 }
@@ -9294,10 +9406,16 @@ function HRCommandView({ go = () => {} }) {
             <GoldButton small onClick={() => { if (!nt.trim()) return toast("Type what the task is first", "amber"); addHrTask({ text: nt.trim() }); setNt(""); }}>Add</GoldButton>
           </div>
           {hrTasks.map(t => (
-            <div key={t.id} onClick={() => toggleHrTask(t.id)} style={{ cursor: "pointer", display: "flex", alignItems: "center", gap: 10, padding: "9px 0", borderTop: `1px solid ${C.lineSoft}` }}>
+            /* A <div onClick> with a square drawn to look like a checkbox: it
+               worked with a mouse and with nothing else. No tab stop, no Enter
+               or Space, nothing for a screen reader to announce, and none of
+               the touch minimums — which apply to buttons, not to divs. */
+            <button key={t.id} type="button" role="checkbox" aria-checked={!!t.done}
+              onClick={() => toggleHrTask(t.id)}
+              style={{ width: "100%", textAlign: "left", background: "transparent", cursor: "pointer", display: "flex", alignItems: "center", gap: 10, padding: "9px 0", border: "none", borderTop: `1px solid ${C.lineSoft}` }}>
               <div style={{ width: 18, height: 18, borderRadius: 5, border: `1.5px solid ${t.done ? C.green : C.line}`, background: t.done ? C.green : "#fff", display: "grid", placeItems: "center", flexShrink: 0 }}>{t.done && <Check size={12} color="#fff" />}</div>
               <div style={{ font: `13px ${sans}`, color: t.done ? C.stone : C.ink, textDecoration: t.done ? "line-through" : "none", flex: 1 }}>{t.text}{t.who && <span style={{ color: C.stone }}> · {t.who}</span>}</div>
-            </div>
+            </button>
           ))}
         </Card>
 
@@ -13587,10 +13705,224 @@ const lastMonths = (n) => {
   return out;
 };
 
-function PayrollView() {
+/**
+ * ONE STEP OF THE PAYROLL RUN.
+ *
+ * Numbered, in the order the work actually happens, each with a line saying
+ * where it stands. The screen used to be three controls in a row with no order
+ * written anywhere — and the order matters: the attendance has to be loaded
+ * before the month is worked out, or everybody is quietly paid a full month.
+ */
+function StepCard({ n, title, note, done, last, children }) {
+  return (
+    <div style={{ display: "flex", gap: 14, alignItems: "stretch", marginBottom: last ? 18 : 0 }}>
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", flexShrink: 0 }}>
+        <div style={{ width: 30, height: 30, borderRadius: "50%", flexShrink: 0, display: "grid", placeItems: "center",
+          background: done ? C.green : C.gold, color: "#fff", font: `700 13px ${sans}` }}>
+          {done ? <Check size={16} /> : n}
+        </div>
+        {!last && <div style={{ flex: 1, width: 2, background: C.line, marginTop: 4 }} />}
+      </div>
+      <Card pad={16} style={{ flex: 1, marginBottom: last ? 0 : 14 }}>
+        <div style={{ font: `600 14px ${sans}`, color: C.ink }}>{title}</div>
+        {note && <div style={{ font: `12px ${sans}`, color: C.stone, margin: "4px 0 12px", lineHeight: 1.5 }}>{note}</div>}
+        {children}
+      </Card>
+    </div>
+  );
+}
+
+/**
+ * THE QUESTION BEFORE THE MONEY GOES OUT.
+ *
+ * Three people were being paid months after they had left, and nobody was
+ * asked. Now nothing is worked out until somebody has looked at the list and
+ * said so — and where a name is flagged, the deboarding starts here, in the
+ * same breath, instead of being a separate job for another day that never
+ * comes. A flagged person is still PAID: they worked part of the month. What
+ * changes is that their employment ends with this run.
+ */
+function LeaversCheck({ month, count, suspects, onEnd, onConfirm, onClose, busy }) {
+  const mob = useIsMobile();
+  const [ending, setEnding] = useState({});   // pid -> reason chosen
+  const [keep, setKeep] = useState([]);       // pids waved through
+  const left = suspects.filter(s => !ending[s.p.id] && !keep.includes(s.p.id));
+  return (
+    <Overlay onClose={onClose} width={640}>
+      <div style={{ padding: mob ? 18 : 24 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
+          <TriangleAlert size={18} color={C.amber} />
+          <Eyebrow>Before {month} goes out</Eyebrow>
+          <button data-icon-btn onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
+        </div>
+        <h2 style={{ font: `400 21px ${serif}`, margin: "0 0 6px" }}>Has anybody on this payroll left?</h2>
+        <p style={{ font: `13px ${sans}`, color: C.inkSoft, lineHeight: 1.6, margin: "0 0 16px" }}>
+          {count} {count === 1 ? "person is" : "people are"} about to be worked out for {month}.
+          {suspects.length === 0
+            ? " Nothing on the record suggests any of them has gone — no open deboarding, and everybody the machine covers has punched this month. Say so and it runs."
+            : ` ${suspects.length} of them ${suspects.length === 1 ? "is" : "are"} worth a second look:`}
+        </p>
+
+        {suspects.length > 0 && (
+          <div style={{ border: `1px solid ${C.line}`, borderRadius: 12, overflow: "hidden", marginBottom: 16 }}>
+            {suspects.map((s, i) => {
+              const done = ending[s.p.id];
+              const kept = keep.includes(s.p.id);
+              return (
+                <div key={s.p.id} style={{ padding: 13, borderTop: i ? `1px solid ${C.lineSoft}` : "none",
+                  background: done ? C.redSoft : kept ? C.greenSoft : "#fff" }}>
+                  <div style={{ font: `600 13px ${sans}`, color: C.ink }}>{s.p.name}</div>
+                  <div style={{ font: `11px ${sans}`, color: C.stone, margin: "2px 0 8px" }}>
+                    {s.p.id} · {s.p.designation} · {s.p.dept}
+                  </div>
+                  <div style={{ font: `12px ${sans}`, color: C.inkSoft, marginBottom: 10, lineHeight: 1.5 }}>{s.why}</div>
+                  {done ? (
+                    <div style={{ font: `12px ${sans}`, color: C.red }}>
+                      Deboarding opened — {done}. They stay on this run and are paid for the days they worked.
+                    </div>
+                  ) : kept ? (
+                    <div style={{ font: `12px ${sans}`, color: C.green }}>Still with us — kept on the payroll.</div>
+                  ) : (
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                      {/* Somebody whose deboarding is already running is not
+                          "still with us", and they are not somebody to deboard
+                          twice. They are somebody being paid for the days they
+                          worked while their exit is carried through. */}
+                      <button onClick={() => setKeep(k => [...k, s.p.id])} style={{ ...softBtn, borderColor: C.green, color: C.green }}>
+                        {s.open ? "Already being deboarded — pay them for this month" : "Still with us"}
+                      </button>
+                      {!s.open && <select defaultValue="" onChange={async (e) => {
+                        const reason = e.target.value;
+                        if (!reason) return;
+                        const ok = await onEnd(s.p, reason);
+                        if (ok) setEnding(m => ({ ...m, [s.p.id]: reason }));
+                        e.target.value = "";
+                      }} style={{ ...sel, margin: 0, width: 240 }}>
+                        <option value="">They have left — end their term…</option>
+                        {EXIT_REASONS.map(r => <option key={r} value={r}>{r}</option>)}
+                      </select>}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        <div style={{ display: "flex", gap: 9, flexWrap: "wrap", alignItems: "center" }}>
+          <GoldButton disabled={busy || left.length > 0} onClick={onConfirm}>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+              <Check size={14} /> {left.length > 0 ? `${left.length} still to answer` : `Nobody has left — work ${month} out`}
+            </span>
+          </GoldButton>
+          <button onClick={onClose} style={softBtn}>Go back</button>
+        </div>
+        {left.length > 0 && (
+          <div style={{ font: `11px ${sans}`, color: C.stone, marginTop: 10 }}>
+            Answer for each name above — "still with us", or the reason they left. Nothing runs until you have.
+          </div>
+        )}
+      </div>
+    </Overlay>
+  );
+}
+
+/**
+ * DEBOARDING, FROM WHEREVER YOU HAPPEN TO BE.
+ *
+ * The six-step exit lives on its own screen, and HR is usually somewhere else
+ * when they find out somebody has gone — most often on the payroll. This is the
+ * same opening step, in a box, from here.
+ */
+function DeboardPicker({ people, onClose, onOpened }) {
+  const mob = useIsMobile();
+  const { openExit } = useProc();
+  const [q, setQ] = useState("");
+  const [pick, setPick] = useState(null);
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [snag, setSnag] = useState(false);
+  const active = people.filter(p => (p.status || "active") === "active");
+  const hits = q.trim()
+    ? active.filter(p => (p.name + " " + p.id + " " + p.designation).toLowerCase().includes(q.trim().toLowerCase())).slice(0, 8)
+    : [];
+  const start = async () => {
+    if (!pick || !reason) return;
+    setBusy(true);
+    setSnag(false);
+    const id = await openExit(pick, reason);
+    setBusy(false);
+    if (id) onOpened(pick, id);
+    /* The server refuses a second deboarding for somebody who already has one
+       and says so. Saying so and then leaving the person on this form with
+       nowhere to go is half an answer — the other half is the way through. */
+    else setSnag(true);
+  };
+  return (
+    <Overlay onClose={onClose} width={520}>
+      <div style={{ padding: mob ? 18 : 24 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
+          <LogOut size={17} color={C.gold} /><Eyebrow>Deboarding</Eyebrow>
+          <button data-icon-btn onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
+        </div>
+        <h2 style={{ font: `400 21px ${serif}`, margin: "0 0 6px" }}>Who is leaving?</h2>
+        <p style={{ font: `13px ${sans}`, color: C.inkSoft, lineHeight: 1.6, margin: "0 0 14px" }}>
+          This opens the six-step exit — handover, card, dues, final settlement, papers. Nothing skips ahead.
+        </p>
+        {!pick ? (
+          <>
+            <input autoFocus value={q} onChange={e => setQ(e.target.value)} placeholder="Name or Employee ID…" style={{ ...inp, margin: 0 }} />
+            <div style={{ marginTop: 10 }}>
+              {hits.map(p => (
+                <button key={p.id} onClick={() => setPick(p)} style={{ width: "100%", textAlign: "left", cursor: "pointer",
+                  background: "#fff", border: `1px solid ${C.line}`, borderRadius: 10, padding: "10px 12px", marginBottom: 6 }}>
+                  <span style={{ display: "block", font: `600 12.5px ${sans}`, color: C.ink }}>{p.name}</span>
+                  <span style={{ display: "block", font: `11px ${sans}`, color: C.stone }}>{p.id} · {p.designation} · {p.dept}</span>
+                </button>
+              ))}
+              {q.trim() && !hits.length && <div style={{ font: `12px ${sans}`, color: C.stone }}>Nobody on the rolls matches that.</div>}
+            </div>
+          </>
+        ) : (
+          <>
+            <div style={{ background: C.paper, borderRadius: 10, padding: 12, marginBottom: 12 }}>
+              <div style={{ font: `600 13px ${sans}`, color: C.ink }}>{pick.name}</div>
+              <div style={{ font: `11px ${sans}`, color: C.stone }}>{pick.id} · {pick.designation} · {pick.dept}</div>
+            </div>
+            <label style={lbl}>Why are they leaving?</label>
+            <select value={reason} onChange={e => setReason(e.target.value)} style={sel}>
+              <option value="">— choose —</option>
+              {EXIT_REASONS.map(r => <option key={r} value={r}>{r}</option>)}
+            </select>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
+              <GoldButton disabled={!reason || busy} onClick={start}>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><LogOut size={14} /> Start the deboarding</span>
+              </GoldButton>
+              <button onClick={() => { setPick(null); setReason(""); setSnag(false); }} style={softBtn}>Somebody else</button>
+            </div>
+            {snag && (
+              <div style={{ marginTop: 12, background: C.amberSoft || "#FFF9E0", border: `1px solid ${C.amber}`, borderRadius: 10, padding: 12 }}>
+                <div style={{ font: `12px ${sans}`, color: C.ink, lineHeight: 1.55, marginBottom: 8 }}>
+                  That did not open. The usual reason is that {pick.name} already has a deboarding
+                  running — one person cannot have two.
+                </div>
+                <button onClick={() => onOpened(pick, null)} style={{ ...softBtn, borderColor: C.gold, color: C.goldDeep }}>
+                  Take me to the one that is already running
+                </button>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </Overlay>
+  );
+}
+
+function PayrollView({ go }) {
   const mob = useIsMobile();
   const { payRuns = [], companies = [], people = [], projects = [], att = {}, me,
-    deductionHeads = {}, scope, draftPayRun, setPayLine, releasePayRun, track } = useProc();
+    deductionHeads = {}, scope, draftPayRun, setPayLine, releasePayRun, track,
+    exits = [], openExit, salaries = {} } = useProc();
 
   /* PAYROLL FOLLOWS THE PROJECT CHOSEN AT THE TOP.
      A pay run belongs to a COMPANY and a project is paid by one, so choosing
@@ -13615,6 +13947,19 @@ function PayrollView() {
      working a month out happens four times a month, and "what went out in
      August" gets asked every week. */
   const [view, setView] = useState("record");
+  /* THE RUN, IN FOUR STEPS.
+     Payroll used to be a row of three controls and a button, and the order you
+     had to do things in was not written anywhere: load the attendance FIRST or
+     everybody silently gets a full month. These are the four things, in the
+     order they happen, each saying what it is for. */
+  const [cos, setCos] = useState([]);              // companies ticked in step 2
+  const [cosTouched, setCosTouched] = useState(false);
+  const [who, setWho] = useState("all");           // everybody, or a chosen few
+  const [chosen, setChosen] = useState([]);        // employee ids, when chosen
+  const [pq, setPq] = useState("");                // the search in step 3
+  const [showImport, setShowImport] = useState(false);
+  const [check, setCheck] = useState(null);        // the leavers question
+  const [deboard, setDeboard] = useState(false);   // the deboarding picker
 
   const run = payRuns.find(r => r.company === company && r.month === month) || null;
   const lines = run ? run.lines : [];
@@ -13629,17 +13974,90 @@ function PayrollView() {
   const forCompany = people.filter(p => p.status === "active" && p.employer === company);
   const coveredHere = forCompany.filter(p => covered.has(p.id)).length;
 
+  /* Which companies this run covers: the project's own when one is chosen at
+     the top, otherwise whatever was ticked in step 2. */
+  const runCos = scoped ? [scoped] : cos;
+  /* Everybody ticked to begin with. Starting empty made step 3 read "0 people"
+     and the run button dead until you had worked out that step 2 was the thing
+     standing in the way. Untick whoever is not being paid this time. */
+  useEffect(() => {
+    if (!cosTouched && !scoped && companies.length && !cos.length) {
+      setCos(companies.map(c => c.id));
+    }
+  }, [companies, scoped, cosTouched]);
+  const runPeople = people.filter(p => p.status === "active" && runCos.includes(p.employer));
+  const shownPeople = pq.trim()
+    ? runPeople.filter(p => (p.name + " " + p.id + " " + p.designation + " " + p.dept).toLowerCase().includes(pq.trim().toLowerCase()))
+    : runPeople;
+  const salaryOnFile = (pid) => {
+    const s = (salaries || {})[pid];
+    return !!(s && (s.gross || 0) > 0);
+  };
+  /* Everybody this run would actually pay. */
+  const runList = who === "some" ? runPeople.filter(p => chosen.includes(p.id)) : runPeople;
+
+  /* WHO MIGHT HAVE LEFT.
+     Three signals, none of them a guess dressed up as a fact — each row says
+     which one fired, and HR decides. The whole point is the three people we
+     found being paid who had left months earlier. */
+  const leaverSuspects = () => {
+    const out = [];
+    /* Does the machine cover this month AT ALL? When July has not been uploaded
+       yet, "they were punching in until 30 June and have nothing in July" is
+       true of every single person, and a list of 126 names says nothing. The
+       attendance signals only mean something once there is a month to read. */
+    const monthHasData = runList.some(x => (att[x.id] || []).some(d => String(d.date).endsWith(attMonth)));
+    for (const p of runList) {
+      const open = exits.find(e => e.pid === p.id && e.stage !== "closed");
+      if (open) {
+        out.push({ p, why: `A deboarding is already open for them at the "${open.stage}" stage.`, open: true });
+        continue;
+      }
+      if (!monthHasData) continue;                      // nothing loaded for this month
+      const rows = att[p.id] || [];
+      if (!rows.length) continue;                       // never on the machine — says nothing
+      const thisMonth = rows.filter(d => String(d.date).endsWith(attMonth));
+      const punchedThis = thisMonth.filter(d => d.in || d.out).length;
+      const punchedEver = rows.filter(d => d.in || d.out);
+      if (thisMonth.length && punchedThis === 0) {
+        out.push({ p, why: `The machine has ${thisMonth.length} days for them in ${month} and not one punch on any of them.` });
+      } else if (!thisMonth.length && punchedEver.length) {
+        const last = punchedEver[punchedEver.length - 1];
+        out.push({ p, why: `They were punching in until ${last.date} and have nothing at all in ${month}.` });
+      }
+    }
+    return out;
+  };
+
+  const askAboutLeavers = () => {
+    if (!runCos.length) { toast("Choose at least one company", "amber"); return; }
+    if (who === "some" && !chosen.length) { toast("Choose who is being paid", "amber"); return; }
+    setCheck({ suspects: leaverSuspects(), ending: {} });
+  };
+
   /* The provider answers null when the server refused, and has already said
      why. Nothing here re-reports it. */
+  /* Runs every company that was ticked, one sheet each, because that is what
+     Accounts receives. The first one is left on screen; switching company in
+     step 2 shows the others. */
   const draft = async () => {
     setBusy(true);
-    const r = await draftPayRun({ month, company, monthDays: daysInMonth(month), attendanceMonth: attMonth });
-    if (r) {
-      track("payroll:draft");
-      toast(`${month} worked out — ${r.drafted} people`, "green");
-      if (r.withoutSalary && r.withoutSalary.length) {
-        toast(`${r.withoutSalary.length} left out: no salary on file for them`, "amber");
+    let drafted = 0, missing = 0, sheets = 0;
+    for (const cid of runCos) {
+      const only = who === "some" ? runList.filter(p => p.employer === cid).map(p => p.id) : [];
+      if (who === "some" && !only.length) continue;
+      const r = await draftPayRun({ month, company: cid, monthDays: daysInMonth(month), attendanceMonth: attMonth, only });
+      if (r) {
+        sheets += 1;
+        drafted += r.drafted || 0;
+        missing += (r.withoutSalary || []).length;
       }
+    }
+    if (sheets) {
+      track("payroll:draft");
+      setCompany(runCos[0]);
+      toast(`${month} worked out — ${drafted} ${drafted === 1 ? "payslip" : "payslips"} across ${sheets} ${sheets === 1 ? "company" : "companies"}`, "green");
+      if (missing) toast(`${missing} left out: no salary on file for them`, "amber");
     }
     setBusy(false);
   };
@@ -13697,7 +14115,7 @@ function PayrollView() {
       {/* Two jobs, kept apart on purpose. The record is read-only — a screen
           where the history and the working copy share a table is a screen where
           somebody edits last month by accident. */}
-      <div style={{ display: "flex", gap: 8, marginBottom: 18, flexWrap: "wrap" }}>
+      <div style={{ display: "flex", gap: 8, marginBottom: 18, flexWrap: "wrap", alignItems: "center" }}>
         {[["record", "What has gone out", History], ["work", "Work out a month", Calculator]].map(([k, label, Icon]) => (
           <button key={k} onClick={() => setView(k)}
             style={{ cursor: "pointer", borderRadius: 11, padding: "9px 14px", display: "inline-flex", alignItems: "center", gap: 7,
@@ -13706,44 +14124,149 @@ function PayrollView() {
             <Icon size={14} /> {label}
           </button>
         ))}
+        {/* Somebody has left and HR is standing on the payroll screen, which is
+            usually where they find out. The exit starts here rather than being
+            a note to do it later on another screen. */}
+        <button onClick={() => setDeboard(true)}
+          style={{ marginLeft: "auto", cursor: "pointer", borderRadius: 11, padding: "9px 14px",
+            display: "inline-flex", alignItems: "center", gap: 7, border: `1.5px solid ${C.line}`,
+            background: "#fff", font: `600 12.5px ${sans}`, color: C.inkSoft }}>
+          <LogOut size={14} /> Deboard somebody
+        </button>
       </div>
 
       {view === "work" && (<>
-      <div style={{ display: "flex", gap: 9, flexWrap: "wrap", alignItems: "center", marginBottom: 16 }}>
-        {scoped ? (
-          <div style={{ font: `600 13px ${sans}`, color: C.ink, padding: "9px 0", minWidth: 220 }}>
-            {co.name}
-            <div style={{ font: `11px ${sans}`, color: C.stone, fontWeight: 400, marginTop: 2 }}>
-              who pay everybody at {ofProject.short}
-              {sharedWith.length ? ` and ${sharedWith.join(", ")}` : ""}
-            </div>
-          </div>
-        ) : (
-          <select value={company} onChange={e => setCompany(e.target.value)} style={{ ...sel, margin: 0, minWidth: 220 }}>
-            {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+
+      {/* ── STEP 1 ─────────────────────────────────────────── the attendance */}
+      <StepCard n={1} title="Load the month's attendance"
+        done={coveredHere > 0}
+        note={coveredHere > 0
+          ? `${coveredHere} of ${forCompany.length} people at ${co.name} have punches in ${month}.`
+          : `Nothing loaded for ${month}. Without it everybody is paid a full month and each line says so.`}>
+        <div style={{ display: "flex", gap: 9, flexWrap: "wrap", alignItems: "center" }}>
+          <select value={month} onChange={e => setMonth(e.target.value)} style={{ ...sel, margin: 0, width: 150 }}>
+            {lastMonths(14).map(m => <option key={m} value={m}>{m}</option>)}
           </select>
+          <GoldButton ghost onClick={() => setShowImport(true)}>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Upload size={14} /> Upload attendance</span>
+          </GoldButton>
+          <span style={{ font: `11px ${sans}`, color: C.stone }}>
+            Any machine's export — the columns are mapped for you.
+          </span>
+        </div>
+      </StepCard>
+
+      {/* ── STEP 2 ────────────────────────────────────────────── the company */}
+      <StepCard n={2} title="Choose the companies to pay"
+        done={runCos.length > 0}
+        note={scoped
+          ? `Fixed to ${co.name}, who pay everybody at ${ofProject.short}${sharedWith.length ? ` and ${sharedWith.join(", ")}` : ""}. Choose the whole group at the top to pay more than one.`
+          : `${runCos.length} chosen. A sheet goes to Accounts per company, so each one is worked out on its own.`}>
+        {scoped ? (
+          <div style={{ font: `600 13px ${sans}`, color: C.ink }}>{co.name}</div>
+        ) : (
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {companies.map(c => {
+              const on = cos.includes(c.id);
+              const heads = people.filter(p => p.status === "active" && p.employer === c.id).length;
+              return (
+                <button key={c.id} onClick={() => { setCosTouched(true); setCos(v => on ? v.filter(x => x !== c.id) : [...v, c.id]); }}
+                  style={{ cursor: "pointer", textAlign: "left", borderRadius: 11, padding: "10px 13px",
+                    border: `1.5px solid ${on ? C.gold : C.line}`, background: on ? C.goldTint : "#fff", minWidth: 190 }}>
+                  <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ width: 16, height: 16, borderRadius: 4, flexShrink: 0, border: `1.5px solid ${on ? C.gold : C.line}`, background: on ? C.gold : "#fff", display: "grid", placeItems: "center" }}>
+                      {on && <Check size={11} color="#fff" />}
+                    </span>
+                    <span>
+                      <span style={{ display: "block", font: `600 12.5px ${sans}`, color: C.ink }}>{c.name}</span>
+                      <span style={{ display: "block", font: `11px ${sans}`, color: C.stone }}>{heads} on the rolls</span>
+                    </span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
         )}
-        <select value={month} onChange={e => setMonth(e.target.value)} style={{ ...sel, margin: 0, width: 140 }}>
-          {lastMonths(14).map(m => <option key={m} value={m}>{m}</option>)}
-        </select>
-        {(!run || run.status === "draft") && (
-          <GoldButton disabled={busy} onClick={draft}>
+      </StepCard>
+
+      {/* ── STEP 3 ─────────────────────────────────────────────── the people */}
+      <StepCard n={3} title="Choose who is being paid"
+        done={runList.length > 0}
+        note={who === "all"
+          ? `Everybody on the rolls at the companies above — ${runPeople.length} ${runPeople.length === 1 ? "person" : "people"}. Anybody with no salary on file is left out and named after the run.`
+          : `${chosen.length} chosen of ${runPeople.length}.`}>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: who === "some" ? 12 : 0 }}>
+          {[["all", `Everybody (${runPeople.length})`], ["some", "Choose people"]].map(([k, label]) => (
+            <button key={k} onClick={() => setWho(k)}
+              style={{ cursor: "pointer", borderRadius: 20, padding: "8px 14px",
+                border: `1.5px solid ${who === k ? C.gold : C.line}`, background: who === k ? C.goldTint : "#fff",
+                font: `600 12.5px ${sans}`, color: who === k ? C.goldDeep : C.inkSoft }}>{label}</button>
+          ))}
+        </div>
+        {who === "some" && (
+          <>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 10 }}>
+              <input value={pq} onChange={e => setPq(e.target.value)} placeholder="Search a name, an ID or a post…"
+                style={{ ...inp, margin: 0, flex: 1, minWidth: 200 }} />
+              <button onClick={() => setChosen(shownPeople.map(p => p.id))} style={{ ...softBtn, borderColor: C.gold, color: C.goldDeep }}>Select all {pq ? "shown" : ""}</button>
+              <button onClick={() => setChosen([])} style={softBtn}>Clear</button>
+            </div>
+            <div style={{ maxHeight: 280, overflowY: "auto", border: `1px solid ${C.line}`, borderRadius: 10 }}>
+              {shownPeople.length === 0 && (
+                <div style={{ padding: 16, font: `12px ${sans}`, color: C.stone }}>Nobody matches that.</div>
+              )}
+              {shownPeople.map((p, i) => {
+                const on = chosen.includes(p.id);
+                const noPay = !salaryOnFile(p.id);
+                return (
+                  <button key={p.id} onClick={() => setChosen(v => on ? v.filter(x => x !== p.id) : [...v, p.id])}
+                    style={{ width: "100%", textAlign: "left", cursor: "pointer", background: on ? C.goldTint : "#fff",
+                      border: "none", borderTop: i ? `1px solid ${C.lineSoft}` : "none", padding: "10px 12px",
+                      display: "flex", alignItems: "center", gap: 10 }}>
+                    <span style={{ width: 16, height: 16, borderRadius: 4, flexShrink: 0, border: `1.5px solid ${on ? C.gold : C.line}`, background: on ? C.gold : "#fff", display: "grid", placeItems: "center" }}>
+                      {on && <Check size={11} color="#fff" />}
+                    </span>
+                    <span style={{ flex: 1, minWidth: 0 }}>
+                      <span style={{ display: "block", font: `600 12.5px ${sans}`, color: C.ink, overflowWrap: "anywhere" }}>{p.name}</span>
+                      <span style={{ display: "block", font: `11px ${sans}`, color: C.stone, overflowWrap: "anywhere" }}>
+                        {p.id} · {p.designation} · {p.dept}
+                      </span>
+                    </span>
+                    {noPay && <Pill tone="amber">no salary on file</Pill>}
+                  </button>
+                );
+              })}
+            </div>
+          </>
+        )}
+      </StepCard>
+
+      {/* ── STEP 4 ───────────────────────────────────────────────── run it */}
+      <StepCard n={4} title="Work the payroll out" last
+        note="One last question before it is worked out: is anybody on this list no longer with us?">
+        <div style={{ display: "flex", gap: 9, flexWrap: "wrap", alignItems: "center" }}>
+          <GoldButton disabled={busy || !runCos.length || (who === "some" && !chosen.length)} onClick={askAboutLeavers}>
             <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
               <Calculator size={14} /> {run ? "Work it out again" : "Work this month out"}
             </span>
           </GoldButton>
-        )}
-        {run && run.status === "draft" && lines.length > 0 && (
-          <GoldButton ghost disabled={busy} onClick={release}>
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Send size={13} /> Release to Accounts</span>
-          </GoldButton>
-        )}
-        {run && lines.length > 0 && (
-          <GoldButton ghost onClick={sheet}>
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Download size={13} /> Download the sheet for Accounts</span>
-          </GoldButton>
-        )}
-      </div>
+          {run && run.status === "draft" && lines.length > 0 && (
+            <GoldButton ghost disabled={busy} onClick={release}>
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Send size={13} /> Release to Accounts</span>
+            </GoldButton>
+          )}
+          {run && lines.length > 0 && (
+            <GoldButton ghost onClick={sheet}>
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Download size={13} /> Download the sheet for Accounts</span>
+            </GoldButton>
+          )}
+          {run && run.status === "released" && (
+            <span style={{ font: `11px ${sans}`, color: C.stone }}>
+              {month} is released for {co.name}. A released month is not reworked.
+            </span>
+          )}
+        </div>
+      </StepCard>
 
       <HeadsPanel heads={deductionHeads[company] || []} company={co.name} />
 
@@ -13752,11 +14275,27 @@ function PayrollView() {
           <div style={{ font: `13px ${sans}`, color: C.inkSoft, lineHeight: 1.6 }}>
             Nothing worked out for <b style={{ color: C.ink }}>{co.name}</b> in {month} yet.
             {" "}{forCompany.length} people are employed by them.
-            {coveredHere > 0
-              ? ` The attendance machine covers ${coveredHere} of them this month; the rest get the full month and each line says so.`
-              : " There is no attendance loaded for this month, so everybody gets the full month and each line says so. Load the month's attendance first if you want the days taken off."}
           </div>
         </Card>
+      )}
+
+      {/* Four companies were worked out and only one sheet fits on a screen.
+          Without this the header read "12 people" after a run that had just
+          said 126, and nothing said where the other three had gone. */}
+      {runCos.length > 1 && (
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", margin: "18px 0 12px" }}>
+          <span style={{ font: `600 12px ${sans}`, color: C.stone }}>Showing the sheet for</span>
+          <select value={company} onChange={e => setCompany(e.target.value)} style={{ ...sel, margin: 0, minWidth: 260 }}>
+            {runCos.map(id => {
+              const c = companies.find(x => x.id === id) || {};
+              const r = payRuns.find(x => x.company === id && x.month === month);
+              return <option key={id} value={id}>{c.name}{r ? ` — ${r.lines.length} payslip${r.lines.length === 1 ? "" : "s"}` : " — nothing worked out"}</option>;
+            })}
+          </select>
+          <span style={{ font: `11px ${sans}`, color: C.stone }}>
+            A sheet is per company. Each one is released and sent to Accounts on its own.
+          </span>
+        </div>
       )}
 
       {run && (
@@ -13860,6 +14399,36 @@ function PayrollView() {
       )}
 
       {openLine && <PayLineEditor line={openLine} run={run} onClose={() => setOpenLine(null)} onSave={setPayLine} />}
+      {showImport && <AttendanceImport onClose={() => setShowImport(false)} />}
+      {check && (
+        <LeaversCheck
+          month={month}
+          count={runList.length}
+          suspects={check.suspects}
+          busy={busy}
+          onEnd={async (p, reason) => {
+            const id = await openExit(p, reason);
+            if (id) {
+              track("payroll:exit");
+              toast(`Deboarding opened for ${p.name} — ${reason}. They are still paid for this month.`, "gold");
+            }
+            return !!id;
+          }}
+          onConfirm={async () => { setCheck(null); await draft(); }}
+          onClose={() => setCheck(null)}
+        />
+      )}
+      {deboard && (
+        <DeboardPicker
+          people={people}
+          onClose={() => setDeboard(false)}
+          onOpened={(p) => {
+            setDeboard(false);
+            toast(`Deboarding opened for ${p.name}. Carry it through on Exits & F&F.`, "gold");
+            if (go) go("exits");
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -13908,6 +14477,13 @@ function PayRecord({ payRuns: allRuns, companies, onOpen, onSheet, only, project
     people: rs.reduce((a, r) => a + r.lines.length, 0),
     gross: rs.reduce((a, r) => a + r.lines.reduce((b, l) => b + l.eGross, 0), 0),
     deducted: rs.reduce((a, r) => a + r.lines.reduce((b, l) => b + l.dTotal, 0), 0),
+    /* "Held back" is four different things and the management asked to see the
+       tax on its own. Statutory is E.S.I. and P.F. — the employee's half; the
+       company's own share is counted separately below. */
+    esi: rs.reduce((a, r) => a + r.lines.reduce((b, l) => b + (l.dEsi || 0), 0), 0),
+    pf: rs.reduce((a, r) => a + r.lines.reduce((b, l) => b + (l.dPf || 0), 0), 0),
+    tds: rs.reduce((a, r) => a + r.lines.reduce((b, l) => b + (l.dTds || 0), 0), 0),
+    otherDed: rs.reduce((a, r) => a + r.lines.reduce((b, l) => b + (l.dAdvance || 0) + (l.dOther || 0), 0), 0),
     paid: rs.reduce((a, r) => a + r.lines.reduce((b, l) => b + l.payable, 0), 0),
     employer: rs.reduce((a, r) => a + r.lines.reduce((b, l) => b + (l.erEsi || 0) + (l.erPf || 0) + (l.erOther || 0), 0), 0),
   });
@@ -13949,7 +14525,8 @@ function PayRecord({ payRuns: allRuns, companies, onOpen, onSheet, only, project
       <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr 1fr" : "repeat(4, 1fr)", gap: 12, marginBottom: 8 }}>
         {[["Paid to employees", inrShort(all.paid), C.green, `${all.sheets} sheet${all.sheets === 1 ? "" : "s"} across ${byMonth.filter(m => m.sheets > 0).length} month${byMonth.length === 1 ? "" : "s"}`],
           ["Earned before deductions", inrShort(all.gross), C.ink, "What the work came to"],
-          ["Held back", inrShort(all.deducted), C.amber, "E.S.I., P.F., TDS, advances"],
+          ["Held back", inrShort(all.deducted), C.amber,
+            `E.S.I. ${inrShort(all.esi)} · P.F. ${inrShort(all.pf)} · TDS ${inrShort(all.tds)} · advances & other ${inrShort(all.otherDed)}`],
           ["Company's own share", inrShort(all.employer), C.inkSoft, "On top — never reaches a bank account"]].map(([k, v, tone, sub]) => (
           <Card key={k} pad={14}>
             <div style={{ font: `600 10px ${sans}`, letterSpacing: ".1em", textTransform: "uppercase", color: C.stone }}>{k}</div>

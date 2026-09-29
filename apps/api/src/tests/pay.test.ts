@@ -20,6 +20,7 @@ import {
   type PayStructure,
 } from '@marbella/shared';
 import { describe, expect, it } from 'vitest';
+import type { App } from '../app.js';
 import { auth, makeApp, signIn } from './helpers.js';
 import { PAY_AUGUST, PAY_HEADS, PAY_POLICIES } from '../../prisma/real-pay.js';
 
@@ -700,5 +701,74 @@ describe('somebody’s own day off', () => {
     });
     expect(d.lost).toBe(0);
     expect(d.days).toBe(30);
+  });
+});
+
+/**
+ * RUNNING A MONTH FOR A CHOSEN FEW.
+ *
+ * HR asked to be able to pay three people without working the whole company out
+ * again — a site that closed late, a correction. The first cut of that replaced
+ * every line on the run with the three, so a draft of a hundred and twenty
+ * became a draft of three and the days, advances and remarks somebody had
+ * already set on the rest went with them.
+ */
+describe('a pay run for some of the company', () => {
+  const draft = (app: App, token: string, body: Record<string, unknown>) =>
+    app.inject({
+      method: 'POST',
+      url: '/api/v1/pay-runs',
+      headers: auth(token),
+      payload: { monthDays: 30, attendanceMonth: '', ...body },
+    });
+
+  it('drafts only the people it was given, and leaves the rest of the draft alone', async () => {
+    const { app, db } = await makeApp();
+    try {
+      const { token } = await signIn(app);
+      const company = 'garg';
+      const month = 'Feb 2025';
+      await db.payRun.deleteMany({ where: { companyId: company, month } });
+
+      // the whole company first
+      const all = await draft(app, token, { month, company });
+      expect(all.statusCode, all.body.slice(0, 200)).toBe(200);
+      // The run comes back serialised, where a line's person is `pid`.
+      const whole = all.json<{ run: { id: string; lines: Array<{ pid: string | null }> } }>().run;
+      expect(whole.lines.length).toBeGreaterThan(2);
+
+      // now one person out of it
+      const one = whole.lines.find((l) => l.pid)!.pid!;
+      const some = await draft(app, token, { month, company, only: [one] });
+      expect(some.statusCode, some.body.slice(0, 300)).toBe(200);
+      const after = some.json<{ run: { lines: Array<{ pid: string | null }> }; drafted: number }>();
+      expect(after.drafted, 'it worked out exactly the one person asked for').toBe(1);
+      expect(
+        after.run.lines.length,
+        'and everybody else is still on the sheet',
+      ).toBe(whole.lines.length);
+
+      await db.payRun.deleteMany({ where: { companyId: company, month } });
+    } finally {
+      await app.close();
+      await db.$disconnect();
+    }
+  });
+
+  it('refuses a list that names nobody who works there', async () => {
+    const { app, db } = await makeApp();
+    try {
+      const { token } = await signIn(app);
+      const res = await draft(app, token, {
+        month: 'Feb 2025',
+        company: 'garg',
+        only: ['MB-XXX-9999'],
+      });
+      expect(res.statusCode).toBe(422);
+      expect(res.body).toMatch(/nothing to work out/i);
+    } finally {
+      await app.close();
+      await db.$disconnect();
+    }
   });
 });

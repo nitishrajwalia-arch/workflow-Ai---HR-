@@ -449,6 +449,15 @@ export const payRunBody = z.object({
    * rather than paying nobody.
    */
   attendanceMonth: z.string().trim().max(20).default(''),
+  /**
+   * Run only these people.
+   *
+   * Empty — the usual case — means everybody the company employs. HR asked to
+   * be able to run a month for a handful of people (a site that closed late, a
+   * correction for three) without working the whole company out again, so the
+   * list is here rather than in a second route that would drift from this one.
+   */
+  only: z.array(employeeId).max(1000).default([]),
 });
 
 /**

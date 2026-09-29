@@ -528,7 +528,7 @@ export const payrollRoutes: FastifyPluginAsyncZod = async (app) => {
     },
     async (req) => {
       const me = requireUser(req);
-      const { month, company, monthDays, attendanceMonth } = req.body;
+      const { month, company, monthDays, attendanceMonth, only } = req.body;
 
       const existing = await db.payRun.findUnique({
         where: { companyId_month: { companyId: company, month } },
@@ -552,10 +552,22 @@ export const payrollRoutes: FastifyPluginAsyncZod = async (app) => {
       const heads = await headsOf(company);
 
       const people = await db.person.findMany({
-        where: { employerId: company, status: 'active' },
+        where: {
+          employerId: company,
+          status: 'active',
+          // Empty list means everybody, which is the ordinary run.
+          ...(only.length ? { id: { in: only } } : {}),
+        },
         include: { salary: true },
         orderBy: { name: 'asc' },
       });
+      if (only.length && !people.length) {
+        throw unprocessable(
+          'None of the people chosen are active employees of that company, so there ' +
+            'is nothing to work out.',
+          [{ path: 'only', message: 'nobody to run' }],
+        );
+      }
 
       // The month's attendance, if there is any. A person the machine does not
       // cover gets the full month, and the line says so — which is what happens
@@ -592,7 +604,14 @@ export const payrollRoutes: FastifyPluginAsyncZod = async (app) => {
                 createdBy: me.name,
               },
             });
-        await tx.payRunLine.deleteMany({ where: { runId: r.id } });
+        /* Working out a chosen few must not wipe the rest of the draft.
+           Re-running the whole company replaces every line, which is what
+           "work it out again" means; re-running three people replaces those
+           three and leaves the other hundred exactly as they were, including
+           any days, advances and remarks HR had already set on them. */
+        await tx.payRunLine.deleteMany({
+          where: only.length ? { runId: r.id, personId: { in: only } } : { runId: r.id },
+        });
 
         for (const p of people) {
           if (!p.salary || p.salary.gross <= 0) continue; // nobody without a salary on file
@@ -652,7 +671,9 @@ export const payrollRoutes: FastifyPluginAsyncZod = async (app) => {
         await appendInTx(tx, {
           kind: 'payroll',
           subject: `${company} ${month}`,
-          detail: `Pay run drafted for ${people.length} people.`,
+          detail:
+            `Pay run drafted for ${people.length} people` +
+            (only.length ? ' (a chosen few, not the whole company).' : '.'),
           who: me.name,
         });
         return r;

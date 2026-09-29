@@ -98,16 +98,36 @@ export function ProcurementProvider({ children, toast }: Props) {
     void load();
   }, [load]);
 
-  /** Change locally, then send. On failure, restore and say why. */
+  /**
+   * Change locally, then send. On failure, restore and say why.
+   *
+   * The change is applied INSIDE the updater, to whatever React holds at that
+   * moment, not to `ref.current`. The ref catches up in an effect, so a write
+   * that followed another write in the same tick was applied to the world as it
+   * was BEFORE the first one — and putting that back wiped the first change.
+   *
+   * It showed up as the app forgetting an enrolment: a new person was created
+   * on the server, spliced into the list, and then the very next call — saving
+   * their personal number — wrote the pre-enrolment world back over the top.
+   * The person existed, and nothing in the app could find them until the page
+   * was reloaded.
+   *
+   * The snapshot for the rollback is taken in the same updater, so a failure
+   * still puts back exactly what was there a moment before.
+   */
   const optimistic = useCallback(
     async <T,>(apply: (w: World) => World, send: () => Promise<T>): Promise<T | null> => {
-      const before = ref.current;
-      if (!before) return null;
-      setWorld(apply(before));
+      if (!ref.current) return null;
+      let snapshot: World | null = null;
+      setWorld((w) => {
+        if (!w) return w;
+        snapshot = w;
+        return apply(w);
+      });
       try {
         return await send();
       } catch (err) {
-        setWorld(before);
+        if (snapshot) setWorld(snapshot);
         toast(err instanceof ApiError ? err.full : 'That did not save. Nothing changed.', 'red');
         return null;
       }
@@ -668,7 +688,15 @@ export function ProcurementProvider({ children, toast }: Props) {
         ),
       addAnn: (a: any) =>
         server(
-          () => api.post<any>('/announcements', { text: a.text }),
+          // The title and the audience were collected on screen and dropped
+          // here: only the body ever reached the server, so every notice was
+          // posted headless and addressed to nobody.
+          () =>
+            api.post<any>('/announcements', {
+              title: a.title,
+              text: a.text,
+              audience: a.audience || 'Everyone',
+            }),
           (r, x) => ({ ...x, hrAnn: [r, ...x.hrAnn] }),
         ),
 
@@ -812,6 +840,8 @@ export function ProcurementProvider({ children, toast }: Props) {
         company: string;
         monthDays: number;
         attendanceMonth: string;
+        /** Empty (or absent) means everybody the company employs. */
+        only?: string[];
       }) =>
         server(
           () =>
@@ -1040,9 +1070,12 @@ export function ProcurementProvider({ children, toast }: Props) {
         await load();
         return true;
       },
-      openExit: async (p: any) => {
+      // The reason is chosen by whoever is deboarding. It used to be hardcoded
+      // to "Resigned", which put a made-up reason on the record of everybody who
+      // was let go, retired or absconded.
+      openExit: async (p: any, reason = 'Resigned') => {
         const r = await server(
-          () => api.post<any>('/exits', { pid: p.id, reason: 'Resigned' }),
+          () => api.post<any>('/exits', { pid: p.id, reason }),
           (row, x) => ({ ...x, exits: [row, ...x.exits] }),
         );
         return r?.id ?? null;

@@ -751,6 +751,8 @@ export const bootstrapRoutes: FastifyPluginAsyncZod = async (app) => {
         })),
         hrAnn: hrAnn.map((a) => ({
           id: a.id,
+          title: a.title,
+          audience: a.audience,
           text: a.text,
           by: a.by,
           when: a.createdAt.toISOString(),
