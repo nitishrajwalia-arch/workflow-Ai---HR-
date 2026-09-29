@@ -10,7 +10,7 @@
  * Every write is refused, in the same shape the server refuses things, so the
  * optimistic updates roll back and the screen ends up showing what is true.
  */
-import type { SessionUser } from '@marbella/shared';
+import { ask as readQuestion, type AskPerson, type SessionUser } from '@marbella/shared';
 import { PREVIEW_WORLD } from './data.js';
 import { currentSession, rememberSession, type PreviewSession } from './desk.js';
 import { MANAGEMENT_ID, deskFor, roleFor } from './desks.js';
@@ -83,9 +83,51 @@ export async function request<T>(path: string): Promise<T> {
   throw new ApiError(503, 'PREVIEW', REFUSAL);
 }
 
+/**
+ * The co-pilot, with no server behind it.
+ *
+ * The question is read by the same code the API runs — @marbella/shared — over
+ * the same register the preview's screens are showing, so the answer somebody
+ * gets from the preview is the answer they would get from the product. It is
+ * the one POST this file allows, because it changes nothing.
+ */
+interface PreviewWorldShape {
+  people: Array<Record<string, unknown>>;
+  offices: Array<{ id: string; name: string }>;
+  companies: Array<{ id: string; name: string }>;
+}
+
+function register(): AskPerson[] {
+  const world = PREVIEW_WORLD as unknown as PreviewWorldShape;
+  const site = new Map(world.offices.map((o) => [o.id, o.name]));
+  const firm = new Map(world.companies.map((c) => [c.id, c.name]));
+  const name = new Map(world.people.map((p) => [String(p.id), String(p.name)]));
+  const text = (v: unknown): string | null => (v == null || v === '' ? null : String(v));
+  return world.people.map((p) => ({
+    id: String(p.id),
+    name: String(p.name),
+    designation: String(p.designation ?? ''),
+    dept: String(p.dept ?? ''),
+    type: text(p.type),
+    status: text(p.status) ?? 'active',
+    joined: text(p.joined),
+    dob: text(p.dob),
+    offDay: text(p.offDay),
+    site: site.get(String(p.office)) ?? null,
+    employer: firm.get(String(p.employer)) ?? null,
+    reportsTo: (p.reportsTo ? name.get(String(p.reportsTo)) : null) ?? text(p.reportsToNote),
+  }));
+}
+
 export const api = {
   get: <T>(path: string): Promise<T> => request<T>(path),
-  post: <T>(): Promise<T> => Promise.reject(new ApiError(503, 'PREVIEW', REFUSAL)),
+  post: <T>(path?: string, body?: unknown): Promise<T> => {
+    if (path === '/assistant/ask') {
+      const question = String((body as { question?: unknown } | undefined)?.question ?? '');
+      return Promise.resolve(readQuestion(question, { people: register() }) as unknown as T);
+    }
+    return Promise.reject(new ApiError(503, 'PREVIEW', REFUSAL));
+  },
   put: <T>(): Promise<T> => Promise.reject(new ApiError(503, 'PREVIEW', REFUSAL)),
   patch: <T>(): Promise<T> => Promise.reject(new ApiError(503, 'PREVIEW', REFUSAL)),
   delete: <T>(): Promise<T> => Promise.reject(new ApiError(503, 'PREVIEW', REFUSAL)),

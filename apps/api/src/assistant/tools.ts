@@ -11,7 +11,7 @@
  */
 
 import type { PrismaClient } from '@prisma/client';
-import { ageFromDisplayDate } from '@marbella/shared';
+import { ageFromDisplayDate, ask as readQuestion, type AskPerson } from '@marbella/shared';
 
 export interface ToolContext {
   readonly db: PrismaClient;
@@ -38,6 +38,35 @@ const PUBLIC_PERSON = {
   reportsToNote: true,
 } as const;
 
+/**
+ * The register in the shape the plain-language reader wants: readable names
+ * instead of ids, and not one column more than PUBLIC_PERSON already allows.
+ */
+export async function register(db: PrismaClient): Promise<AskPerson[]> {
+  const [people, offices, companies] = await Promise.all([
+    db.person.findMany({ select: PUBLIC_PERSON }),
+    db.office.findMany({ select: { id: true, name: true } }),
+    db.company.findMany({ select: { id: true, name: true } }),
+  ]);
+  const site = new Map(offices.map((o) => [o.id, o.name]));
+  const firm = new Map(companies.map((c) => [c.id, c.name]));
+  const name = new Map(people.map((p) => [p.id, p.name]));
+  return people.map((p) => ({
+    id: p.id,
+    name: p.name,
+    designation: p.designation,
+    dept: p.dept,
+    type: p.type,
+    status: p.status,
+    joined: p.joined,
+    dob: p.dob,
+    offDay: p.offDay,
+    site: site.get(p.officeId) ?? null,
+    employer: firm.get(p.employerId) ?? null,
+    reportsTo: (p.reportsToId ? name.get(p.reportsToId) : null) ?? p.reportsToNote ?? null,
+  }));
+}
+
 type Args = Record<string, unknown>;
 const str = (a: Args, k: string): string => String(a[k] ?? '').trim();
 const num = (a: Args, k: string, fallback: number): number => {
@@ -49,10 +78,29 @@ export const TOOL_RUNNERS: Record<
   string,
   (ctx: ToolContext, args: Args) => Promise<string>
 > = {
+  /**
+   * The whole question, in the words it was asked in.
+   *
+   * The reading is done by @marbella/shared, so the co-pilot in the app, the
+   * co-pilot in the offline preview and an assistant coming in through this
+   * connector all answer the same sentence the same way.
+   */
+  async ask(ctx, args) {
+    const question = str(args, 'question');
+    if (!question) return 'Ask me something about the staff register.';
+    const result = readQuestion(question, { people: await register(ctx.db) });
+    return result.answer;
+  },
+
   async find_people(ctx, args) {
     const q = str(args, 'query');
     const dept = str(args, 'department');
-    const limit = Math.min(Math.max(num(args, 'limit', 25), 1), 100);
+    const minAge = Number(args.min_age);
+    const maxAge = Number(args.max_age);
+    const wantsAge = Number.isFinite(minAge) || Number.isFinite(maxAge);
+    // An age question is a whole-register question — "everyone over 60" cannot
+    // be answered off the first 25 rows — so the cap lifts when one is asked.
+    const limit = wantsAge ? 500 : Math.min(Math.max(num(args, 'limit', 25), 1), 100);
     const rows = await ctx.db.person.findMany({
       where: {
         status: 'active',
@@ -71,9 +119,23 @@ export const TOOL_RUNNERS: Record<
       orderBy: [{ dept: 'asc' }, { name: 'asc' }],
       take: limit,
     });
-    if (!rows.length) return 'Nobody on the register matches that.';
-    const lines = rows.map((p) => `${p.id}  ${p.name} — ${p.designation}, ${p.dept} (${p.type})`);
-    return `${rows.length} match${rows.length === 1 ? '' : 'es'}:\n${lines.join('\n')}`;
+    const aged = rows
+      .map((p) => ({ p, age: ageFromDisplayDate(p.dob) }))
+      .filter(({ age }) => {
+        if (!wantsAge) return true;
+        if (age === null) return false;
+        if (Number.isFinite(minAge) && age < minAge) return false;
+        if (Number.isFinite(maxAge) && age > maxAge) return false;
+        return true;
+      })
+      .sort((a, b) => (wantsAge ? (b.age ?? 0) - (a.age ?? 0) : 0));
+    if (!aged.length) return 'Nobody on the register matches that.';
+    const lines = aged.map(
+      ({ p, age }) =>
+        `${p.id}  ${p.name} — ${p.designation}, ${p.dept} (${p.type})` +
+        (wantsAge && age !== null ? ` · age ${age}, born ${p.dob}` : ''),
+    );
+    return `${aged.length} match${aged.length === 1 ? '' : 'es'}:\n${lines.join('\n')}`;
   },
 
   async get_person(ctx, args) {

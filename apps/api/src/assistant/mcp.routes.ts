@@ -23,8 +23,9 @@ import { z } from 'zod';
 import type { Role } from '@marbella/shared';
 import { requireUser } from '../plugins/auth.js';
 import { append } from '../services/ledger.js';
+import { ask as readQuestion } from '@marbella/shared';
 import { ASSISTANT_TOOLS, NOT_EXPOSED, mayUse, toolFor, toolsFor } from './permissions.js';
-import { TOOL_RUNNERS, type ToolContext } from './tools.js';
+import { TOOL_RUNNERS, register as people_for, type ToolContext } from './tools.js';
 
 /** The JSON-RPC envelope MCP speaks over HTTP. */
 const rpc = z.object({
@@ -38,12 +39,26 @@ const PROTOCOL = '2024-11-05';
 
 /** What each tool takes. Kept beside the runner it belongs to. */
 const SCHEMAS: Record<string, { type: 'object'; properties: Record<string, unknown>; required?: string[] }> = {
+  ask: {
+    type: 'object',
+    properties: {
+      question: {
+        type: 'string',
+        description:
+          'The question in plain English, e.g. "everyone over 60 years of age", ' +
+          '"how many people in Maintenance", "who reports to Ajay Goel".',
+      },
+    },
+    required: ['question'],
+  },
   find_people: {
     type: 'object',
     properties: {
       query: { type: 'string', description: 'A name, an employee ID, or part of a designation.' },
       department: { type: 'string', description: 'Narrow to one department.' },
-      limit: { type: 'number', description: 'At most this many (1–100, default 25).' },
+      min_age: { type: 'number', description: 'Only people this age or older, in completed years.' },
+      max_age: { type: 'number', description: 'Only people this age or younger.' },
+      limit: { type: 'number', description: 'At most this many (1–100, default 25). Ignored when an age is given.' },
     },
   },
   get_person: {
@@ -155,6 +170,8 @@ export const assistantRoutes: FastifyPluginAsyncZod = async (app) => {
           serverInfo: { name: 'marbella', version: '1.0.0' },
           instructions:
             `You are connected to Marbella Group's people system as ${me.name}. ` +
+            'Ask whole questions with the `ask` tool — "everyone over 60 years of age" ' +
+            'is a question it answers directly. ' +
             'You can read the staff register, headcount, the org chart, projects, ' +
             'the holiday calendar and attendance. You cannot change anything, and ' +
             'salaries, Aadhaar numbers, PANs and home addresses are not available ' +
@@ -212,6 +229,52 @@ export const assistantRoutes: FastifyPluginAsyncZod = async (app) => {
       }
 
       return err(-32601, `${method} is not supported.`);
+    },
+  );
+
+  /**
+   * THE CO-PILOT IN THE APP.
+   *
+   * The same question, from the person themselves rather than through their
+   * assistant. One endpoint, so a sentence typed into the chat window in the
+   * corner of the app and the same sentence typed into ChatGPT are read by the
+   * same code and answered the same way.
+   *
+   * It answers as the caller and holds the caller's role, exactly as the
+   * connector does. It cannot reach pay or identity documents, and it says so
+   * plainly when asked rather than failing.
+   */
+  app.post(
+    '/assistant/ask',
+    {
+      preHandler: app.authenticate,
+      schema: {
+        tags: ['assistant'],
+        summary: 'Ask a plain-language question about the staff register',
+        body: z.object({
+          question: z.string().trim().min(1).max(400),
+        }),
+        response: {
+          200: z.object({
+            answer: z.string(),
+            understood: z.boolean(),
+            matched: z.string(),
+          }),
+        },
+      },
+    },
+    async (req) => {
+      const me = requireUser(req);
+      const tool = toolFor('ask');
+      if (!tool || !mayUse(tool, me.role as Role)) {
+        return {
+          answer: 'Your account cannot read the staff register.',
+          understood: true,
+          matched: 'refused',
+        };
+      }
+      const people = await people_for(db);
+      return readQuestion(req.body.question, { people });
     },
   );
 

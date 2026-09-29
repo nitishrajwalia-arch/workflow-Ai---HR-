@@ -48,8 +48,15 @@ export interface AssistantTool {
  */
 export const ASSISTANT_TOOLS: readonly AssistantTool[] = [
   {
+    name: 'ask',
+    summary: 'Ask a plain-language question about the staff register and get the answer.',
+    minRole: 'VIEWER',
+    writes: false,
+  },
+  {
     name: 'find_people',
-    summary: 'Search the staff register by name, department, designation or site.',
+    summary:
+      'Search the staff register by name, department, designation or site, and by age.',
     minRole: 'VIEWER',
     writes: false,
   },

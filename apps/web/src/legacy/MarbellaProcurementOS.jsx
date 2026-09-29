@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { ProcCtx, useProc } from "../proc/context.js";
+import { api } from "../lib/api.js";
 import {
   INTAKE_FIELDS, INTAKE_UPDATE_FIELDS, aadhaarCheck, matchColumns, panCheck, proposeBreakUp,
   reductionsFor, rollOutSheet, xlsxToSheet,
@@ -6550,7 +6551,14 @@ function GatePassModal({ po, firm, onClose }) {
 }
 
 /* ============================== CO-PILOT (help + numbers, voice or text) ============================== */
-const BOT_SAMPLES = ["How do I raise a PO?", "What's a gate pass?", "Cost per napkin?", "Show this month's spend"];
+/* Four questions that are answered off the real register, not four that sound
+   good. Each of these is run end to end by the tests in @marbella/shared. */
+const BOT_SAMPLES = [
+  "Everyone over 60 years of age",
+  "How many people in Maintenance?",
+  "Who is the oldest person?",
+  "How do I raise a PO?",
+];
 const BOT_KB = [
   { k: ["gate pass", "gatepass", "driver", "gate"], text: "A gate pass is auto-issued the moment a PO is approved. The driver carries it, and security scans its QR at the gate to confirm the delivery was expected. It lists what's on the truck and the vehicle the software estimated.", viz: "steps", steps: ["PO approved", "Gate pass + QR issued", "Driver carries it", "Security scans", "Match ✓ entry"] },
   { k: ["napkin", "per napkin", "canteen"], text: "Canteen consumables are priced per piece, same as everything else — a bill for a carton of napkins gets divided by the count in it, with GST and freight folded in. That's the resolution the system works at.", viz: "steps", steps: ["Bill filed", "Quantity read", "GST + freight added", "Divided per unit", "Cost IQ"] },
@@ -6559,16 +6567,45 @@ const BOT_KB = [
   { k: ["over-delivery", "over delivery", "extra", "surplus", "more than"], text: "Extra beyond the PO gets a half-red / half-green label and is held aside. Raise a fresh PO and pay the vendor — then it flips green on its own.", viz: "steps", steps: ["Extra detected", "Half-red · held", "Raise fresh PO", "Vendor paid", "Flips green ✓"] },
   { k: ["raise a po", "create po", "purchase order", "new po", "make a po"], text: "Go to Intent → PO, describe what you need, and the app vets 2–3 options to standard. Pick one and tap Raise PO — approval and the gate pass are automatic.", viz: "steps", steps: ["Describe need", "App vets options", "Pick one", "Raise PO", "Approval + pass"] },
   { k: ["handover", "issue out", "chain of custody", "collect"], text: "Material only leaves the store after the requester's Marbella ID is scanned and both sides sign. Every handover is time-stamped.", viz: "steps", steps: ["Pick item", "Scan requester ID", "Confirm items", "Both sign", "Issued ✓"] },
-  { k: ["spend", "how much", "this month", "category", "cost"], text: "Here is the spend by category, straight off the expense ledger. If a bar is missing it is because nothing has been booked to that category yet.", viz: "spend" },
+  { k: ["spend by category", "spend chart"], text: "Spend by category is on the Expenses screen, built from the bills that have actually been booked. I do not have a chart to draw here until there are expenses behind it." },
   { k: ["cash", "payable", "due", "payment", "this week"], text: "The payables calendar in Tax & RERA lists exactly who is owed and when, built from the invoices that have been passed for payment.", viz: "steps", steps: ["Invoice filed", "Matched to PO", "Passed for payment", "Due date set", "Payables calendar"] },
   { k: ["gst", "itc", "input credit", "2b", "gstr"], text: "Input credit only lands once the vendor files their return. Download GSTR-2B into Tax & RERA and the system matches it bill by bill, then flags whatever is missing so you can chase that vendor.", viz: "steps", steps: ["Bill filed", "GSTR-2B imported", "Matched", "Gaps flagged", "Vendor chased"] },
   { k: ["firm", "rera", "which company", "entity", "wrong firm"], text: "Every upload is filed against the right firm's RERA and GSTIN. Pick your entity in the firm switcher up top. If a bill points elsewhere, I'll suggest the move — and you can always say ‘remind me later’.", viz: null },
 ];
-function botReply(q) {
+/* The how-to answers — how the app works, not what is in it. These are the
+   only canned replies left; everything about people, counts, ages, the chart
+   and the dates comes off the register through /assistant/ask. */
+function howTo(q) {
   const s = q.toLowerCase();
   const hit = BOT_KB.find(e => e.k.some(k => s.includes(k)));
-  if (hit) return { who: "bot", ...hit };
-  return { who: "bot", text: "I'm your Marbella co-pilot. Ask me how to raise a PO, what a gate pass is, this month's spend, GST credit at risk, or what to do with an over-delivery.", chips: true };
+  return hit ? { who: "bot", ...hit } : null;
+}
+
+/**
+ * Ask the server, in the words the person typed.
+ *
+ * The same endpoint ChatGPT and Claude use through the connector, so a question
+ * typed here and the same question typed there are read by the same code. When
+ * the server cannot read it, the app's own how-to answers get a turn; when
+ * neither can, the server's list of what it CAN answer is shown rather than a
+ * cheerful non-answer.
+ */
+async function botReply(q) {
+  try {
+    const r = await api.post("/assistant/ask", { question: q });
+    if (r && r.understood) return { who: "bot", text: r.answer };
+    const how = howTo(q);
+    if (how) return how;
+    return { who: "bot", text: (r && r.answer) || "I did not understand that one.", chips: true };
+  } catch (e) {
+    const how = howTo(q);
+    if (how) return how;
+    return {
+      who: "bot",
+      text: "I could not reach the register just now, so I am not going to guess. Try again in a moment.",
+      chips: true,
+    };
+  }
 }
 function BotViz({ m }) {
   if (m.viz === "steps") return (
@@ -6579,16 +6616,6 @@ function BotViz({ m }) {
       </React.Fragment>); })}
     </div>
   );
-  if (m.viz === "spend") { const top = SPEND_CAT.slice(0, 6); const max = Math.max(...top.map(d => d.v)); const cols = [C.ink, C.gold, C.amber, C.green, C.ink, C.gold]; return (
-    <div style={{ background: "#fff", border: `1px solid ${C.line}`, borderRadius: 12, padding: 14 }}>
-      <div style={{ font: `600 10px ${sans}`, color: C.stone, marginBottom: 10, letterSpacing: "0.08em", textTransform: "uppercase" }}>H1 spend · ₹ Cr</div>
-      {top.map((d, i) => (<div key={d.name} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
-        <div style={{ width: 62, font: `12px ${sans}`, color: C.inkSoft }}>{d.name}</div>
-        <div style={{ flex: 1, height: 10, background: C.lineSoft, borderRadius: 5, overflow: "hidden" }}><div style={{ width: `${d.v / max * 100}%`, height: "100%", background: cols[i % 6] }} /></div>
-        <div style={{ width: 30, textAlign: "right", font: `600 12px ${mono}` }}>{d.v}</div>
-      </div>))}
-    </div>
-  ); }
   if (m.viz === "kpis") return (
     <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
       {m.kpis.map(([l, v], i) => <div key={l} style={{ flex: 1, minWidth: 92, background: [C.goldTint, "#fff", C.redSoft][i % 3], border: `1px solid ${[C.goldSoft, C.line, "#EBD6CF"][i % 3]}`, borderRadius: 10, padding: "10px 12px" }}>
@@ -6604,9 +6631,11 @@ function Bubble({ m, onChip, onSpeak }) {
   return (
     <div style={{ display: "flex", justifyContent: me ? "flex-end" : "flex-start" }}>
       <div style={{ maxWidth: "88%" }}>
-        <div style={{ background: me ? C.ink : "#fff", color: me ? "#fff" : C.ink, border: me ? "none" : `1px solid ${C.line}`, borderRadius: 12, padding: "10px 12px", font: `13px ${sans}`, lineHeight: 1.5 }}>
+        {/* The answers are lists, one person to a line. Without pre-wrap they
+            arrive as one paragraph and nobody can read them. */}
+        <div style={{ background: me ? C.ink : "#fff", color: me ? "#fff" : C.ink, border: me ? "none" : `1px solid ${C.line}`, borderRadius: 12, padding: "10px 12px", font: `13px ${sans}`, lineHeight: 1.5, whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>
           {m.text}
-          {!me && m.text && <button data-icon-btn onClick={() => onSpeak(m.text)} title="Read aloud" style={{ marginLeft: 6, background: "none", border: "none", cursor: "pointer", color: C.stone, verticalAlign: "-3px" }}><Volume2 size={14} /></button>}
+          {!me && m.text && <button data-icon-btn onClick={() => onSpeak(m.text)} title="Read aloud" style={{ display: "block", marginTop: 6, background: "none", border: "none", cursor: "pointer", color: C.stone, padding: 0 }}><Volume2 size={14} /></button>}
         </div>
         {!me && m.viz && <div style={{ marginTop: 8 }}><BotViz m={m} /></div>}
         {!me && m.chips && <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>{BOT_SAMPLES.map(s => <button key={s} onClick={() => onChip(s)} style={{ cursor: "pointer", border: `1px solid ${C.line}`, background: "#fff", color: C.inkSoft, font: `600 11px ${sans}`, padding: "6px 10px", borderRadius: 16 }}>{s}</button>)}</div>}
@@ -6617,12 +6646,22 @@ function Bubble({ m, onChip, onSpeak }) {
 export function Assistant() {
   const mob = useIsMobile();
   const [open, setOpen] = useState(false);
-  const [msgs, setMsgs] = useState([{ who: "bot", text: "Hi — I'm Marbella's co-pilot. Stuck on a step, or just want a quick number? Ask away, or tap the mic and talk.", chips: true }]);
+  const [msgs, setMsgs] = useState([{ who: "bot", text: "Ask me about the people on the rolls — ages, counts, who reports to whom, whose birthday is next — in whatever words you like. Pay and ID documents I cannot see.", chips: true }]);
   const [input, setInput] = useState("");
   const [listening, setListening] = useState(false);
+  const [thinking, setThinking] = useState(false);
   const scroller = React.useRef(null);
-  useEffect(() => { if (scroller.current) scroller.current.scrollTop = scroller.current.scrollHeight; }, [msgs, open]);
-  const send = (text) => { const q = (text != null ? text : input).trim(); if (!q) return; setMsgs(m => [...m, { who: "me", text: q }, botReply(q)]); setInput(""); };
+  useEffect(() => { if (scroller.current) scroller.current.scrollTop = scroller.current.scrollHeight; }, [msgs, open, thinking]);
+  const send = async (text) => {
+    const q = (text != null ? text : input).trim();
+    if (!q || thinking) return;
+    setMsgs(m => [...m, { who: "me", text: q }]);
+    setInput("");
+    setThinking(true);
+    const reply = await botReply(q);
+    setThinking(false);
+    setMsgs(m => [...m, reply]);
+  };
   const fauxListen = () => { setListening(true); setTimeout(() => { setInput(BOT_SAMPLES[Math.floor(Math.random() * BOT_SAMPLES.length)]); setListening(false); }, 1100); };
   const listen = () => {
     const SR = typeof window !== "undefined" && (window.SpeechRecognition || window.webkitSpeechRecognition);
@@ -6638,15 +6677,20 @@ export function Assistant() {
       <div style={{ position: "fixed", zIndex: 69, right: mob ? 0 : 24, left: mob ? 0 : "auto", bottom: mob ? 0 : 92, width: mob ? "100%" : 392, height: mob ? "80vh" : 560, background: C.paper, borderRadius: mob ? "18px 18px 0 0" : 16, border: `1px solid ${C.line}`, boxShadow: "0 24px 60px rgba(0,0,0,.32)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
         <div style={{ background: `linear-gradient(150deg, #2A4C7C, ${C.inkDeep})`, color: "#fff", padding: "14px 16px", display: "flex", alignItems: "center", gap: 10 }}>
           <div style={{ width: 34, height: 34, borderRadius: 10, background: "rgba(199,161,98,.22)", display: "grid", placeItems: "center" }}><Sparkles size={17} color={C.gold} /></div>
-          <div style={{ flex: 1 }}><div style={{ font: `600 13px ${sans}` }}>Marbella Co-pilot</div><div style={{ font: `11px ${sans}`, color: "#A9B7CE" }}>Ask how to · or ask for a number</div></div>
+          <div style={{ flex: 1 }}><div style={{ font: `600 13px ${sans}` }}>Marbella Co-pilot</div><div style={{ font: `11px ${sans}`, color: "#A9B7CE" }}>Ask about the people, in your own words</div></div>
           <button data-icon-btn onClick={() => setOpen(false)} style={{ background: "none", border: "none", color: "#A9B7CE", cursor: "pointer" }}><X size={18} /></button>
         </div>
         <div ref={scroller} style={{ flex: 1, overflowY: "auto", padding: 14, display: "flex", flexDirection: "column", gap: 12 }}>
           {msgs.map((m, i) => <Bubble key={i} m={m} onChip={send} onSpeak={speak} />)}
+          {thinking && (
+            <div style={{ display: "flex", justifyContent: "flex-start" }}>
+              <div style={{ background: "#fff", border: `1px solid ${C.line}`, borderRadius: 12, padding: "10px 12px", font: `13px ${sans}`, color: C.stone }}>Reading the register…</div>
+            </div>
+          )}
         </div>
         <div style={{ borderTop: `1px solid ${C.line}`, background: "#fff", padding: 10, display: "flex", alignItems: "center", gap: 8 }}>
           <button data-icon-btn onClick={listen} title="Speak" style={{ width: 40, height: 40, borderRadius: 10, border: `1px solid ${listening ? C.gold : C.line}`, background: listening ? C.goldTint : "#fff", cursor: "pointer", display: "grid", placeItems: "center", color: listening ? C.goldDeep : C.inkSoft, flexShrink: 0 }}><Mic size={18} /></button>
-          <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === "Enter" && send()} placeholder={listening ? "Listening…" : "Type or tap the mic"} style={{ flex: 1, minWidth: 0, border: `1px solid ${C.line}`, borderRadius: 10, padding: "10px 12px", font: `13px ${sans}`, outline: "none", color: C.ink }} />
+          <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === "Enter" && send()} placeholder={listening ? "Listening…" : thinking ? "Reading the register…" : "Ask me anything about the people"} style={{ flex: 1, minWidth: 0, border: `1px solid ${C.line}`, borderRadius: 10, padding: "10px 12px", font: `13px ${sans}`, outline: "none", color: C.ink }} />
           <button data-icon-btn onClick={() => send()} style={{ width: 40, height: 40, borderRadius: 10, border: "none", background: C.ink, color: "#fff", cursor: "pointer", display: "grid", placeItems: "center", flexShrink: 0 }}><Send size={17} /></button>
         </div>
       </div>

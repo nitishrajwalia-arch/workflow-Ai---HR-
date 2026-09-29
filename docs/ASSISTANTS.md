@@ -21,7 +21,8 @@ its own would be a way round every gate on the other 129 routes in this API.
 
 | Tool | What it answers | Needs |
 | --- | --- | --- |
-| `find_people` | Search the register by name, department, designation or site | Viewer |
+| `ask` | A whole question in plain English — "everyone over 60 years of age" | Viewer |
+| `find_people` | Search the register by name, department, designation, site or age | Viewer |
 | `get_person` | Role, department, manager, site, joining date, weekly off | Viewer |
 | `headcount` | Counts by department, company, site or staff type | Viewer |
 | `who_reports_to` | Somebody's manager and their direct reports | Viewer |
@@ -30,6 +31,26 @@ its own would be a way round every gate on the other 129 routes in this API.
 | `holidays` | The holiday calendar and working hours by department | Viewer |
 | `attendance_summary` | Days present, absent and on their weekly off | Manager |
 | `open_hr_tasks` | What is outstanding on the HR desk | HR |
+
+## Asking in plain English
+
+There is no need to know the tool names. `ask` takes the question in the words
+it was asked in:
+
+> Give me details of everyone who's more than 60 years of age
+> How many people in Maintenance?
+> Who is the oldest person on the rolls?
+> Who reports to Ajay Goel?
+> Whose birthday is coming up?
+
+The same sentences work in the co-pilot inside the app — the chat button in the
+bottom corner — and in the shareable preview, which has no server behind it.
+All three read the question with the same code, in `packages/shared/src/ask.ts`,
+so the same question gets the same answer wherever it is typed.
+
+When it cannot read a question it says so and lists what it can answer. It does
+not guess, because a confident wrong answer about a colleague is worse than "I
+did not understand that".
 
 ## What it can never do
 

@@ -145,6 +145,75 @@ describe('it answers real questions', () => {
   });
 });
 
+/**
+ * The question the management actually asked, in the words they asked it in,
+ * through both doors: the assistant's tool, and the app's own co-pilot.
+ */
+describe('asking in plain English', () => {
+  const ask = async (question: string, token = adminToken) => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/assistant/ask',
+      headers: auth(token),
+      payload: { question },
+    });
+    return res.json<{ answer: string; understood: boolean; matched: string }>();
+  };
+
+  it('answers "everyone who is more than 60 years of age"', async () => {
+    const r = await ask("give me details of everyone who's more than 60 years of age");
+    expect(r.understood).toBe(true);
+    expect(r.matched).toBe('age-above');
+    expect(r.answer).toMatch(/age 6\d/);
+  });
+
+  it('answers the same question asked the other way round', async () => {
+    const a = await ask('everyone over 60');
+    const b = await ask('staff aged 60 and over');
+    expect(a.answer).toBe(b.answer);
+  });
+
+  it('is the same answer through the assistant connector', async () => {
+    const viaTool = await call('ask', { question: 'everyone over 60' });
+    const viaApp = await ask('everyone over 60');
+    expect(viaTool.result?.content?.[0]?.text).toBe(viaApp.answer);
+  });
+
+  it('will not hand over pay, and says so rather than failing', async () => {
+    const r = await ask('what is the salary of the oldest person');
+    expect(r.understood).toBe(true);
+    expect(r.matched).toBe('withheld');
+    expect(r.answer).not.toMatch(/\d{4,}/);
+  });
+
+  it('says it did not understand rather than guessing', async () => {
+    const r = await ask('will it rain on site tomorrow');
+    expect(r.understood).toBe(false);
+    expect(r.answer).toContain('did not understand');
+  });
+
+  it('answers a storeman with his own role, not the administrator’s', async () => {
+    const r = await ask('how many people do we have', viewerToken);
+    expect(r.understood).toBe(true);
+  });
+
+  it('refuses without a token', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/assistant/ask',
+      payload: { question: 'everyone over 60' },
+    });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it('find_people can be filtered by age, and says the age it used', async () => {
+    const r = await call('find_people', { min_age: 60 });
+    const text = r.result?.content?.[0]?.text ?? '';
+    expect(text).toMatch(/age 6\d/);
+    expect(text).not.toMatch(/age [1-5]\d\b/);
+  });
+});
+
 describe('connecting one is written down', () => {
   it('seals who pointed an assistant at the company', async () => {
     const res = await app.inject({
