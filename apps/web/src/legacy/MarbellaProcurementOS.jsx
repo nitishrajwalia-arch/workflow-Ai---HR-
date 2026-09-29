@@ -9318,6 +9318,8 @@ function PersonProfile({ p, onClose }) {
 function PeopleRosterView({ landOn = "", onLanded = () => {} }) {
   const mob = useIsMobile(); const { people } = useProc();
   const [q, setQ] = useState(""); const [type, setType] = useState("All"); const [status, setStatus] = useState("active");
+  const [dept, setDept] = useState("All");
+  const [study, setStudy] = useState(null);   // a department opened to look into
   const [sel, setSel] = useState(null); const [enrol, setEnrol] = useState(false);
   /* Somebody searched for a person at the top of the screen and was sent here.
      Open them, rather than dropping the person on a list of a hundred and
@@ -9333,9 +9335,26 @@ function PeopleRosterView({ landOn = "", onLanded = () => {} }) {
   const rows = useMemo(() => people.filter(p =>
     (status === "All" || p.status === status) &&
     (type === "All" || p.type === type) &&
+    (dept === "All" || p.dept === dept) &&
     (!q.trim() || (p.name + p.id + p.designation).toLowerCase().includes(q.toLowerCase()))
-  ), [people, q, type, status]);
-  const counts = P_TYPES.map(t => [t, people.filter(p => p.type === t && p.status === "active").length]);
+  ), [people, q, type, status, dept]);
+
+  /* THE SHAPE OF THE COMPANY, DEPARTMENT BY DEPARTMENT.
+     What was here before was four cards headed Staff, Site, Labour and
+     Security — two of which read 0, because Marbella has no such employees.
+     Two dead cards and no answer to the question people actually open this
+     screen with, which is how many are in each department. */
+  const active = useMemo(() => people.filter(p => p.status === "active"), [people]);
+  const depts = useMemo(() => {
+    const by = {};
+    for (const p of active) {
+      const d = p.dept || "Not set";
+      (by[d] ??= { dept: d, n: 0, types: {} })[">"] = 1;
+      by[d].n += 1;
+      by[d].types[p.type || "—"] = (by[d].types[p.type || "—"] || 0) + 1;
+    }
+    return Object.values(by).sort((a, b) => b.n - a.n || a.dept.localeCompare(b.dept));
+  }, [active]);
   return (
     <div>
       <div style={{ display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}><Eyebrow>People · master record</Eyebrow><Pill tone="stone">{people.filter(p => p.status === "active").length} active</Pill></div>
@@ -9343,11 +9362,59 @@ function PeopleRosterView({ landOn = "", onLanded = () => {} }) {
         <h1 style={{ font: `400 25px ${serif}`, margin: 0 }}>Everyone, one identity.</h1>
         <GoldButton small onClick={() => setEnrol(true)}><span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><UserPlus size={14} /> Enrol a person</span></GoldButton>
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr 1fr" : "repeat(4,1fr)", gap: 12, marginBottom: 16 }}>
-        {counts.map(([t, n]) => (
-          <Card key={t} pad={14}><div style={{ font: `600 10px ${sans}`, letterSpacing: "0.1em", textTransform: "uppercase", color: C.stone }}>{t}</div><div style={{ font: `400 24px ${serif}`, marginTop: 4 }}>{n}</div></Card>
-        ))}
+      {/* Everybody, and then the departments they are in. Each one opens. */}
+      <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr" : "220px 1fr", gap: 12, marginBottom: 16, alignItems: "stretch" }}>
+        <button
+          onClick={() => { setDept("All"); setType("All"); }}
+          style={{ textAlign: "left", cursor: "pointer", border: `1px solid ${dept === "All" ? C.ink : C.line}`,
+            background: dept === "All" ? C.ink : "#fff", borderRadius: 12, padding: 16 }}>
+          <div style={{ font: `600 10px ${sans}`, letterSpacing: ".1em", textTransform: "uppercase", color: dept === "All" ? "#B9C4D6" : C.stone }}>
+            Everyone on the rolls
+          </div>
+          <div style={{ font: `400 32px ${serif}`, marginTop: 4, color: dept === "All" ? "#fff" : C.ink }}>{active.length}</div>
+          <div style={{ font: `11px ${sans}`, color: dept === "All" ? "#B9C4D6" : C.stone, marginTop: 4, lineHeight: 1.5 }}>
+            across {depts.length} department{depts.length === 1 ? "" : "s"}
+            {P_TYPES.filter(t => active.some(p => p.type === t)).map(t =>
+              ` · ${active.filter(p => p.type === t).length} ${t.toLowerCase()}`).join("")}
+          </div>
+        </button>
+
+        <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr 1fr" : "repeat(auto-fill, minmax(150px, 1fr))", gap: 10 }}>
+          {depts.map(d => {
+            const on = dept === d.dept;
+            return (
+              <button key={d.dept} onClick={() => setStudy(d.dept)} title={`Open ${d.dept}`}
+                style={{ textAlign: "left", cursor: "pointer", border: `1px solid ${on ? C.goldDeep : C.line}`,
+                  background: on ? C.goldTint || "#F6EFDF" : "#fff", borderRadius: 12, padding: "11px 13px" }}
+                onMouseEnter={e => { if (!on) e.currentTarget.style.background = C.paper; }}
+                onMouseLeave={e => { if (!on) e.currentTarget.style.background = "#fff"; }}>
+                <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
+                  <span style={{ font: `400 22px ${serif}`, color: C.ink }}>{d.n}</span>
+                  <ChevronRight size={13} color={C.stone} style={{ marginLeft: "auto" }} />
+                </div>
+                <div style={{ font: `600 11.5px ${sans}`, color: C.ink, marginTop: 2, lineHeight: 1.3 }}>{d.dept}</div>
+                <div style={{ font: `10.5px ${sans}`, color: C.stone, marginTop: 2 }}>
+                  {Object.entries(d.types).sort((a, b) => b[1] - a[1]).map(([t, n]) => `${n} ${t.toLowerCase()}`).join(" · ")}
+                </div>
+              </button>
+            );
+          })}
+        </div>
       </div>
+
+      {dept !== "All" && (
+        <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 12, flexWrap: "wrap" }}>
+          <span style={{ font: `12.5px ${sans}`, color: C.inkSoft }}>
+            Showing <b style={{ color: C.ink }}>{dept}</b> only.
+          </span>
+          <button onClick={() => setDept("All")} style={{ ...softBtn, padding: "5px 10px", font: `11.5px ${sans}` }}>
+            Show everyone
+          </button>
+          <button onClick={() => setStudy(dept)} style={{ ...softBtn, padding: "5px 10px", font: `11.5px ${sans}` }}>
+            Open {dept}
+          </button>
+        </div>
+      )}
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, border: `1px solid ${C.line}`, borderRadius: 3, padding: "8px 11px", background: "#fff", flex: 1, minWidth: 200 }}>
           <Search size={15} color={C.stone} /><input value={q} onChange={e => setQ(e.target.value)} placeholder="Search name, ID or role…" style={{ border: "none", outline: "none", font: `13px ${sans}`, width: "100%", color: C.ink }} />
@@ -9371,7 +9438,238 @@ function PeopleRosterView({ landOn = "", onLanded = () => {} }) {
       </Card>
       {sel && <PersonProfile p={sel} onClose={() => setSel(null)} />}
       {enrol && <EnrollPerson onClose={() => setEnrol(false)} />}
+      {study && (
+        <DepartmentStudy
+          dept={study}
+          onClose={() => setStudy(null)}
+          onPerson={(p) => { setStudy(null); setSel(p); }}
+          onFilter={() => { setStudy(null); setDept(study); setStatus("active"); setType("All"); setQ(""); }}
+        />
+      )}
     </div>
+  );
+}
+
+/**
+ * ONE DEPARTMENT, OPENED UP.
+ *
+ * The counting screen answers "how many". This answers "who, and what are they
+ * like" — which is the question somebody new to the company actually has, and
+ * the one that used to mean scrolling a list of a hundred and twenty-six names
+ * looking for a pattern.
+ *
+ * Everything on it is READ OFF THE REGISTER. Nothing is averaged into a score
+ * or dressed up as an insight: it is the department's own facts, grouped the
+ * three ways people ask about them — where they sit, who pays them, who they
+ * report to — plus the gaps in the record, because a department with eleven
+ * people and four missing mobile numbers is a thing to fix, not a statistic.
+ */
+function DepartmentStudy({ dept, onClose, onPerson, onFilter }) {
+  const mob = useIsMobile();
+  const { people, offices = [], companies = [], salaries = {}, contacts = {}, deptRules = {} } = useProc();
+  const [tab, setTab] = useState("who");
+
+  const all = people.filter(p => p.dept === dept);
+  const here = all.filter(p => p.status === "active");
+  const gone = all.filter(p => p.status === "exited");
+  const siteName = (id) => (offices.find(o => o.id === id) || {}).short || "Not posted";
+  const firmName = (id) => (companies.find(c => c.id === id) || {}).name || "Not set";
+
+  const group = (pick) => {
+    const by = {};
+    for (const p of here) (by[pick(p)] ??= []).push(p);
+    return Object.entries(by).sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0]));
+  };
+
+  /* Who they answer to. Somebody whose manager is outside the department is
+     worth seeing as much as somebody inside it — that is the line the work
+     actually travels along. */
+  const heads = (() => {
+    const by = {};
+    for (const p of here) {
+      const m = p.reportsTo ? people.find(x => x.id === p.reportsTo) : null;
+      const key = m ? `${m.name}${m.dept === dept ? "" : ` · ${m.dept}`}` : (p.reportsToNote || "Nobody recorded");
+      (by[key] ??= []).push(p);
+    }
+    return Object.entries(by).sort((a, b) => b[1].length - a[1].length);
+  })();
+
+  const ages = here.map(p => p.age).filter(n => typeof n === "number" && n > 0).sort((a, b) => a - b);
+  const served = here
+    .map(p => ({ p, d: p.joined ? new Date(`${p.joined} 00:00:00 GMT`).getTime() : NaN }))
+    .filter(x => !Number.isNaN(x.d))
+    .sort((a, b) => a.d - b.d);
+
+  /* THE GAPS. Named, countable, and each one a thing somebody can go and fix.
+     Ordered by what it costs: a missing salary stops a payslip, a missing
+     number means nobody can be reached, a missing photo is a card that looks
+     unfinished. */
+  const gaps = [
+    ["no salary on file", here.filter(p => !((salaries[p.id] || {}).gross > 0)), "money"],
+    ["no mobile number on file", here.filter(p => !((contacts[p.id] || {}).phone || "").trim()), "money"],
+    ["nobody recorded above them", here.filter(p => !p.reportsTo && !(p.reportsToNote || "").trim()), ""],
+    ["no date of birth", here.filter(p => !p.dob), ""],
+    ["no photo", here.filter(p => !p.photo), ""],
+  ].filter(([, list]) => list.length > 0);
+  /* PEOPLE with a gap, not gaps. Counting gaps made a department where nobody
+     has had their photograph taken read as 61 problems, which is one problem. */
+  const withGap = new Set(gaps.flatMap(([, list]) => list.map(x => x.id))).size;
+
+  const rule = deptRules[dept] || {};
+  const TABS = [["who", `The ${here.length}`], ["where", "Where & who pays"], ["chart", "Who reports to whom"], ["gaps", `Gaps${withGap ? ` · ${withGap}` : ""}`]];
+
+  const box = { border: `1px solid ${C.line}`, borderRadius: 11, padding: 13, background: "#fff" };
+  const row = (label, value) => (
+    <div key={label} style={{ display: "flex", gap: 10, padding: "7px 0", borderTop: `1px solid ${C.lineSoft}` }}>
+      <span style={{ font: `12.5px ${sans}`, color: C.inkSoft, flex: 1 }}>{label}</span>
+      <span style={{ font: `600 12.5px ${sans}`, color: C.ink, fontFamily: mono }}>{value}</span>
+    </div>
+  );
+  const personRow = (p, i, note) => (
+    <button key={p.id} onClick={() => onPerson(p)}
+      style={{ cursor: "pointer", width: "100%", textAlign: "left", border: "none", background: "#fff",
+        borderTop: i ? `1px solid ${C.lineSoft}` : "none", padding: "10px 12px", display: "flex", alignItems: "center", gap: 11 }}
+      onMouseEnter={e => e.currentTarget.style.background = C.paper}
+      onMouseLeave={e => e.currentTarget.style.background = "#fff"}>
+      <div style={{ width: 30, height: 30, borderRadius: 8, background: p.status === "active" ? C.ink : C.stone, color: "#fff", display: "grid", placeItems: "center", font: `700 13px ${serif}`, flexShrink: 0 }}>{p.name[0]}</div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ font: `600 12.5px ${sans}`, color: C.ink }}>{p.name}</div>
+        <div style={{ font: `11.5px ${sans}`, color: C.stone, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {p.designation} · <span style={{ fontFamily: mono }}>{p.id}</span>{note ? ` · ${note}` : ""}
+        </div>
+      </div>
+      <ChevronRight size={15} color={C.stone} />
+    </button>
+  );
+
+  return (
+    <Overlay onClose={onClose} width={860}>
+      <div style={{ padding: mob ? 18 : 26 }}>
+        <Eyebrow>Department</Eyebrow>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap", margin: "6px 0 4px" }}>
+          <h2 style={{ font: `400 25px ${serif}`, margin: 0 }}>{dept}</h2>
+          <Pill tone="stone">{here.length} on the rolls</Pill>
+          {gone.length > 0 && <Pill tone="red">{gone.length} left</Pill>}
+        </div>
+        <div style={{ font: `12.5px ${sans}`, color: C.inkSoft, lineHeight: 1.6, marginBottom: 14 }}>
+          {here.length === 0
+            ? "Nobody is in this department at the moment."
+            : <>
+                {here.length} {here.length === 1 ? "person" : "people"}
+                {ages.length ? `, aged ${ages[0]} to ${ages[ages.length - 1]}` : ""}
+                {served.length ? `. Longest here is ${served[0].p.name}, since ${served[0].p.joined}` : ""}
+                {rule.in && rule.out ? `. The department's hours are ${rule.in} to ${rule.out}` : ""}.
+              </>}
+        </div>
+
+        <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 14 }}>
+          {TABS.map(([k, label]) => (
+            <button key={k} onClick={() => setTab(k)}
+              style={{ cursor: "pointer", border: `1px solid ${tab === k ? C.ink : C.line}`, borderRadius: 8,
+                background: tab === k ? C.ink : "#fff", color: tab === k ? "#fff" : C.inkSoft,
+                font: `600 11.5px ${sans}`, padding: "7px 12px" }}>{label}</button>
+          ))}
+          <GoldButton small ghost onClick={onFilter} style={{ marginLeft: "auto" }}>
+            Show these in the list
+          </GoldButton>
+        </div>
+
+        {tab === "who" && (
+          <Card pad={0}>
+            {[...here, ...gone].map((p, i) => personRow(p, i, p.status === "exited" ? `left ${p.exitedOn || ""}`.trim() : siteName(p.office)))}
+            {all.length === 0 && <div style={{ padding: 18, font: `13px ${sans}`, color: C.stone }}>Nobody here.</div>}
+          </Card>
+        )}
+
+        {tab === "where" && (
+          <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr" : "1fr 1fr", gap: 12 }}>
+            <div style={box}>
+              <div style={{ font: `600 10px ${sans}`, letterSpacing: ".1em", textTransform: "uppercase", color: C.stone, marginBottom: 4 }}>Where they are posted</div>
+              {group(p => siteName(p.office)).map(([k, list]) => row(k, list.length))}
+            </div>
+            <div style={box}>
+              <div style={{ font: `600 10px ${sans}`, letterSpacing: ".1em", textTransform: "uppercase", color: C.stone, marginBottom: 4 }}>Which company pays them</div>
+              {group(p => firmName(p.employer)).map(([k, list]) => row(k, list.length))}
+            </div>
+            <div style={box}>
+              <div style={{ font: `600 10px ${sans}`, letterSpacing: ".1em", textTransform: "uppercase", color: C.stone, marginBottom: 4 }}>What kind of employee</div>
+              {group(p => p.type || "Not set").map(([k, list]) => row(k, list.length))}
+            </div>
+            <div style={box}>
+              <div style={{ font: `600 10px ${sans}`, letterSpacing: ".1em", textTransform: "uppercase", color: C.stone, marginBottom: 4 }}>Their day off</div>
+              {group(p => p.offDay || "Not set").map(([k, list]) => row(k, list.length))}
+            </div>
+          </div>
+        )}
+
+        {tab === "chart" && (
+          <div style={{ display: "grid", gap: 11 }}>
+            {heads.map(([who, list]) => (
+              <div key={who} style={box}>
+                <div style={{ font: `600 12.5px ${sans}`, color: who === "Nobody recorded" ? C.amber : C.ink, marginBottom: 2 }}>
+                  {who === "Nobody recorded" ? "Nobody recorded above them" : who}
+                </div>
+                <div style={{ font: `11px ${sans}`, color: C.stone, marginBottom: 7 }}>
+                  {list.length} {list.length === 1 ? "person" : "people"}
+                </div>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  {list.map(p => (
+                    <button key={p.id} onClick={() => onPerson(p)}
+                      style={{ cursor: "pointer", border: `1px solid ${C.line}`, borderRadius: 7, background: C.paper,
+                        font: `11.5px ${sans}`, color: C.ink, padding: "5px 9px" }}>
+                      {p.name} <span style={{ color: C.stone }}>· {p.designation}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {tab === "gaps" && (
+          <div style={{ display: "grid", gap: 11 }}>
+            {gaps.length === 0 && (
+              <div style={{ ...box, font: `13px ${sans}`, color: C.green }}>
+                Nothing missing. Every record in {dept} has a mobile number, a salary, a photo, a
+                date of birth and somebody recorded above them.
+              </div>
+            )}
+            {gaps.map(([what, list, tone]) => {
+              /* Everybody is not a list. A gap that covers the whole
+                 department is one sentence; naming all sixty-one of them is a
+                 wall of chips that says nothing and hides the two-name gap
+                 above it. */
+              const everyone = list.length === here.length && here.length > 3;
+              const show = everyone ? [] : list.slice(0, 12);
+              return (
+                <div key={what} style={box}>
+                  <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: everyone ? 0 : 7, flexWrap: "wrap" }}>
+                    <span style={{ font: `600 12.5px ${sans}`, color: tone === "money" ? C.red : C.ink }}>
+                      {everyone ? `Every one of the ${here.length}` : list.length} {everyone ? "has" : "with"} {what}
+                    </span>
+                    {!everyone && <span style={{ font: `11px ${sans}`, color: C.stone }}>of {here.length}</span>}
+                  </div>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                    {show.map(p => (
+                      <button key={p.id} onClick={() => onPerson(p)}
+                        style={{ cursor: "pointer", border: `1px solid ${C.line}`, borderRadius: 7, background: C.paper,
+                          font: `11.5px ${sans}`, color: C.ink, padding: "5px 9px" }}>
+                        {p.name}
+                      </button>
+                    ))}
+                    {!everyone && list.length > show.length && (
+                      <span style={{ font: `11.5px ${sans}`, color: C.stone }}>
+                        and {list.length - show.length} more
+                      </span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </Overlay>
   );
 }
 
@@ -13990,11 +14288,26 @@ function StepCard({ n, title, note, done, last, children }) {
  * comes. A flagged person is still PAID: they worked part of the month. What
  * changes is that their employment ends with this run.
  */
-function LeaversCheck({ month, count, suspects, onEnd, onConfirm, onClose, busy }) {
+/**
+ * THE LAST QUESTION BEFORE A MONTH GOES OUT.
+ *
+ * Two different things, and running them together is what made this screen
+ * useless before: a list of people who HAVE left, which is a fact HR needs to
+ * be told, and a list of people who MIGHT have, which is a question only HR can
+ * answer.
+ *
+ * The first list is why this exists at all. Deboarding marks somebody exited
+ * when their assets come back — the stage before full-and-final — so at exactly
+ * the point HR is settling their dues, the register says they have gone. They
+ * are on this run, paid for the days up to their last one, and they must not be
+ * on the next one. Saying nothing here is how that gets missed.
+ */
+function LeaversCheck({ month, count, suspects, leaving = [], onEnd, onConfirm, onClose, busy }) {
   const mob = useIsMobile();
   const [ending, setEnding] = useState({});   // pid -> reason chosen
   const [keep, setKeep] = useState([]);       // pids waved through
   const left = suspects.filter(s => !ending[s.p.id] && !keep.includes(s.p.id));
+  const lastPay = leaving.reduce((a, l) => a + Number(String(l.last).split(" ")[0] || 0), 0);
   return (
     <Overlay onClose={onClose} width={640}>
       <div style={{ padding: mob ? 18 : 24 }}>
@@ -14006,10 +14319,57 @@ function LeaversCheck({ month, count, suspects, onEnd, onConfirm, onClose, busy 
         <h2 style={{ font: `400 21px ${serif}`, margin: "0 0 6px" }}>Has anybody on this payroll left?</h2>
         <p style={{ font: `13px ${sans}`, color: C.inkSoft, lineHeight: 1.6, margin: "0 0 16px" }}>
           {count} {count === 1 ? "person is" : "people are"} about to be worked out for {month}.
-          {suspects.length === 0
-            ? " Nothing on the record suggests any of them has gone — no open deboarding, and everybody the machine covers has punched this month. Say so and it runs."
-            : ` ${suspects.length} of them ${suspects.length === 1 ? "is" : "are"} worth a second look:`}
+          {leaving.length === 0 && suspects.length === 0
+            ? " Nobody left this month, and nothing on the record suggests any of them has gone — no open deboarding, and everybody the machine covers has punched this month. Say so and it runs."
+            : ""}
         </p>
+
+        {/* WHO HAS LEFT. Not a question — a fact, and the last money they are
+            owed from this company. It goes first because it is the thing that
+            gets missed. */}
+        {leaving.length > 0 && (
+          <div style={{ marginBottom: 18 }}>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 7, flexWrap: "wrap" }}>
+              <span style={{ font: `600 12px ${sans}`, color: C.red, letterSpacing: ".04em", textTransform: "uppercase" }}>
+                {leaving.length === 1 ? "One person left this month" : `${leaving.length} people left this month`}
+              </span>
+              <span style={{ font: `11.5px ${sans}`, color: C.stone }}>
+                This is their last salary — {lastPay} paid day{lastPay === 1 ? "" : "s"} in all, then off the payroll.
+              </span>
+            </div>
+            <div style={{ border: `1px solid ${C.red}`, borderRadius: 12, overflow: "hidden", background: C.redSoft }}>
+              {leaving.map((l, i) => (
+                <div key={l.p.id} style={{ padding: 13, borderTop: i ? `1px solid ${C.line}` : "none" }}>
+                  <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
+                    <span style={{ font: `600 13px ${sans}`, color: C.ink }}>{l.p.name}</span>
+                    <Pill tone="red">last salary</Pill>
+                    {l.stage
+                      ? <Pill tone="gold">deboarding at "{l.stage}"</Pill>
+                      : <Pill tone="stone">no deboarding opened</Pill>}
+                  </div>
+                  <div style={{ font: `11px ${sans}`, color: C.stone, margin: "2px 0 6px" }}>
+                    {l.p.id} · {l.p.designation} · {l.p.dept}
+                  </div>
+                  <div style={{ font: `12px ${sans}`, color: C.inkSoft, lineHeight: 1.5 }}>{l.why}</div>
+                  {!l.stage && (
+                    <div style={{ font: `11.5px ${sans}`, color: C.red, marginTop: 6, lineHeight: 1.5 }}>
+                      Their record says they have gone but no deboarding was ever opened, so nothing
+                      has been settled — no handover, no assets back, no full and final. Open one on
+                      Exits &amp; F&amp;F after this run.
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {suspects.length > 0 && (
+          <div style={{ font: `12.5px ${sans}`, color: C.inkSoft, lineHeight: 1.6, margin: "0 0 9px" }}>
+            {suspects.length} {suspects.length === 1 ? "person is" : "people are"} worth a second look
+            — nobody has said they have left, but something on their record reads like it:
+          </div>
+        )}
 
         {suspects.length > 0 && (
           <div style={{ border: `1px solid ${C.line}`, borderRadius: 12, overflow: "hidden", marginBottom: 16 }}>
@@ -14060,7 +14420,11 @@ function LeaversCheck({ month, count, suspects, onEnd, onConfirm, onClose, busy 
         <div style={{ display: "flex", gap: 9, flexWrap: "wrap", alignItems: "center" }}>
           <GoldButton disabled={busy || left.length > 0} onClick={onConfirm}>
             <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-              <Check size={14} /> {left.length > 0 ? `${left.length} still to answer` : `Nobody has left — work ${month} out`}
+              <Check size={14} /> {left.length > 0
+                ? `${left.length} still to answer`
+                : leaving.length > 0
+                  ? `Understood — work ${month} out`
+                  : `Nobody has left — work ${month} out`}
             </span>
           </GoldButton>
           <button onClick={onClose} style={softBtn}>Go back</button>
@@ -14234,7 +14598,13 @@ function PayrollView({ go }) {
       setCos(companies.map(c => c.id));
     }
   }, [companies, scoped, cosTouched]);
-  const runPeople = people.filter(p => p.status === "active" && runCos.includes(p.employer));
+  /* Everybody this run covers. Not just the active: somebody whose last day
+     falls inside this month is paid for the days they worked, so they are on
+     the run and must be in the count — a screen that says 125 and a run that
+     pays 126 is a screen nobody trusts twice. */
+  const leftThisMonth = (p) => p.exitedOn && String(p.exitedOn).endsWith(" " + month);
+  const runPeople = people.filter(p =>
+    runCos.includes(p.employer) && (p.status === "active" || leftThisMonth(p)));
   const shownPeople = pq.trim()
     ? runPeople.filter(p => (p.name + " " + p.id + " " + p.designation + " " + p.dept).toLowerCase().includes(pq.trim().toLowerCase()))
     : runPeople;
@@ -14244,6 +14614,29 @@ function PayrollView({ go }) {
   };
   /* Everybody this run would actually pay. */
   const runList = who === "some" ? runPeople.filter(p => chosen.includes(p.id)) : runPeople;
+
+  /* THE PEOPLE WHOSE LAST SALARY THIS IS.
+     Deboarding marks somebody exited when their assets come back, which is the
+     stage BEFORE full-and-final — so at exactly the point HR is settling their
+     dues, their record says they have gone. They are on this run, paid for the
+     days up to their last one, and this is where HR is told so rather than
+     finding out from a phone call a fortnight later. */
+  const leavingThisMonth = () => {
+    return people
+      .filter(p => runCos.includes(p.employer) && leftThisMonth(p))
+      .filter(p => who !== "some" || chosen.includes(p.id))
+      .map(p => {
+        const open = exits.find(e => e.pid === p.id && e.stage !== "closed");
+        const day = String(p.exitedOn).split(" ")[0];
+        return {
+          p,
+          last: p.exitedOn,
+          why: `Their last day was ${p.exitedOn}. They are paid for ${Number(day)} day${Number(day) === 1 ? "" : "s"} of ${month} and then they are off the payroll.`,
+          stage: open ? open.stage : null,
+        };
+      })
+      .sort((a, b) => a.p.name.localeCompare(b.p.name));
+  };
 
   /* WHO MIGHT HAVE LEFT.
      Three signals, none of them a guess dressed up as a fact — each row says
@@ -14281,7 +14674,7 @@ function PayrollView({ go }) {
   const askAboutLeavers = () => {
     if (!runCos.length) { toast("Choose at least one company", "amber"); return; }
     if (who === "some" && !chosen.length) { toast("Choose who is being paid", "amber"); return; }
-    setCheck({ suspects: leaverSuspects(), ending: {} });
+    setCheck({ suspects: leaverSuspects(), leaving: leavingThisMonth(), ending: {} });
   };
 
   /* The provider answers null when the server refused, and has already said
@@ -14684,6 +15077,7 @@ function PayrollView({ go }) {
           month={month}
           count={runList.length}
           suspects={check.suspects}
+          leaving={check.leaving || []}
           busy={busy}
           onEnd={async (p, reason) => {
             const id = await openExit(p, reason);

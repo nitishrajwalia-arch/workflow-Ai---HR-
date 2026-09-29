@@ -31,6 +31,7 @@ import {
   computeLine,
   imeiCheck,
   emailCheck,
+  monthWindow,
   payableDays,
   phoneCheck,
   readAdditions,
@@ -688,10 +689,18 @@ export const payrollRoutes: FastifyPluginAsyncZod = async (app) => {
       const heads = await headsOf(company);
       const allowHeads = await allowancesOf(company);
 
+      /* WHO IS ON THIS RUN.
+         Everybody the company currently employs — AND anybody who left during
+         the month being worked out, because their last salary has not been
+         paid yet. Deboarding marks somebody exited when their assets come
+         back, which is BEFORE the full-and-final stage; a run that asked only
+         for `active` people dropped them at exactly that point and paid them
+         nothing for the days they had worked. Somebody who left in an earlier
+         month is filtered out below, by the window. */
       const people = await db.person.findMany({
         where: {
           employerId: company,
-          status: 'active',
+          OR: [{ status: 'active' }, { exitedOn: { not: null } }],
           // Empty list means everybody, which is the ordinary run.
           ...(only.length ? { id: { in: only } } : {}),
         },
@@ -759,6 +768,18 @@ export const payrollRoutes: FastifyPluginAsyncZod = async (app) => {
 
         for (const p of people) {
           if (!p.salary || p.salary.gross <= 0) continue; // nobody without a salary on file
+          /* The part of the month that was theirs. Somebody who joined on the
+             20th was there for eleven days of a thirty-day month, and somebody
+             whose last day was the 12th for twelve — neither fact is in the
+             attendance file, because the machine has no rows for a person
+             before they are enrolled or after they go. */
+          const win = monthWindow({
+            month,
+            monthDays,
+            joined: p.joined,
+            exited: p.status === 'active' ? null : p.exitedOn,
+          });
+          if (win.days <= 0) continue; // left before this month, or not started
           const d = payableDays({
             monthDays,
             onMachine: onMachine.has(p.id),
@@ -770,11 +791,14 @@ export const payrollRoutes: FastifyPluginAsyncZod = async (app) => {
                somebody who had worked every day they were rostered. */
             offDay: p.offDay,
           });
+          /* Capped by the window. A short month for a leaver is short because
+             they left, not because the machine has nothing for them. */
+          const days = Math.min(d.days, win.days);
           const line = computeLine(
             policy,
             structureOf(p.salary),
             {
-              days: d.days,
+              days,
               monthDays,
             },
             heads,
@@ -842,7 +866,18 @@ export const payrollRoutes: FastifyPluginAsyncZod = async (app) => {
                  exactly the one somebody queries. And a date the attendance
                  file wrote without a year says CHECK BEFORE PAYING, which must
                  reach the sheet even when no day was docked. */
-              remark: d.lost || /CHECK BEFORE PAYING/.test(d.why) ? d.why : '',
+              remark: [
+                /* Why they are on a part month, said first, because it is the
+                   line Accounts will be asked about. */
+                win.whole
+                  ? ''
+                  : p.status === 'active'
+                    ? `Part month — ${win.why}.`
+                    : `LAST SALARY — ${win.why}. Their employment ended on ${p.exitedOn}.`,
+                d.lost || /CHECK BEFORE PAYING/.test(d.why) ? d.why : '',
+              ]
+                .filter(Boolean)
+                .join(' '),
             },
           });
         }

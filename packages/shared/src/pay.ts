@@ -470,6 +470,96 @@ export interface PayableDays {
   leave: number;
 }
 
+/* ------------------------------------------------- the part of a month */
+
+/**
+ * HOW MUCH OF THE MONTH SOMEBODY WAS ACTUALLY EMPLOYED FOR.
+ *
+ * A month has thirty days; a person who started on the 16th was there for
+ * fifteen of them, and a person whose last day was the 12th was there for
+ * twelve. Neither fact is in the attendance file. The machine has no rows at
+ * all for somebody before they are enrolled on it, and no rows for them after
+ * they go — and "no rows" is read, correctly, as "not on the machine", which
+ * pays the WHOLE MONTH.
+ *
+ * So a man who joined on the 20th was paid for thirty days, and a man who left
+ * on the 12th was paid for thirty or for none at all depending on whether his
+ * record had been marked exited yet. Both are money, and neither shows up on
+ * any screen as odd.
+ *
+ * This is the window, worked out from the dates on the register, and the days
+ * a run pays for are capped by it.
+ */
+export interface MonthWindow {
+  /** First day of the month they were employed on, 1-based. */
+  readonly from: number;
+  /** Last day of the month they were employed on, 1-based. */
+  readonly to: number;
+  /** Days of the month they were employed for at all. */
+  readonly days: number;
+  /** True when they were there for the whole month. */
+  readonly whole: boolean;
+  /** Why it is short, in words, or '' when it is not. */
+  readonly why: string;
+}
+
+/**
+ * @param month   the month being run, as the sheet heads it — "Jun 2026"
+ * @param joined  the joining date on the register, "16 Jun 2026"
+ * @param exited  the last day, where there is one
+ */
+export function monthWindow(args: {
+  month: string;
+  monthDays: number;
+  joined?: string | null;
+  exited?: string | null;
+}): MonthWindow {
+  const { monthDays } = args;
+  const start = parseDisplayDate(`01 ${args.month}`);
+  const whole: MonthWindow = { from: 1, to: monthDays, days: monthDays, whole: true, why: '' };
+  /* A month heading this function cannot read is not a reason to dock anybody.
+     The whole month is the answer that pays what the run would have paid
+     before this existed, and it is the safe way round. */
+  if (!start) return whole;
+
+  const monthOf = (d: Date): boolean =>
+    d.getUTCFullYear() === start.getUTCFullYear() && d.getUTCMonth() === start.getUTCMonth();
+  const before = (d: Date): boolean =>
+    d.getTime() < start.getTime();
+
+  const j = parseDisplayDate(args.joined ?? '');
+  const x = parseDisplayDate(args.exited ?? '');
+
+  let from = 1;
+  let to = monthDays;
+  const why: string[] = [];
+
+  if (j && monthOf(j)) {
+    from = Math.min(Math.max(1, j.getUTCDate()), monthDays);
+    why.push(`joined on the ${from}`);
+  } else if (j && !before(j) && j.getTime() > start.getTime()) {
+    // They start after this month is over — nothing of it is theirs.
+    return { from: 1, to: 0, days: 0, whole: false, why: 'had not joined yet' };
+  }
+
+  if (x && monthOf(x)) {
+    to = Math.min(Math.max(0, x.getUTCDate()), monthDays);
+    why.push(`last day was the ${to}`);
+  } else if (x && before(x)) {
+    // They were gone before this month began.
+    return { from: 1, to: 0, days: 0, whole: false, why: 'had already left' };
+  }
+
+  const days = Math.max(0, to - from + 1);
+  return {
+    from,
+    to,
+    days,
+    whole: days >= monthDays,
+    why: days >= monthDays ? '' : why.join(' and '),
+  };
+}
+
 export function payableDays(args: {
   monthDays: number;
   onMachine: boolean;
