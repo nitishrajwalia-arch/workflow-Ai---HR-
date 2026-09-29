@@ -2,8 +2,8 @@ import React, { useState, useMemo, useEffect } from "react";
 import { ProcCtx, useProc } from "../proc/context.js";
 import { api } from "../lib/api.js";
 import {
-  INTAKE_FIELDS, INTAKE_UPDATE_FIELDS, aadhaarCheck, matchColumns, panCheck, proposeBreakUp,
-  reductionsFor, rollOutSheet, xlsxToSheet,
+  INTAKE_FIELDS, INTAKE_UPDATE_FIELDS, aadhaarCheck, matchColumns, panCheck, payrollReport,
+  proposeBreakUp, reductionsFor, reportToXlsx, rollOutSheet, xlsxToSheet,
 } from "@marbella/shared";
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, ResponsiveContainer, Cell, Tooltip,
@@ -732,24 +732,99 @@ function Clock12({ compact }) {
     </div>
   );
 }
-function MasterSearch() {
-  const { setOpenVendor } = useProc();
+/**
+ * THE SEARCH BAR AT THE TOP OF EVERY SCREEN.
+ *
+ * It searched three arrays — VENDORS, POS and EMPLOYEES — that were emptied
+ * when the invented data came out, so it could not return a single result for
+ * anything anybody typed, on any screen, ever. The placeholder said try "rs".
+ *
+ * It searches what the company actually has now: people, projects, companies,
+ * vendors, and the screens of whoever is signed in. Every result GOES
+ * somewhere — a person opens on the People screen, a project switches the
+ * project at the top, a screen opens. A result that cannot be acted on is not
+ * offered.
+ */
+function MasterSearch({ go, nav = [], onFind }) {
+  const { people = [], vendors = [], companies = [], projects = [], setOpenVendor, setFirm } = useProc();
   const [q, setQ] = useState("");
-  const res = useMemo(() => { if (!q.trim()) return []; const s = q.toLowerCase(); return SEARCH_INDEX.filter(r => r.label.toLowerCase().includes(s) || r.sub.toLowerCase().includes(s)).slice(0, 6); }, [q]);
+  const [shut, setShut] = useState(false);
+  const box = React.useRef(null);
+
+  /* The People screen is called different things on different desks. Send
+     somebody to whichever one their own sidebar has. */
+  const peopleTab = nav.some(n => n[0] === "roster") ? "roster"
+    : nav.some(n => n[0] === "people") ? "people" : null;
+  const has = (k) => nav.some(n => n[0] === k);
+
+  const res = useMemo(() => {
+    const s = q.trim().toLowerCase();
+    if (s.length < 2) return [];
+    const out = [];
+    const push = (type, label, sub, run) => { if (out.length < 8) out.push({ type, label, sub, run }); };
+
+    for (const p of people) {
+      if (out.length >= 8) break;
+      const hay = `${p.name} ${p.id} ${p.designation || ""} ${p.dept || ""}`.toLowerCase();
+      if (!hay.includes(s)) continue;
+      push("Person", p.name, `${p.id} · ${p.designation || p.dept || ""}`,
+        peopleTab ? () => { onFind && onFind({ tab: peopleTab, id: p.id }); go(peopleTab); } : null);
+    }
+    for (const pr of projects) {
+      if (out.length >= 8) break;
+      if (!`${pr.name} ${pr.short || ""}`.toLowerCase().includes(s)) continue;
+      push("Project", pr.name, "switch the project at the top", () => setFirm(pr.id));
+    }
+    for (const c of companies) {
+      if (out.length >= 8) break;
+      if (!`${c.name} ${c.kind || ""}`.toLowerCase().includes(s)) continue;
+      push("Company", c.name, c.gstin ? `GSTIN ${c.gstin}` : "no GSTIN on file",
+        has("companies") ? () => go("companies") : null);
+    }
+    for (const v of vendors) {
+      if (out.length >= 8) break;
+      if (!`${v.name} ${v.code || ""}`.toLowerCase().includes(s)) continue;
+      push("Vendor", v.name, v.code || "", () => setOpenVendor(v.name));
+    }
+    for (const [key, label] of nav) {
+      if (out.length >= 8) break;
+      if (!String(label).toLowerCase().includes(s)) continue;
+      push("Screen", label, "open it", () => go(key));
+    }
+    return out.filter(r => r.run);
+  }, [q, people, projects, companies, vendors, nav, peopleTab]);
+
+  const pick = (r) => { r.run(); setQ(""); setShut(false); };
+
   return (
-    <div data-coach="search" style={{ position: "relative", flex: 1, maxWidth: 420 }}>
+    <div data-coach="search" ref={box} style={{ position: "relative", flex: 1, maxWidth: 420 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, border: `1px solid ${C.line}`, borderRadius: 3, padding: "8px 11px", background: C.paper }}>
         <Search size={15} color={C.stone} />
-        <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search — try “rs”…" style={{ border: "none", outline: "none", background: "transparent", font: `13px ${sans}`, width: "100%", color: C.ink }} />
+        <input value={q} onChange={e => { setQ(e.target.value); setShut(false); }}
+          onKeyDown={e => {
+            if (e.key === "Escape") { setQ(""); setShut(false); e.currentTarget.blur(); }
+            if (e.key === "Enter" && res.length) pick(res[0]);
+          }}
+          placeholder="Search anyone or anything…"
+          style={{ border: "none", outline: "none", background: "transparent", font: `13px ${sans}`, width: "100%", color: C.ink }} />
+        {q && <button data-icon-btn onClick={() => { setQ(""); setShut(false); }} aria-label="Clear the search"
+          style={{ background: "none", border: "none", cursor: "pointer", color: C.stone, padding: 0 }}><X size={14} /></button>}
       </div>
-      {res.length > 0 && (
+      {q.trim().length >= 2 && !shut && (
         <div style={{ position: "absolute", top: 42, left: 0, right: 0, background: "#fff", border: `1px solid ${C.line}`, borderRadius: 4, boxShadow: "0 10px 30px rgba(0,0,0,.08)", zIndex: 25, overflow: "hidden" }}>
-          {res.map((r, i) => (
-            <div key={i} onClick={() => { if (r.type === "Vendor") { setOpenVendor(r.label); setQ(""); } }} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 13px", borderBottom: i < res.length - 1 ? `1px solid ${C.lineSoft}` : "none", cursor: r.type === "Vendor" ? "pointer" : "default" }}>
-              <Pill tone="stone">{r.type}</Pill>
-              <div style={{ font: `600 13px ${sans}`, color: C.ink }}>{r.label}</div>
-              <div style={{ font: `12px ${mono}`, color: C.stone, marginLeft: "auto" }}>{r.sub}</div>
+          {res.length === 0 ? (
+            <div style={{ padding: "12px 13px", font: `12px ${sans}`, color: C.stone, lineHeight: 1.5 }}>
+              Nothing matches “{q.trim()}”. It searches people, projects, companies, vendors and your own screens.
             </div>
+          ) : res.map((r, i) => (
+            <button key={i} onClick={() => pick(r)}
+              style={{ width: "100%", textAlign: "left", cursor: "pointer", background: "#fff", border: "none",
+                borderBottom: i < res.length - 1 ? `1px solid ${C.lineSoft}` : "none",
+                display: "flex", alignItems: "center", gap: 10, padding: "10px 13px" }}>
+              <Pill tone="stone">{r.type}</Pill>
+              <span style={{ font: `600 13px ${sans}`, color: C.ink, overflowWrap: "anywhere" }}>{r.label}</span>
+              <span style={{ font: `12px ${mono}`, color: C.stone, marginLeft: "auto", textAlign: "right", overflowWrap: "anywhere" }}>{r.sub}</span>
+            </button>
           ))}
         </div>
       )}
@@ -834,7 +909,9 @@ function FirmsView() {
   );
 }
 
-function Views({ tab, userKey, onActAs, go = () => {} }) {
+function Views({ tab, userKey, onActAs, go = () => {}, jump = null, onJumped = () => {} }) {
+  /* Only the screen the search asked for gets the hint, and only once. */
+  const landing = (k) => (jump && jump.tab === k ? jump.id : "");
   return (<>
     {tab === "overview" && userKey === "admin" && <BossView />}
     {tab === "overview" && (userKey === "purchase" || userKey === "purchaseAsst") && <PurchaseView userKey={userKey} />}
@@ -850,7 +927,7 @@ function Views({ tab, userKey, onActAs, go = () => {} }) {
     {tab === "directory" && <DirectoryView userKey={userKey} />}
     {tab === "people" && <PeopleView />}
     {tab === "hr" && <HRCommandView go={go} />}
-    {tab === "roster" && <PeopleRosterView />}
+    {tab === "roster" && <PeopleRosterView landOn={landing("roster")} onLanded={onJumped} />}
     {tab === "population" && <PopulationView />}
     {tab === "org" && <OrgView userKey={userKey} />}
     {tab === "cards" && <CardBureauView />}
@@ -1544,6 +1621,10 @@ export function Shell({ userKey: realKey, onLogout }) {
   const mob = useIsMobile();
   const [actAs, setActAs] = useState(null);
   const [returnTab, setReturnTab] = useState(null);
+  /* Where the search bar wants to land: { tab, id }. The screen it opens reads
+     it and puts the cursor on the right person, so a search result goes
+     somewhere instead of just changing the tab. */
+  const [jump, setJump] = useState(null);
   const userKey = actAs || realKey;
   /* EDIT 10 of 23: `USERS[userKey]` is a map of nine invented desks that was
      written before this app had a database. It still drives the navigation,
@@ -1613,7 +1694,7 @@ export function Shell({ userKey: realKey, onLogout }) {
           </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", background: "#fff", borderBottom: `1px solid ${C.line}` }}>
-          <MasterSearch /><Clock12 compact />
+          <MasterSearch go={setTab} nav={nav} onFind={setJump} /><Clock12 compact />
         </div>
         <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 10, padding: "10px 16px", background: "#fff", borderBottom: `1px solid ${C.line}` }}>
           <FirmSwitcher compact /><span style={{ font: `11px ${sans}`, color: C.stone }}>uploads file here</span>
@@ -1622,7 +1703,7 @@ export function Shell({ userKey: realKey, onLogout }) {
             <button onClick={() => setReporting(true)} style={{ cursor: "pointer", border: `1px solid ${C.line}`, background: "#fff", borderRadius: 20, padding: "7px 11px", display: "inline-flex", alignItems: "center", gap: 6, color: C.goldDeep, font: `600 12px ${sans}` }}><Flag size={13} /> Report</button>
         </div>
         {actAs && <ActingBanner who={{ ...desk(actAs), name: desk(actAs).role || actAs }} onExit={() => { setActAs(null); if (returnTab) setTimeout(() => setTab(returnTab), 0); toast("Back to your own view", "green"); }} />}
-        <div style={{ padding: 16, paddingBottom: 104 }}><NewTaskLauncher userKey={userKey} onRun={runTask} /><IncentiveBanner userKey={userKey} /><CalendarNudge userKey={userKey} /><Views tab={tab} go={setTab} userKey={userKey} onActAs={(r) => { setReturnTab(tab); setActAs(r); toast(`Now seeing the app as the ${desk(r).role} desk`, "gold"); }} /></div>
+        <div style={{ padding: 16, paddingBottom: 104 }}><NewTaskLauncher userKey={userKey} onRun={runTask} /><IncentiveBanner userKey={userKey} /><CalendarNudge userKey={userKey} /><Views tab={tab} go={setTab} jump={jump} onJumped={() => setJump(null)} userKey={userKey} onActAs={(r) => { setReturnTab(tab); setActAs(r); toast(`Now seeing the app as the ${desk(r).role} desk`, "gold"); }} /></div>
         <CoachLayer userKey={userKey} />
         {modals}
       </div>
@@ -1649,7 +1730,7 @@ export function Shell({ userKey: realKey, onLogout }) {
       </aside>
       <main>
         <header style={{ height: 60, borderBottom: `1px solid ${C.line}`, display: "flex", alignItems: "center", gap: 16, padding: "0 26px", background: "#fff" }}>
-          <MasterSearch />
+          <MasterSearch go={setTab} nav={nav} onFind={setJump} />
           <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 14 }}>
             {canCalc && <button onClick={() => setShowCalc(true)} style={{ cursor: "pointer", border: `1px solid ${C.line}`, background: "#fff", borderRadius: 20, padding: "7px 13px", display: "inline-flex", alignItems: "center", gap: 6, color: C.goldDeep, font: `600 12px ${sans}` }}><Calculator size={14} /> ₹ Calc</button>}
             <button onClick={() => setCasting(true)} title="Cast to a screen" style={{ cursor: "pointer", border: `1px solid ${C.line}`, background: "#fff", borderRadius: 20, padding: "7px 13px", display: "inline-flex", alignItems: "center", gap: 6, color: C.goldDeep, font: `600 12px ${sans}` }}><Share2 size={14} /> Cast</button>
@@ -1660,7 +1741,7 @@ export function Shell({ userKey: realKey, onLogout }) {
           </div>
         </header>
         {actAs && <ActingBanner who={{ ...desk(actAs), name: desk(actAs).role || actAs }} onExit={() => { setActAs(null); if (returnTab) setTimeout(() => setTab(returnTab), 0); toast("Back to your own view", "green"); }} />}
-        <div style={{ padding: 26, paddingBottom: 108 }}><NewTaskLauncher userKey={userKey} onRun={runTask} /><IncentiveBanner userKey={userKey} /><CalendarNudge userKey={userKey} /><Views tab={tab} go={setTab} userKey={userKey} onActAs={(r) => { setReturnTab(tab); setActAs(r); toast(`Now seeing the app as the ${desk(r).role} desk`, "gold"); }} /></div>
+        <div style={{ padding: 26, paddingBottom: 108 }}><NewTaskLauncher userKey={userKey} onRun={runTask} /><IncentiveBanner userKey={userKey} /><CalendarNudge userKey={userKey} /><Views tab={tab} go={setTab} jump={jump} onJumped={() => setJump(null)} userKey={userKey} onActAs={(r) => { setReturnTab(tab); setActAs(r); toast(`Now seeing the app as the ${desk(r).role} desk`, "gold"); }} /></div>
       </main>
       <CoachLayer userKey={userKey} />
       {modals}
@@ -9228,10 +9309,21 @@ function PersonProfile({ p, onClose }) {
 }
 
 /* ---------- People roster (master record) ---------- */
-function PeopleRosterView() {
+function PeopleRosterView({ landOn = "", onLanded = () => {} }) {
   const mob = useIsMobile(); const { people } = useProc();
   const [q, setQ] = useState(""); const [type, setType] = useState("All"); const [status, setStatus] = useState("active");
   const [sel, setSel] = useState(null); const [enrol, setEnrol] = useState(false);
+  /* Somebody searched for a person at the top of the screen and was sent here.
+     Open them, rather than dropping the person on a list of a hundred and
+     twenty-six and leaving them to find the name again. */
+  useEffect(() => {
+    if (!landOn) return;
+    const p = people.find(x => x.id === landOn);
+    setQ(landOn);
+    setStatus("All");
+    if (p) setSel(p);
+    onLanded();
+  }, [landOn]);
   const rows = useMemo(() => people.filter(p =>
     (status === "All" || p.status === status) &&
     (type === "All" || p.type === type) &&
@@ -13706,6 +13798,150 @@ const lastMonths = (n) => {
 };
 
 /**
+ * THE REPORT AT THE END OF THE MONTH.
+ *
+ * A month is worked out, released, and then somebody has to be shown it — the
+ * chairman, the auditor, the company's own accountant. Until now the only thing
+ * to hand them was the roll-out CSV, which is a working file for Accounts: forty
+ * columns wide, no letterhead, and it opens as text.
+ *
+ * This is the same figures on the company's own paper: one logo, the month, who
+ * released it, and a line per person — who they are, which department, how many
+ * days, what they are on, what came off and why. It prints, and it downloads as
+ * a real workbook.
+ */
+function PayrollReport({ run, companyName, people, me, onClose }) {
+  const mob = useIsMobile();
+  const [saving, setSaving] = useState(false);
+  const rep = useMemo(
+    () => payrollReport(run, { companyName, people, preparedBy: (me && me.name) || "" }),
+    [run, companyName, people, me],
+  );
+
+  const excel = async () => {
+    setSaving(true);
+    const { name, bytes } = reportToXlsx(rep);
+    const ok = await downloadFile(name, bytes,
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    setSaving(false);
+    if (ok) toast(`${rep.month} report downloaded as Excel`, "green");
+  };
+
+  const cell = { padding: "8px 9px", font: `11.5px ${sans}`, borderTop: `1px solid ${C.lineSoft}`, whiteSpace: "nowrap" };
+  const num = { ...cell, textAlign: "right", fontFamily: mono };
+  const th = { padding: "8px 9px", font: `600 9.5px ${sans}`, letterSpacing: ".05em", textTransform: "uppercase", color: "#fff", background: C.ink, whiteSpace: "nowrap", textAlign: "right" };
+  const thL = { ...th, textAlign: "left" };
+
+  return (
+    <Overlay onClose={onClose} width={1180}>
+      <div data-print="payroll-report" style={{ padding: mob ? 16 : 28, background: "#fff" }}>
+        {/* One logo, in the middle, and nothing beside it — the same letterhead
+            every other document in the app goes out on. */}
+        <div style={{ textAlign: "center", borderBottom: `2px solid ${C.gold}`, paddingBottom: 14, marginBottom: 18 }}>
+          <img src={LOGO} alt="Marbella" style={{ height: mob ? 58 : 76, display: "block", margin: "0 auto 10px" }} />
+          <div style={{ font: `600 11px ${sans}`, letterSpacing: ".18em", textTransform: "uppercase", color: C.goldDeep }}>
+            Payroll report
+          </div>
+          <div style={{ font: `400 22px ${serif}`, color: C.ink, marginTop: 4 }}>{rep.month}</div>
+          <div style={{ font: `12px ${sans}`, color: C.inkSoft, marginTop: 4 }}>{rep.company}</div>
+          <div style={{ font: `11px ${sans}`, color: rep.released ? C.green : C.amber, marginTop: 6 }}>
+            {!rep.released
+              ? "DRAFT — not released. Do not pay from this report."
+              : run.source === "imported"
+                /* "Released by Import" is not a person and reads like one. A run
+                   loaded from the company's own book was not prepared by anybody
+                   here, and the report should say where it came from instead. */
+                ? "From the company's own salary book — these figures do not change."
+                : `Released to Accounts${rep.releasedBy ? ` by ${rep.releasedBy}` : ""} — these figures do not change.`}
+          </div>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr 1fr" : "repeat(5, 1fr)", gap: 10, marginBottom: 18 }}>
+          {[["People paid", String(rep.totals.people), C.ink],
+            ["Earned", inr(rep.totals.earned), C.ink],
+            ["Tax (TDS)", inr(rep.totals.tds), C.amber],
+            ["All deductions", inr(rep.totals.deductions), C.amber],
+            ["Net paid", inr(rep.totals.payable), C.green]].map(([k, v, tone]) => (
+            <div key={k} style={{ border: `1px solid ${C.line}`, borderRadius: 10, padding: 12 }}>
+              <div style={{ font: `600 9.5px ${sans}`, letterSpacing: ".08em", textTransform: "uppercase", color: C.stone }}>{k}</div>
+              <div style={{ font: `400 ${mob ? 17 : 20}px ${serif}`, color: tone, marginTop: 4 }}>{v}</div>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ overflowX: "auto", border: `1px solid ${C.line}`, borderRadius: 10 }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1000 }}>
+            <thead>
+              <tr>
+                <th style={thL}>Employee ID</th>
+                <th style={thL}>Name</th>
+                <th style={thL}>Department</th>
+                <th style={th}>Days paid</th>
+                <th style={thL}>With us</th>
+                <th style={th}>Salary</th>
+                <th style={th}>Earned</th>
+                <th style={th}>Tax (TDS)</th>
+                <th style={th}>All deductions</th>
+                <th style={th}>Net paid</th>
+                <th style={thL}>Remarks</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rep.rows.map((r, i) => (
+                <tr key={i} style={{ background: r.stranger ? "#FFF9E0" : "transparent" }}>
+                  <td style={{ ...cell, fontFamily: mono }}>{r.id}</td>
+                  <td style={{ ...cell, whiteSpace: "normal", font: `600 11.5px ${sans}`, color: C.ink }}>{r.name}</td>
+                  <td style={cell}>{r.dept}</td>
+                  <td style={num}>{r.days}<span style={{ color: C.stone }}>/{r.monthDays}</span></td>
+                  <td style={cell}>{r.withUs}</td>
+                  <td style={num}>{inr(r.salary)}</td>
+                  <td style={num}>{inr(r.earned)}</td>
+                  <td style={num}>{r.tds ? inr(r.tds) : "—"}</td>
+                  <td style={{ ...num, color: r.deductions ? C.amber : C.stone }}>{r.deductions ? inr(r.deductions) : "—"}</td>
+                  <td style={{ ...num, fontWeight: 700, color: C.ink }}>{inr(r.payable)}</td>
+                  <td style={{ ...cell, whiteSpace: "normal", color: C.stone, maxWidth: 240 }}>{r.remark || ""}</td>
+                </tr>
+              ))}
+              <tr style={{ background: C.ink }}>
+                <td style={{ ...cell, color: "#fff", borderTop: "none", font: `600 11.5px ${sans}` }}>{rep.totals.people} people</td>
+                <td style={{ ...cell, borderTop: "none" }} colSpan={4} />
+                <td style={{ ...num, color: "#fff", borderTop: "none" }}>{inr(rep.totals.salary)}</td>
+                <td style={{ ...num, color: "#fff", borderTop: "none" }}>{inr(rep.totals.earned)}</td>
+                <td style={{ ...num, color: "#F0C270", borderTop: "none" }}>{inr(rep.totals.tds)}</td>
+                <td style={{ ...num, color: "#F0C270", borderTop: "none" }}>{inr(rep.totals.deductions)}</td>
+                <td style={{ ...num, color: "#fff", fontWeight: 700, borderTop: "none" }}>{inr(rep.totals.payable)}</td>
+                <td style={{ ...cell, color: "#B9C4D6", borderTop: "none", whiteSpace: "normal" }}>
+                  Company's own share on top: {inr(rep.totals.employer)}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div style={{ font: `10.5px ${sans}`, color: C.stone, marginTop: 12, lineHeight: 1.6 }}>
+          "Days paid" is the days this month's pay was worked out on; "with us" is how long they have
+          been employed. "All deductions" is E.S.I., P.F., TDS, advances and anything else held back;
+          the company's own E.S.I. and P.F. share is on top and never reaches a bank account.
+          {rep.preparedBy ? ` Worked out by ${rep.preparedBy}.` : ""} Report made on {rep.generatedOn}.
+        </div>
+
+        <div data-noprint style={{ display: "flex", gap: 9, flexWrap: "wrap", marginTop: 18 }}>
+          <GoldButton disabled={saving} onClick={excel}>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+              <Download size={14} /> {saving ? "Saving…" : "Download as Excel"}
+            </span>
+          </GoldButton>
+          <GoldButton ghost onClick={() => window.print()}>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Printer size={14} /> Print</span>
+          </GoldButton>
+          <button onClick={onClose} style={softBtn}>Close</button>
+        </div>
+      </div>
+    </Overlay>
+  );
+}
+
+/**
  * ONE STEP OF THE PAYROLL RUN.
  *
  * Numbered, in the order the work actually happens, each with a line saying
@@ -13960,6 +14196,7 @@ function PayrollView({ go }) {
   const [showImport, setShowImport] = useState(false);
   const [check, setCheck] = useState(null);        // the leavers question
   const [deboard, setDeboard] = useState(false);   // the deboarding picker
+  const [reporting, setReporting] = useState(null); // the month's report
 
   const run = payRuns.find(r => r.company === company && r.month === month) || null;
   const lines = run ? run.lines : [];
@@ -14256,6 +14493,11 @@ function PayrollView({ go }) {
             </GoldButton>
           )}
           {run && lines.length > 0 && (
+            <GoldButton ghost onClick={() => setReporting(run)}>
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><FileText size={13} /> The month's report</span>
+            </GoldButton>
+          )}
+          {run && lines.length > 0 && (
             <GoldButton ghost onClick={sheet}>
               <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Download size={13} /> Download the sheet for Accounts</span>
             </GoldButton>
@@ -14393,13 +14635,22 @@ function PayrollView({ go }) {
       </>)}
 
       {view === "record" && (
-        <PayRecord payRuns={payRuns} companies={companies} onSheet={sheetFor}
+        <PayRecord payRuns={payRuns} companies={companies} onSheet={sheetFor} onReport={setReporting}
           only={scoped} project={ofProject} sharedWith={sharedWith}
           onOpen={(r) => { setCompany(r.company); setMonth(r.month); setView("work"); window.scrollTo({ top: 0, behavior: "smooth" }); }} />
       )}
 
       {openLine && <PayLineEditor line={openLine} run={run} onClose={() => setOpenLine(null)} onSave={setPayLine} />}
       {showImport && <AttendanceImport onClose={() => setShowImport(false)} />}
+      {reporting && (
+        <PayrollReport
+          run={reporting}
+          companyName={(companies.find(c => c.id === reporting.company) || {}).name}
+          people={people}
+          me={me}
+          onClose={() => setReporting(null)}
+        />
+      )}
       {check && (
         <LeaversCheck
           month={month}
@@ -14450,7 +14701,7 @@ function PayrollView({ go }) {
  * apart from the totals — reporting it as money that has gone out is the one
  * mistake this view exists to prevent.
  */
-function PayRecord({ payRuns: allRuns, companies, onOpen, onSheet, only, project, sharedWith = [] }) {
+function PayRecord({ payRuns: allRuns, companies, onOpen, onSheet, onReport, only, project, sharedWith = [] }) {
   const mob = useIsMobile();
   /* Only what the chosen project's company paid. With the whole group chosen,
      everything. */
@@ -14668,6 +14919,11 @@ function PayRecord({ payRuns: allRuns, companies, onOpen, onSheet, only, project
                         <Download size={12} /> {draft ? "Draft sheet" : "The sheet sent"}
                       </span>
                     </GoldButton>
+                    {onReport && (
+                      <button onClick={() => onReport(r)} style={{ ...softBtn, font: `600 11px ${sans}`, borderColor: C.gold, color: C.goldDeep }}>
+                        The report
+                      </button>
+                    )}
                     <button onClick={() => onOpen(r)} style={{ ...softBtn, font: `600 11px ${sans}` }}>
                       {draft ? "Open and finish it" : "Look at the lines"}
                     </button>
