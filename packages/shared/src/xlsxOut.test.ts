@@ -133,6 +133,19 @@ describe('the month’s report', () => {
     expect(stranger.remark).toContain('NOT ON THE EMPLOYEE REGISTER');
   });
 
+  it('shows what the company paid on top, as its own column', () => {
+    const withAllow = payrollReport(
+      { ...RUN, lines: [{ ...RUN.lines[1]!, eAllow: 1_600, payable: 22_600 }] },
+      { companyName: 'SRG', at: new Date('2026-09-29T00:00:00Z') },
+    );
+    expect(withAllow.rows[0]!.allowances).toBe(1_600);
+    expect(withAllow.totals.allowances).toBe(1_600);
+  });
+
+  it('reports nothing on top when no policy paid anything', () => {
+    expect(rep.totals.allowances).toBe(0);
+  });
+
   it('totals what it lists', () => {
     expect(rep.totals.people).toBe(3);
     expect(rep.totals.payable).toBe(181_200 + 21_000 + 40_000);

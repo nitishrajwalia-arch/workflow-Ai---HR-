@@ -114,15 +114,46 @@ describe('the projects the company has', () => {
     ).toHaveLength(0);
   });
 
-  it('carries Marbella Manifest, with the assumed company flagged', async () => {
+  it('carries Marbella Manifest, under the company the management named', async () => {
     // Added because the management asked for it. It is not in the employee
     // register — nobody is posted there yet — so it cannot come from the
-    // generated data, and which entity signs for it is an assumption.
+    // generated data. Which entity signs for it WAS an assumption, written
+    // against SRG on the same reasoning that put Grand there; the management
+    // has since given all five by name and Manifest is New Marbella's.
     const p = await db.project.findUnique({ where: { id: 'manifest' } });
     expect(p?.name).toBe('Marbella Manifest');
-    const task = await db.hrTask.findFirst({ where: { text: { contains: 'Marbella Manifest' } } });
-    expect(task, 'the assumed company is raised as a question, not buried').toBeTruthy();
-    expect(task?.text).toContain('nobody has said which company signs for it');
+    expect(p?.companyId).toBe('newmarb');
+    // And the question is not asked again on every seed now that it is answered.
+    const task = await db.hrTask.findFirst({
+      where: { text: { contains: 'which company signs for it' } },
+    });
+    expect(task, 'the answered question is retired, not raised for ever').toBeNull();
+  });
+
+  it('signs each project with the company the management confirmed', async () => {
+    // All five by name. Getting one wrong puts a payslip, a letter and a GSTIN
+    // on the wrong letterhead, and nothing on screen would look odd.
+    const want: Record<string, string> = {
+      grand: 'srg',
+      newmarbella: 'newmarb',
+      manifest: 'newmarb',
+      twin: 'srgmarb',
+      royce: 'garg',
+    };
+    const projects = await db.project.findMany({ include: { company: true } });
+    for (const [id, companyId] of Object.entries(want)) {
+      const p = projects.find((x) => x.id === id);
+      expect(p, `project ${id}`).toBeTruthy();
+      expect(p?.companyId, `${p?.name} signs as`).toBe(companyId);
+    }
+    // The registered names, exactly as the management wrote them. The LLP is
+    // part of the legal name and a letterhead without it is the wrong one.
+    const byId = new Map(projects.map((p) => [p.id, p.company.name]));
+    expect(byId.get('grand')).toBe('SRG Developers & Promoters');
+    expect(byId.get('newmarbella')).toBe('New Marbella Developers And Promoters LLP');
+    expect(byId.get('manifest')).toBe('New Marbella Developers And Promoters LLP');
+    expect(byId.get('twin')).toBe('SRG Marbella Developers And Promoters LLP');
+    expect(byId.get('royce')).toBe('Garg Builders And Promoters LLP');
   });
 
   it('tells the browser which project each site belongs to', async () => {

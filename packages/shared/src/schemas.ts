@@ -499,6 +499,25 @@ export const payLineBody = z.object({
     )
     .max(20)
     .optional(),
+  /**
+   * Anything HR grants this person this month on top of the company's standing
+   * policy — a reward for a job done, money for a man who moved site at his own
+   * cost. Each carries what it is FOR, for the same reason a deduction does.
+   *
+   * `taxable` defaults to true. The safe default is the one that gets the tax
+   * right, not the one that flatters the payslip; a genuine reimbursement is
+   * marked as such deliberately.
+   */
+  allowances: z
+    .array(
+      z.object({
+        label: z.string().trim().min(2).max(80),
+        amount: z.number().int().min(0).max(10_000_000),
+        taxable: z.boolean().default(true),
+      }),
+    )
+    .max(20)
+    .optional(),
   arrear: z.number().int().min(-10_000_000).max(10_000_000).optional(),
   remark: z.string().trim().max(500).optional(),
 });
@@ -528,6 +547,37 @@ export const deductionHeadBody = z.object({
   requires: z.enum(['', 'esiOn', 'pfOn']).default(''),
   /** 'up' is what the ESI regulation says; 'nearest' is what most of the books do. */
   rounding: z.enum(['nearest', 'up']).default('nearest'),
+  authority: z.string().trim().min(4).max(400),
+  note: z.string().trim().max(400).default(''),
+  active: z.boolean().default(true),
+  sort: z.number().int().min(0).max(999).default(0),
+});
+
+/**
+ * What goes ON a payslip, granted by a company policy.
+ *
+ * `authority` is required for the same reason it is required on a reduction:
+ * a figure on a payslip that nobody can trace to a decision is a figure
+ * somebody will eventually have to defend without help.
+ */
+export const allowanceHeadBody = z.object({
+  code: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .regex(/^[a-z][a-z0-9-]{1,23}$/, 'A short key like "site", "fuel" or "night".'),
+  label: z.string().trim().min(2).max(60),
+  basis: z.enum(['earnedPct', 'wagePct', 'flat', 'entered']),
+  rate: z.number().min(0).max(100).default(0),
+  wage: z.number().int().min(0).max(100_000_000).default(0),
+  ceiling: z.number().int().min(0).max(100_000_000).default(0),
+  floor: z.number().int().min(0).max(100_000_000).default(0),
+  proRate: z.boolean().default(true),
+  rounding: z.enum(['nearest', 'up']).default('nearest'),
+  /** '' for everybody, or a department, an employment type, or a site's short name. */
+  appliesTo: z.string().trim().max(60).default(''),
+  /** Whether it is pay — taxed, and seen by the statutory heads. */
+  taxable: z.boolean().default(true),
   authority: z.string().trim().min(4).max(400),
   note: z.string().trim().max(400).default(''),
   active: z.boolean().default(true),
@@ -745,6 +795,7 @@ export type SalaryBody = z.infer<typeof salaryBody>;
 export type PayRunBody = z.infer<typeof payRunBody>;
 export type PayLineBody = z.infer<typeof payLineBody>;
 export type DeductionHeadBody = z.infer<typeof deductionHeadBody>;
+export type AllowanceHeadBody = z.infer<typeof allowanceHeadBody>;
 export type SalaryAtJoining = z.infer<typeof salaryAtJoining>;
 export type DeviceBody = z.infer<typeof deviceBody>;
 export type ContactBody = z.infer<typeof contactBody>;

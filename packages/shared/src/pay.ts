@@ -427,6 +427,49 @@ function isWeeklyOff(date: string, offDay: string | undefined): boolean {
   return d !== null && d.getUTCDay() === want;
 }
 
+/**
+ * A date the weekly-off check could not read.
+ *
+ * `parseDisplayDate` wants "06 Sep 2026" and returns null for anything else —
+ * including "06 Sep", which is what a hand-written import is most likely to
+ * give. Null means the day cannot be shown to be a Sunday, so it is treated as
+ * an absence and docked. That is the right arithmetic on the information
+ * available and the wrong answer, and it happens without a word.
+ *
+ * So it is counted and said out loud on the line instead.
+ */
+const unreadable = (date: string, offDay: string | undefined): boolean =>
+  Boolean(String(offDay ?? '').trim()) && parseDisplayDate(date) === null;
+
+/**
+ * The days a pay line was worked out from, AND THE REASONS FOR THEM.
+ *
+ * `days` is the answer and `lost` is what it cost. The rest is why — and it is
+ * here because it used to be computed and thrown away, leaving Accounts and the
+ * person holding the payslip with a number and no means of checking it. Every
+ * query about a short month came back to HR to re-derive by hand.
+ *
+ * -1 on any count means NOT RECORDED, which is not zero. Somebody who is not on
+ * the attendance machine is paid the full month and has no present count; a
+ * zero would be read as a man who never came in.
+ */
+export interface PayableDays {
+  days: number;
+  lost: number;
+  why: string;
+  /** False when nobody counted this person's days. */
+  counted: boolean;
+  present: number;
+  /** Absences nothing covered — the days that actually cost pay. */
+  absent: number;
+  /** Their own weekly off. Paid, and not an absence. */
+  weekOff: number;
+  /** Days the company was closed. Paid. */
+  holiday: number;
+  /** Absences HR covered with paid leave. */
+  leave: number;
+}
+
 export function payableDays(args: {
   monthDays: number;
   onMachine: boolean;
@@ -446,22 +489,41 @@ export function payableDays(args: {
    * 20,000 — for the offence of taking their Sunday.
    */
   offDay?: string;
-}): { days: number; lost: number; why: string } {
+}): PayableDays {
   if (!args.onMachine) {
     return {
       days: args.monthDays,
       lost: 0,
       why: 'Not on the attendance machine, so the full month is assumed.',
+      /* NOT ZERO. Nobody counted this person's days, and a zero here would be
+         read off the sheet as somebody who never came in. -1 says "not
+         recorded", and the sheet prints it as a dash. */
+      counted: false,
+      present: -1,
+      absent: -1,
+      weekOff: -1,
+      holiday: -1,
+      leave: -1,
     };
   }
   const holiday = new Set(args.holidayDates);
   const offs = args.absentDates.filter((d) => isWeeklyOff(d, args.offDay));
+  const holidays = args.absentDates.filter(
+    (d) => holiday.has(d) && !isWeeklyOff(d, args.offDay),
+  );
   const unpaid = args.absentDates.filter(
     (d) => !holiday.has(d) && !isWeeklyOff(d, args.offDay),
   );
   const covered = Math.min(args.paidLeave ?? 0, unpaid.length);
   const lost = unpaid.length - covered;
+  const unread = args.absentDates.filter((d) => unreadable(d, args.offDay)).length;
   const parts = [`${unpaid.length} day${unpaid.length === 1 ? '' : 's'} absent`];
+  if (unread) {
+    parts.push(
+      `${unread} date${unread === 1 ? '' : 's'} the attendance file wrote without a year, so ` +
+        `their weekly off could not be told from an absence — CHECK BEFORE PAYING`,
+    );
+  }
   if (offs.length) parts.push(`${offs.length} their weekly off`);
   if (covered) parts.push(`${covered} covered by leave`);
   /* A roster that moves cannot be checked against a weekday, so those days are
@@ -475,6 +537,15 @@ export function payableDays(args: {
     days: Math.max(0, args.monthDays - lost),
     lost,
     why: parts.join(', ') + '.',
+    counted: true,
+    /* Everything the machine did not record an absence for. A day with one
+       punch instead of two is a day worked with a missing swipe, and it is
+       counted present here for the same reason it is not docked above. */
+    present: Math.max(0, args.monthDays - args.absentDates.length),
+    absent: unpaid.length,
+    weekOff: offs.length,
+    holiday: holidays.length,
+    leave: covered,
   };
 }
 
@@ -661,6 +732,175 @@ export function reductionsFor(
   return out;
 }
 
+/* ---------------------------------------------------------- allowances */
+
+/**
+ * WHAT GOES ON A PAYSLIP ON TOP OF THE SALARY.
+ *
+ * The mirror of a reduction, and deliberately the same arithmetic — a site
+ * allowance of ₹2,000 a month pro-rated for days is the same sum as a ₹2,000
+ * deduction pro-rated for days, and writing it twice is how the two drift.
+ *
+ * What is NOT the same is who it lands on. A deduction is governed by a switch
+ * on the person's record (`esiOn`, `pfOn`) because the law says who it applies
+ * to. An allowance is granted by the company to a group somebody chose — the
+ * labour on one site, everybody on nights, the whole of Maintenance — so it
+ * carries `appliesTo`, matched against the person rather than the payslip.
+ *
+ * And whether it is pay. A site allowance is pay: it is taxed and the statutory
+ * heads see it. A reimbursement of money somebody already spent is not, and
+ * treating the two alike is how a man is taxed on his own bus fare.
+ */
+export interface AllowanceHead {
+  code: string;
+  label: string;
+  basis: DeductionBasis;
+  /** The percentage, or the rupees when the basis is 'flat'. */
+  rate: number;
+  /** 'wagePct' and 'flat': the monthly wage or sum the rate applies to. */
+  wage: number;
+  /** Above this monthly gross it does not apply. ZERO MEANS NO CEILING. */
+  ceiling: number;
+  /** Below this monthly gross it does not apply. ZERO MEANS NO FLOOR. */
+  floor: number;
+  proRate: boolean;
+  rounding: 'nearest' | 'up';
+  /** '' for everybody, or a department, an employment type, or a site. */
+  appliesTo: string;
+  /** Whether it is pay — taxed, and seen by the statutory heads. */
+  taxable: boolean;
+  /** The policy it comes from, in words. It goes on the sheet Accounts reads. */
+  authority: string;
+  active: boolean;
+}
+
+export interface Addition {
+  code: string;
+  label: string;
+  /** Paid to the person on top of what they earned. */
+  amount: number;
+  /** Whether it is pay for tax and for the statutory heads. */
+  taxable: boolean;
+  /** How the figure was arrived at, in words. */
+  why: string;
+  /** False for anything HR typed rather than a policy produced. */
+  policy: boolean;
+}
+
+/** Who a person is, for deciding whether an allowance reaches them. */
+export interface AllowanceWho {
+  dept?: string;
+  /** Staff, Site, Labour — whatever the register calls them. */
+  type?: string;
+  /** The short name of the site they are posted to. */
+  site?: string;
+}
+
+/**
+ * Does `appliesTo` name this person?
+ *
+ * Matched case-insensitively against the department, the employment type and
+ * the site, in that order, because those are the three ways somebody describes
+ * a group out loud. An `appliesTo` that matches none of them reaches nobody —
+ * which is the safe way round. An allowance that silently reaches everybody
+ * because its scope was mistyped is money going out that nobody decided on.
+ */
+export function allowanceApplies(to: string, who: AllowanceWho): boolean {
+  const want = to.trim().toLowerCase();
+  if (!want) return true;
+  return [who.dept, who.type, who.site].some(
+    (v) => String(v ?? '').trim().toLowerCase() === want,
+  );
+}
+
+/**
+ * The allowances one person is due this month.
+ *
+ * `entered` carries the figures HR typed for the heads that have no rule, keyed
+ * by head code, and `others` the one-off payments she named herself — a
+ * reward for a job done, money for a man who moved site at his own cost.
+ */
+export function allowancesFor(
+  heads: readonly AllowanceHead[],
+  ctx: {
+    /** The person's full monthly gross — what a ceiling or floor is tested against. */
+    gross: number;
+    /** What they earned this month, after days. */
+    eGross: number;
+    days: number;
+    monthDays: number;
+    who?: AllowanceWho;
+    entered?: Record<string, number>;
+    others?: ReadonlyArray<{ label: string; amount: number; taxable?: boolean }>;
+  },
+): Addition[] {
+  const f = ctx.monthDays > 0 ? Math.min(ctx.days, ctx.monthDays) / ctx.monthDays : 0;
+  const part = f < 1 ? `, ${ctx.days} of ${ctx.monthDays} days` : '';
+  const who = ctx.who ?? {};
+  const out: Addition[] = [];
+
+  for (const h of heads) {
+    if (!h.active) continue;
+    if (h.ceiling > 0 && ctx.gross > h.ceiling) continue;
+    if (h.floor > 0 && ctx.gross < h.floor) continue;
+    if (!allowanceApplies(h.appliesTo, who)) continue;
+
+    let amount = 0;
+    let why = '';
+
+    if (h.basis === 'earnedPct') {
+      amount = round((ctx.eGross * h.rate) / 100, h.rounding);
+      why = `${h.rate}% of ${rupees(ctx.eGross)} earned`;
+    } else if (h.basis === 'wagePct') {
+      const base = h.proRate ? h.wage * f : h.wage;
+      amount = round((base * h.rate) / 100, h.rounding);
+      why = `${h.rate}% of ${rupees(h.wage)}${h.proRate ? part : ''}`;
+    } else if (h.basis === 'flat') {
+      amount = round(h.proRate ? h.wage * f : h.wage, h.rounding);
+      why = `${rupees(h.wage)} a month${h.proRate ? part : ''}`;
+    } else {
+      amount = r(ctx.entered?.[h.code] ?? 0);
+      why = h.authority || 'Entered by HR for this month';
+    }
+
+    if (amount === 0) continue;
+    out.push({
+      code: h.code,
+      label: h.label,
+      amount,
+      taxable: h.taxable,
+      why,
+      policy: h.basis !== 'entered',
+    });
+  }
+
+  for (const o of ctx.others ?? []) {
+    const amount = r(o.amount);
+    if (!amount) continue;
+    out.push({
+      code: 'other',
+      label: o.label || 'Other allowance',
+      amount,
+      // Money HR grants by hand is pay unless she says otherwise. The safe
+      // default is the one that gets the tax right, not the one that flatters
+      // the payslip.
+      taxable: o.taxable !== false,
+      why: 'Entered by HR for this month',
+      policy: false,
+    });
+  }
+
+  return out;
+}
+
+/** What the allowances come to: everything, and the part of it that is pay. */
+export function allowanceTotals(list: readonly Addition[]): { total: number; taxable: number } {
+  return {
+    total: list.reduce((a, x) => a + x.amount, 0),
+    taxable: list.reduce((a, x) => a + (x.taxable ? x.amount : 0), 0),
+  };
+}
+
 /**
  * A stored salary policy, in the shape the engine wants.
  *
@@ -685,13 +925,35 @@ export function asPayPolicy(p: {
 }
 
 /**
- * Reductions as they come back out of a JSON column.
+ * Allowances as they come back out of a JSON column.
  *
  * A JSON column is whatever was put in it, which the type system cannot know
  * and a five-year-old row will not honour. Everything is read defensively and
- * anything that is not a reduction is dropped, so a line saved by an older
+ * anything that is not an allowance is dropped, so a line saved by an older
  * version renders instead of taking a payroll screen down.
  */
+export function readAdditions(v: unknown): Addition[] {
+  if (!Array.isArray(v)) return [];
+  const out: Addition[] = [];
+  for (const x of v) {
+    if (!x || typeof x !== 'object') continue;
+    const o = x as Record<string, unknown>;
+    if (typeof o.code !== 'string' || typeof o.label !== 'string') continue;
+    out.push({
+      code: o.code,
+      label: o.label,
+      amount: Number(o.amount) || 0,
+      // A row written before `taxable` existed is pay, which is what every
+      // allowance in the app was until a policy said otherwise.
+      taxable: o.taxable === undefined ? true : Boolean(o.taxable),
+      why: typeof o.why === 'string' ? o.why : '',
+      policy: Boolean(o.policy),
+    });
+  }
+  return out;
+}
+
+/** The same, for the reductions that come off. */
 export function readReductions(v: unknown): Reduction[] {
   if (!Array.isArray(v)) return [];
   const out: Reduction[] = [];

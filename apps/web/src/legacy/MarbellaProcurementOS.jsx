@@ -9,7 +9,7 @@ import { ProcCtx, useProc } from "../proc/context.js";
 import { api } from "../lib/api.js";
 import {
   INTAKE_FIELDS, INTAKE_UPDATE_FIELDS, aadhaarCheck, matchColumns, panCheck, payrollReport,
-  proposeBreakUp, reductionsFor, reportToXlsx, rollOutSheet, xlsxToSheet,
+  proposeBreakUp, reductionsFor, reportToXlsx, accountsFile, xlsxToSheet,
 } from "@marbella/shared";
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, ResponsiveContainer, Cell, Tooltip,
@@ -13863,9 +13863,10 @@ function PayrollReport({ run, companyName, people, me, onClose }) {
           </div>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr 1fr" : "repeat(5, 1fr)", gap: 10, marginBottom: 18 }}>
+        <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr 1fr" : "repeat(6, 1fr)", gap: 10, marginBottom: 18 }}>
           {[["People paid", String(rep.totals.people), C.ink],
             ["Earned", inr(rep.totals.earned), C.ink],
+            ["Allowances", inr(rep.totals.allowances), C.ink],
             ["Tax (TDS)", inr(rep.totals.tds), C.amber],
             ["All deductions", inr(rep.totals.deductions), C.amber],
             ["Net paid", inr(rep.totals.payable), C.green]].map(([k, v, tone]) => (
@@ -13887,6 +13888,7 @@ function PayrollReport({ run, companyName, people, me, onClose }) {
                 <th style={thL}>With us</th>
                 <th style={th}>Salary</th>
                 <th style={th}>Earned</th>
+                <th style={th}>Allowances</th>
                 <th style={th}>Tax (TDS)</th>
                 <th style={th}>All deductions</th>
                 <th style={th}>Net paid</th>
@@ -13903,6 +13905,7 @@ function PayrollReport({ run, companyName, people, me, onClose }) {
                   <td style={cell}>{r.withUs}</td>
                   <td style={num}>{inr(r.salary)}</td>
                   <td style={num}>{inr(r.earned)}</td>
+                  <td style={num}>{r.allowances ? inr(r.allowances) : "—"}</td>
                   <td style={num}>{r.tds ? inr(r.tds) : "—"}</td>
                   <td style={{ ...num, color: r.deductions ? C.amber : C.stone }}>{r.deductions ? inr(r.deductions) : "—"}</td>
                   <td style={{ ...num, fontWeight: 700, color: C.ink }}>{inr(r.payable)}</td>
@@ -13914,6 +13917,7 @@ function PayrollReport({ run, companyName, people, me, onClose }) {
                 <td style={{ ...cell, borderTop: "none" }} colSpan={4} />
                 <td style={{ ...num, color: "#fff", borderTop: "none" }}>{inr(rep.totals.salary)}</td>
                 <td style={{ ...num, color: "#fff", borderTop: "none" }}>{inr(rep.totals.earned)}</td>
+                <td style={{ ...num, color: "#fff", borderTop: "none" }}>{inr(rep.totals.allowances)}</td>
                 <td style={{ ...num, color: "#F0C270", borderTop: "none" }}>{inr(rep.totals.tds)}</td>
                 <td style={{ ...num, color: "#F0C270", borderTop: "none" }}>{inr(rep.totals.deductions)}</td>
                 <td style={{ ...num, color: "#fff", fontWeight: 700, borderTop: "none" }}>{inr(rep.totals.payable)}</td>
@@ -13927,7 +13931,8 @@ function PayrollReport({ run, companyName, people, me, onClose }) {
 
         <div style={{ font: `10.5px ${sans}`, color: C.stone, marginTop: 12, lineHeight: 1.6 }}>
           "Days paid" is the days this month's pay was worked out on; "with us" is how long they have
-          been employed. "All deductions" is E.S.I., P.F., TDS, advances and anything else held back;
+          been employed. "Allowances" is what the company pays on top of the salary because a policy says so, and it
+          is included in what is paid. "All deductions" is E.S.I., P.F., TDS, advances and anything else held back;
           the company's own E.S.I. and P.F. share is on top and never reaches a bank account.
           {rep.preparedBy ? ` Worked out by ${rep.preparedBy}.` : ""} Report made on {rep.generatedOn}.
         </div>
@@ -14164,7 +14169,7 @@ function DeboardPicker({ people, onClose, onOpened }) {
 function PayrollView({ go }) {
   const mob = useIsMobile();
   const { payRuns = [], companies = [], people = [], projects = [], att = {}, me,
-    deductionHeads = {}, scope, draftPayRun, setPayLine, releasePayRun, track,
+    deductionHeads = {}, allowanceHeads = {}, scope, draftPayRun, setPayLine, releasePayRun, track,
     exits = [], openExit, salaries = {} } = useProc();
 
   /* PAYROLL FOLLOWS THE PROJECT CHOSEN AT THE TOP.
@@ -14316,17 +14321,32 @@ function PayrollView({ go }) {
     setBusy(false);
   };
 
-  /* The sheet Accounts receives. Built in the browser from the run already on
-     screen, by the same shared code a test checks against the engine — so the
-     file and the screen cannot drift, and it works with the API unreachable. */
-  const sheetFor = (r) => {
+  /* THE ONE FILE HR SENDS TO ACCOUNTS.
+     One workbook, not several: the payroll on the front, and the allowances,
+     the deductions and the attendance on tabs behind it, so every figure on the
+     front can be traced without opening a second file. Built in the browser
+     from the run already on screen, by the same shared code a test checks
+     against the engine — so the file and the screen cannot drift, and it works
+     with the API unreachable. */
+  const sheetFor = async (r) => {
     const joined = {};
-    for (const p of people) if (p.joined) joined[p.id] = p.joined;
+    const dept = {};
+    for (const p of people) {
+      if (p.joined) joined[p.id] = p.joined;
+      if (p.dept) dept[p.id] = p.dept;
+    }
     const name2 = (companies.find(c => c.id === r.company) || {}).name;
-    const { name, csv } = rollOutSheet(r, { companyName: name2, joined, preparedBy: (me && me.name) || "" });
-    downloadFile(name, csv, "text/csv");
+    const { name, bytes } = accountsFile(r, { companyName: name2, joined, dept, preparedBy: (me && me.name) || "" });
+    const ok = await downloadFile(name, bytes,
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    if (!ok) return;
     track("payroll:sheet");
-    toast(r.status === "released" ? `${r.month} sheet downloaded — the same one Accounts was given` : `${r.month} downloaded as a DRAFT — release it before Accounts pays from it`, r.status === "released" ? "green" : "amber");
+    toast(
+      r.status === "released"
+        ? `${r.month} downloaded — send this one file to Accounts`
+        : `${r.month} downloaded as a DRAFT — release it before Accounts pays from it`,
+      r.status === "released" ? "green" : "amber",
+    );
   };
   const sheet = () => sheetFor(run);
 
@@ -14506,7 +14526,7 @@ function PayrollView({ go }) {
           )}
           {run && lines.length > 0 && (
             <GoldButton ghost onClick={sheet}>
-              <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Download size={13} /> Download the sheet for Accounts</span>
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Download size={13} /> The file for Accounts</span>
             </GoldButton>
           )}
           {run && run.status === "released" && (
@@ -14518,6 +14538,7 @@ function PayrollView({ go }) {
       </StepCard>
 
       <HeadsPanel heads={deductionHeads[company] || []} company={co.name} />
+      <AllowancesPanel heads={allowanceHeads[company] || []} company={co.name} companyId={company} />
 
       {!run && (
         <Card pad={22}>
@@ -15009,6 +15030,262 @@ function HeadsPanel({ heads, company }) {
         </div>
       )}
     </Card>
+  );
+}
+
+/**
+ * WHAT THE COMPANY PAYS ON TOP, AND UNDER WHICH POLICY.
+ *
+ * The mirror of HeadsPanel. Unlike that one this is shown even when the list is
+ * empty, because an empty list is the state every company starts in and the
+ * screen has to say so rather than hide: HR cannot grant an allowance she has
+ * no idea the software can hold.
+ *
+ * Nothing is seeded. The management has not written an allowance policy down,
+ * and inventing one — a plausible-looking site allowance nobody agreed — would
+ * be a figure on a payslip that traces back to a guess.
+ */
+function AllowancesPanel({ heads, company, companyId }) {
+  const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState(null);
+  const live = heads.filter(h => h.active);
+  const off = heads.filter(h => !h.active);
+  const how = (h) => {
+    if (h.basis === "earnedPct") return `${h.rate}% of what they earn`;
+    if (h.basis === "wagePct") return `${h.rate}% of ${inr(h.wage)} a month${h.proRate ? ", pro-rated for days" : ""}`;
+    if (h.basis === "flat") return `${inr(h.wage)} a month${h.proRate ? ", pro-rated for days" : ""}`;
+    return "Entered each month by HR";
+  };
+  return (
+    <Card pad={0} style={{ marginBottom: 16 }}>
+      <button onClick={() => setOpen(o => !o)}
+        style={{ width: "100%", background: "none", border: "none", cursor: "pointer", textAlign: "left", padding: "13px 16px", display: "flex", alignItems: "center", gap: 9 }}>
+        <Plus size={15} color={C.goldDeep} />
+        <span style={{ font: `600 12.5px ${sans}`, color: C.ink }}>What the company pays on top</span>
+        <span style={{ font: `11px ${sans}`, color: C.stone }}>
+          {heads.length === 0
+            ? "nothing set"
+            : `${live.length} paid${off.length ? ` · ${off.length} withdrawn` : ""}`}
+        </span>
+        <ChevronRight size={15} color={C.stone} style={{ marginLeft: "auto", transform: open ? "rotate(90deg)" : "none", transition: "transform .15s" }} />
+      </button>
+      {open && (
+        <div style={{ padding: "0 16px 14px" }}>
+          <div style={{ font: `11.5px ${sans}`, color: C.inkSoft, lineHeight: 1.6, marginBottom: 10 }}>
+            A site allowance, a fuel allowance, a night-shift allowance — money {company} pays on
+            top of the salary because a policy says so. It goes on the file Accounts receives with
+            the policy beside it, so that a figure nobody recognises can be traced without asking
+            you. A released month keeps what it was released with.
+          </div>
+          {heads.length === 0 && (
+            <div style={{ font: `12px ${sans}`, color: C.stone, lineHeight: 1.6, padding: "10px 0", borderTop: `1px solid ${C.lineSoft}` }}>
+              Nothing is set for {company}. Nothing has been invented either — when the management
+              writes an allowance policy down, add it here and every month from then on carries it.
+            </div>
+          )}
+          {[...live, ...off].map(h => (
+            <div key={h.code} style={{ padding: "10px 0", borderTop: `1px solid ${C.lineSoft}` }}>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
+                <span style={{ font: `600 12.5px ${sans}`, color: h.active ? C.ink : C.stone }}>{h.label}</span>
+                {!h.active && <Pill tone="stone">withdrawn</Pill>}
+                {!h.taxable && <Pill tone="stone">a reimbursement — not taxed</Pill>}
+                <span style={{ font: `11.5px ${sans}`, color: C.inkSoft, marginLeft: "auto", fontFamily: mono }}>{how(h)}</span>
+              </div>
+              <div style={{ font: `11px ${sans}`, color: C.stone, marginTop: 3, lineHeight: 1.55 }}>{h.authority}</div>
+              {h.note && <div style={{ font: `11px ${sans}`, color: C.amber, marginTop: 4, lineHeight: 1.55 }}>{h.note}</div>}
+              <div style={{ font: `10px ${sans}`, color: C.stone, marginTop: 4 }}>
+                {h.appliesTo ? `${h.appliesTo} only. ` : "Everybody on the payroll. "}
+                {h.floor ? `Only below ${inr(h.floor)} a month — not this one, above it. ` : ""}
+                {h.ceiling ? `Stops above ${inr(h.ceiling)} a month. ` : ""}
+                {h.setBy ? `Set by ${h.setBy}${h.setOn ? `, ${h.setOn}` : ""}.` : ""}
+              </div>
+              <GoldButton small ghost onClick={() => setEditing(h)} style={{ marginTop: 7 }}>Change it</GoldButton>
+            </div>
+          ))}
+          <GoldButton small onClick={() => setEditing({})} style={{ marginTop: 12 }}>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Plus size={13} /> Add an allowance</span>
+          </GoldButton>
+        </div>
+      )}
+      {editing && (
+        <AllowanceEditor head={editing} companyId={companyId} company={company}
+          onClose={() => setEditing(null)} />
+      )}
+    </Card>
+  );
+}
+
+function AllowanceEditor({ head, companyId, company, onClose }) {
+  const mob = useIsMobile();
+  const { saveAllowanceHead, offices = [], people = [] } = useProc();
+  const fresh = !head.code;
+  const [f, setF] = useState({
+    code: head.code || "",
+    label: head.label || "",
+    basis: head.basis || "flat",
+    rate: head.rate ?? 0,
+    wage: head.wage ?? 0,
+    ceiling: head.ceiling ?? 0,
+    floor: head.floor ?? 0,
+    proRate: head.proRate !== false,
+    appliesTo: head.appliesTo || "",
+    taxable: head.taxable !== false,
+    authority: head.authority || "",
+    note: head.note || "",
+    active: head.active !== false,
+    sort: head.sort ?? 0,
+  });
+  const [busy, setBusy] = useState(false);
+  const set = (k, v) => setF(s => ({ ...s, [k]: v }));
+  const num = (v) => { const n = Number(String(v).replace(/[^\d.-]/g, "")); return Number.isFinite(n) ? n : 0; };
+
+  /* Who it can be granted to. Built from what the register actually holds
+     rather than typed, because a scope that matches nobody pays nobody — and
+     it does so silently, which is the failure worth designing out. */
+  const groups = useMemo(() => {
+    const depts = [...new Set(people.map(p => p.dept).filter(Boolean))].sort();
+    const types = [...new Set(people.map(p => p.type).filter(Boolean))].sort();
+    const sites = [...new Set(offices.map(o => o.short).filter(Boolean))].sort();
+    return [
+      { head: "Everybody on the payroll", items: [""] },
+      { head: "A department", items: depts },
+      { head: "A kind of employee", items: types },
+      { head: "A site", items: sites },
+    ];
+  }, [people, offices]);
+
+  const problems = [];
+  if (!/^[a-z][a-z0-9-]{1,23}$/.test(f.code)) problems.push("A short key, lower case — site, fuel, night.");
+  if (f.label.trim().length < 2) problems.push("It needs a name people will recognise on a payslip.");
+  if (f.authority.trim().length < 4) problems.push("Say which policy it comes from. A figure nobody can trace is one somebody will have to defend without help.");
+  if (f.basis === "flat" && f.wage <= 0) problems.push("How much a month?");
+  if ((f.basis === "earnedPct" || f.basis === "wagePct") && f.rate <= 0) problems.push("What percentage?");
+  if (f.basis === "wagePct" && f.wage <= 0) problems.push("A percentage of what monthly figure?");
+  if (f.floor > 0 && f.ceiling > 0 && f.floor > f.ceiling) problems.push("The floor is above the ceiling, so it would reach nobody.");
+
+  const save = async () => {
+    setBusy(true);
+    const ok = await saveAllowanceHead(companyId, {
+      ...f,
+      code: f.code.trim().toLowerCase(),
+      label: f.label.trim(),
+      authority: f.authority.trim(),
+      note: f.note.trim(),
+      appliesTo: f.appliesTo.trim(),
+    });
+    setBusy(false);
+    if (ok !== false) {
+      toast(`${f.label} ${f.active ? "set" : "withdrawn"} for ${company}`, "green");
+      onClose();
+    }
+  };
+
+  return (
+    <Overlay onClose={onClose} width={620}>
+      <div style={{ padding: mob ? 18 : 26 }}>
+        <Eyebrow>{company}</Eyebrow>
+        <h2 style={{ font: `400 21px ${serif}`, margin: "6px 0 4px" }}>
+          {fresh ? "Add an allowance" : f.label}
+        </h2>
+        <div style={{ font: `12px ${sans}`, color: C.inkSoft, lineHeight: 1.6, marginBottom: 16 }}>
+          Money paid on top of the salary. It appears on every month worked out from now on, on the
+          file Accounts receives, with this policy printed beside it.
+        </div>
+
+        <Field label="Name it — what a person reads on their payslip" value={f.label}
+          onChange={v => setF(s => ({ ...s, label: v, code: fresh ? v.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 24) : s.code }))}
+          placeholder="Site allowance" />
+        <Field label="Short key" value={f.code} onChange={v => set("code", v)}
+          hint="Lower case, no spaces. It never changes once a month has been paid on it." placeholder="site" />
+
+        <label style={lbl}>How it is worked out</label>
+        <select value={f.basis} onChange={e => set("basis", e.target.value)} style={{ ...sel, margin: "6px 0 14px" }}>
+          <option value="flat">A fixed sum each month</option>
+          <option value="earnedPct">A percentage of what they earned this month</option>
+          <option value="wagePct">A percentage of a fixed monthly figure</option>
+          <option value="entered">No rule — you type it each month</option>
+        </select>
+
+        {(f.basis === "flat" || f.basis === "wagePct") && (
+          <Field label={f.basis === "flat" ? "How much a month (₹)" : "A percentage of which monthly figure (₹)"}
+            value={f.wage} onChange={v => set("wage", num(v))} />
+        )}
+        {(f.basis === "earnedPct" || f.basis === "wagePct") && (
+          <Field label="Percentage" value={f.rate} onChange={v => set("rate", num(v))} />
+        )}
+
+        {f.basis !== "entered" && (
+          <label style={{ display: "flex", gap: 9, alignItems: "flex-start", marginBottom: 14, cursor: "pointer" }}>
+            <input type="checkbox" checked={f.proRate} onChange={e => set("proRate", e.target.checked)} />
+            <span style={{ font: `12px ${sans}`, color: C.ink, lineHeight: 1.5 }}>
+              Pro-rate it for the days paid
+              <span style={{ display: "block", font: `11px ${sans}`, color: C.stone }}>
+                On for anything earned by being there. Off for something granted whole, whatever the month looked like.
+              </span>
+            </span>
+          </label>
+        )}
+
+        <label style={lbl}>Who gets it</label>
+        <select value={f.appliesTo} onChange={e => set("appliesTo", e.target.value)} style={{ ...sel, margin: "6px 0 4px" }}>
+          {groups.map(g => (
+            <optgroup key={g.head} label={g.head}>
+              {g.items.map(v => <option key={g.head + v} value={v}>{v || "Everybody on the payroll"}</option>)}
+            </optgroup>
+          ))}
+        </select>
+        <div style={{ font: `11px ${sans}`, color: C.stone, marginBottom: 14, lineHeight: 1.55 }}>
+          Chosen from a list rather than typed. A group that matches nobody pays nobody, and it
+          would do it without saying so.
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr" : "1fr 1fr", gap: 12 }}>
+          <Field label="Only for people on less than (₹ a month)" value={f.ceiling}
+            onChange={v => set("ceiling", num(v))} hint="0 for no limit. Keeps a site allowance off a manager." />
+          <Field label="Only for people on more than (₹ a month)" value={f.floor}
+            onChange={v => set("floor", num(v))} hint="0 for no limit." />
+        </div>
+
+        <label style={{ display: "flex", gap: 9, alignItems: "flex-start", marginBottom: 14, cursor: "pointer" }}>
+          <input type="checkbox" checked={f.taxable} onChange={e => set("taxable", e.target.checked)} />
+          <span style={{ font: `12px ${sans}`, color: C.ink, lineHeight: 1.5 }}>
+            It counts as pay — it is taxed
+            <span style={{ display: "block", font: `11px ${sans}`, color: C.stone }}>
+              Leave this on for an allowance. Turn it off only for a reimbursement of money the
+              person already spent, which is not income and should not be taxed as if it were.
+            </span>
+          </span>
+        </label>
+
+        <Field label="Which policy does it come from?" value={f.authority} onChange={v => set("authority", v)} area
+          hint="In words. It is printed beside the figure on the file Accounts receives."
+          placeholder="Board note of 12 Mar 2026 — ₹2,000 a month to staff posted on site." />
+        <Field label="Anything else worth knowing" value={f.note} onChange={v => set("note", v)} area />
+
+        <label style={{ display: "flex", gap: 9, alignItems: "center", marginBottom: 16, cursor: "pointer" }}>
+          <input type="checkbox" checked={f.active} onChange={e => set("active", e.target.checked)} />
+          <span style={{ font: `12px ${sans}`, color: C.ink }}>
+            Being paid at the moment
+            {!f.active && <span style={{ color: C.stone }}> — kept on record, with the policy on it, but not paid</span>}
+          </span>
+        </label>
+
+        {problems.length > 0 && (
+          <div style={{ background: C.amberTint || "#FFF9E0", border: `1px solid ${C.line}`, borderRadius: 9, padding: 12, marginBottom: 14 }}>
+            {problems.map((x, i) => (
+              <div key={i} style={{ font: `11.5px ${sans}`, color: C.ink, lineHeight: 1.6 }}>· {x}</div>
+            ))}
+          </div>
+        )}
+
+        <div style={{ display: "flex", gap: 9, flexWrap: "wrap" }}>
+          <GoldButton disabled={busy || problems.length > 0} onClick={save}>
+            {busy ? "Saving…" : fresh ? "Add it" : "Save the change"}
+          </GoldButton>
+          <GoldButton ghost onClick={onClose}>Cancel</GoldButton>
+        </div>
+      </div>
+    </Overlay>
   );
 }
 

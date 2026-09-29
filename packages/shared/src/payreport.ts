@@ -42,6 +42,8 @@ export interface ReportLine {
   readonly arrear: number;
   readonly payable: number;
   readonly remark: string;
+  /** What the company's policy added on top. Absent on a line stored before it existed. */
+  readonly eAllow?: number;
 }
 
 export interface ReportRun {
@@ -92,6 +94,8 @@ export interface ReportRow {
   readonly advance: number;
   readonly otherOff: number;
   readonly deductions: number;
+  /** What the company's policy paid on top of the salary. */
+  readonly allowances: number;
   readonly added: number;
   readonly payable: number;
   readonly remark: string;
@@ -121,6 +125,7 @@ export interface PayReport {
     readonly advance: number;
     readonly otherOff: number;
     readonly deductions: number;
+    readonly allowances: number;
     readonly added: number;
     readonly payable: number;
     readonly employer: number;
@@ -179,6 +184,7 @@ export function payrollReport(run: ReportRun, opts: ReportOptions = {}): PayRepo
       advance: l.dAdvance,
       otherOff: l.dOther,
       deductions: l.dTotal,
+      allowances: l.eAllow || 0,
       added: (l.extraAmount || 0) + (l.arrear || 0),
       payable: l.payable,
       /* A line with nothing on the register behind it is the single most
@@ -214,6 +220,7 @@ export function payrollReport(run: ReportRun, opts: ReportOptions = {}): PayRepo
       advance: add((r) => r.advance),
       otherOff: add((r) => r.otherOff),
       deductions: add((r) => r.deductions),
+      allowances: add((r) => r.allowances),
       added: add((r) => r.added),
       payable: add((r) => r.payable),
       employer: run.lines.reduce((a, l) => a + (l.erEsi || 0) + (l.erPf || 0), 0),
@@ -233,6 +240,7 @@ export const REPORT_COLUMNS = [
   'Joined',
   'Salary a month',
   'Earned this month',
+  'Allowances',
   'E.S.I.',
   'P.F.',
   'TDS',
@@ -268,6 +276,7 @@ export function reportToXlsx(report: PayReport): { name: string; bytes: Uint8Arr
     ],
     [{ v: 'People on this sheet', look: 'bold' }, report.totals.people],
     [{ v: 'Net paid to employees', look: 'bold' }, M(report.totals.payable, true)],
+    [{ v: 'Allowances included', look: 'bold' }, M(report.totals.allowances, true)],
     [{ v: 'Held back in total', look: 'bold' }, M(report.totals.deductions, true)],
     [{ v: 'Report made on', look: 'bold' }, report.generatedOn],
     [],
@@ -286,6 +295,7 @@ export function reportToXlsx(report: PayReport): { name: string; bytes: Uint8Arr
       r.joined,
       M(r.salary),
       M(r.earned),
+      M(r.allowances),
       M(r.esi),
       M(r.pf),
       M(r.tds),
@@ -307,6 +317,7 @@ export function reportToXlsx(report: PayReport): { name: string; bytes: Uint8Arr
       null,
       M(report.totals.salary, true),
       M(report.totals.earned, true),
+      M(report.totals.allowances, true),
       M(report.totals.esi, true),
       M(report.totals.pf, true),
       M(report.totals.tds, true),
@@ -322,7 +333,7 @@ export function reportToXlsx(report: PayReport): { name: string; bytes: Uint8Arr
   const bytes = toXlsx({
     name: `${report.month} payroll`,
     rows: [...head, ...table],
-    widths: [14, 26, 15, 22, 10, 13, 16, 13, 15, 17, 10, 10, 10, 11, 16, 16, 12, 14, 40],
+    widths: [14, 26, 15, 22, 10, 13, 16, 13, 15, 17, 12, 10, 10, 10, 11, 16, 16, 12, 14, 40],
     freezeRows: head.length + 1,
   });
 

@@ -177,14 +177,8 @@ const styleOf = (look: CellLook | undefined): number => Math.max(0, LOOKS.indexO
 const cellOf = (v: XlsxValue): XlsxCell =>
   v !== null && typeof v === 'object' ? v : { v: v ?? null };
 
-/**
- * The workbook, as bytes.
- *
- * Numbers are written as numbers so they add up in Excel; everything else is an
- * inline string, so there is no shared-string table to keep in step.
- */
-export function toXlsx(sheet: XlsxSheet): Uint8Array {
-  const enc = new TextEncoder();
+/** One worksheet, as its own XML part. */
+function sheetPart(sheet: XlsxSheet): string {
   const rows = sheet.rows
     .map((cells, r) => {
       const inner = cells
@@ -213,10 +207,28 @@ export function toXlsx(sheet: XlsxSheet): Uint8Array {
     ? `<sheetViews><sheetView workbookViewId="0"><pane ySplit="${sheet.freezeRows}" topLeftCell="A${sheet.freezeRows + 1}" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>`
     : '';
 
-  const sheetXml =
+  return (
     `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
     `<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">` +
-    `${freeze}${cols}<sheetData>${rows}</sheetData></worksheet>`;
+    `${freeze}${cols}<sheetData>${rows}</sheetData></worksheet>`
+  );
+}
+
+/**
+ * The workbook, as bytes.
+ *
+ * Takes one sheet or several. Several is what the file HR sends to Accounts
+ * needs: the payroll on one tab, and the allowances, the deductions and the
+ * attendance behind it, so that every figure on the front can be traced without
+ * opening a second file.
+ *
+ * Numbers are written as numbers so they add up in Excel; everything else is an
+ * inline string, so there is no shared-string table to keep in step.
+ */
+export function toXlsx(input: XlsxSheet | readonly XlsxSheet[]): Uint8Array {
+  const enc = new TextEncoder();
+  const sheets = Array.isArray(input) ? input : [input as XlsxSheet];
+  if (!sheets.length) throw new Error('A workbook needs at least one sheet.');
 
   // Marbella navy for the heading band, and rupees with a thousands separator
   // and no paise — the way every figure in the app is shown.
@@ -246,7 +258,17 @@ export function toXlsx(sheet: XlsxSheet): Uint8Array {
     `<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>` +
     `</styleSheet>`;
 
-  const tab = esc(sheet.name.replace(/[:\\/?*[\]]/g, ' ').slice(0, 31)) || 'Sheet1';
+  /* Excel refuses a workbook with two tabs of the same name, and it refuses one
+     with a blank tab name, so both are dealt with here rather than trusted to
+     the caller. A clash gets a number, which is what Excel itself does. */
+  const taken = new Set<string>();
+  const tabs = sheets.map((sh, i) => {
+    let t = sh.name.replace(/[:\\/?*[\]]/g, ' ').trim().slice(0, 31) || `Sheet${i + 1}`;
+    let n = 2;
+    while (taken.has(t.toLowerCase())) t = `${t.slice(0, 28)} ${n++}`;
+    taken.add(t.toLowerCase());
+    return t;
+  });
 
   return zip([
     {
@@ -257,7 +279,12 @@ export function toXlsx(sheet: XlsxSheet): Uint8Array {
           `<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>` +
           `<Default Extension="xml" ContentType="application/xml"/>` +
           `<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>` +
-          `<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>` +
+          sheets
+            .map(
+              (_, i) =>
+                `<Override PartName="/xl/worksheets/sheet${i + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`,
+            )
+            .join('') +
           `<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>` +
           `</Types>`,
       ),
@@ -277,7 +304,11 @@ export function toXlsx(sheet: XlsxSheet): Uint8Array {
         `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
           `<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" ` +
           `xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">` +
-          `<sheets><sheet name="${tab}" sheetId="1" r:id="rId1"/></sheets></workbook>`,
+          `<sheets>` +
+          tabs
+            .map((t, i) => `<sheet name="${esc(t)}" sheetId="${i + 1}" r:id="rId${i + 1}"/>`)
+            .join('') +
+          `</sheets></workbook>`,
       ),
     },
     {
@@ -285,12 +316,20 @@ export function toXlsx(sheet: XlsxSheet): Uint8Array {
       bytes: enc.encode(
         `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
           `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">` +
-          `<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>` +
-          `<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>` +
+          sheets
+            .map(
+              (_, i) =>
+                `<Relationship Id="rId${i + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i + 1}.xml"/>`,
+            )
+            .join('') +
+          `<Relationship Id="rId${sheets.length + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>` +
           `</Relationships>`,
       ),
     },
     { name: 'xl/styles.xml', bytes: enc.encode(styles) },
-    { name: 'xl/worksheets/sheet1.xml', bytes: enc.encode(sheetXml) },
+    ...sheets.map((sh, i) => ({
+      name: `xl/worksheets/sheet${i + 1}.xml`,
+      bytes: enc.encode(sheetPart(sh)),
+    })),
   ]);
 }

@@ -25,6 +25,7 @@ export * from './xlsx.js';
 export * from './ask.js';
 export * from './xlsxOut.js';
 export * from './payreport.js';
+export * from './accountsfile.js';
 export * as schemas from './schemas.js';
 export { readJd } from './schemas.js';
 export type {

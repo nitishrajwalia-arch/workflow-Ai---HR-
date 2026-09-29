@@ -39,7 +39,9 @@ import {
   BOOTSTRAP_VERSION,
   roleAtLeast,
   readJd,
+  readAdditions,
   readReductions,
+  type BootstrapAllowanceHead,
   type BootstrapDeductionHead,
   type BootstrapJd,
   type BootstrapPayload,
@@ -90,6 +92,7 @@ export const bootstrapRoutes: FastifyPluginAsyncZod = async (app) => {
         holidays,
         payRuns,
         deductionHeads,
+        allowanceHeads,
         salaryPolicies,
         offices,
         hrLog,
@@ -129,6 +132,11 @@ export const bootstrapRoutes: FastifyPluginAsyncZod = async (app) => {
           : Promise.resolve([]),
         canSeeMoney
           ? db.deductionHead.findMany({
+              orderBy: [{ companyId: 'asc' }, { sort: 'asc' }, { code: 'asc' }],
+            })
+          : Promise.resolve([]),
+        canSeeMoney
+          ? db.allowanceHead.findMany({
               orderBy: [{ companyId: 'asc' }, { sort: 'asc' }, { code: 'asc' }],
             })
           : Promise.resolve([]),
@@ -418,6 +426,14 @@ export const bootstrapRoutes: FastifyPluginAsyncZod = async (app) => {
             erPf: l.erPf,
             erOther: l.erOther,
             reductions: readReductions(l.reductions),
+            additions: readAdditions(l.additions),
+            eAllow: l.eAllow,
+            dPresent: l.dPresent,
+            dAbsent: l.dAbsent,
+            dWeekOff: l.dWeekOff,
+            dHoliday: l.dHoliday,
+            dLeave: l.dLeave,
+            dLost: l.dLost,
             extraDays: l.extraDays,
             extraAmount: l.extraAmount,
             arrear: l.arrear,
@@ -443,6 +459,32 @@ export const bootstrapRoutes: FastifyPluginAsyncZod = async (app) => {
               proRate: h.proRate,
               requires: h.requires,
               rounding: h.rounding,
+              authority: h.authority,
+              note: h.note,
+              active: h.active,
+              sort: h.sort,
+              setBy: h.setBy,
+              setOn: h.setOn,
+            });
+            return acc;
+          },
+          {},
+        ),
+        // And what goes ON one. Behind the same money check for the same reason.
+        allowanceHeads: allowanceHeads.reduce<Record<string, BootstrapAllowanceHead[]>>(
+          (acc, h) => {
+            (acc[h.companyId] ??= []).push({
+              code: h.code,
+              label: h.label,
+              basis: h.basis,
+              rate: h.rate,
+              wage: h.wage,
+              ceiling: h.ceiling,
+              floor: h.floor,
+              proRate: h.proRate,
+              rounding: h.rounding,
+              appliesTo: h.appliesTo,
+              taxable: h.taxable,
               authority: h.authority,
               note: h.note,
               active: h.active,

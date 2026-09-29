@@ -23,7 +23,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import type { BootstrapJd, BootstrapPayRun } from '@marbella/shared';
+import type { BootstrapAllowanceHead, BootstrapJd, BootstrapPayRun } from '@marbella/shared';
 import { verifyChainNewestFirst } from '@marbella/shared';
 import { ApiError, api } from '../lib/api.js';
 import { ProcCtx, type ProcValue } from './context.js';
@@ -204,6 +204,7 @@ export function ProcurementProvider({ children, toast }: Props) {
       holidays: w.holidays,
       payRuns: w.payRuns,
       deductionHeads: w.deductionHeads,
+      allowanceHeads: w.allowanceHeads,
       salaryPolicies: w.salaryPolicies,
       offices: w.offices,
       hrLog: w.hrLog,
@@ -871,6 +872,33 @@ export function ProcurementProvider({ children, toast }: Props) {
           () =>
             api.post<{ run: BootstrapPayRun; payable: number }>(`/pay-runs/${runId}/release`, {}),
           (r, x) => spliceRun(r.run, x),
+        ),
+
+      /* An allowance the company grants. Through `server` rather than
+         `optimistic` for the same reason a pay run is: it changes what people
+         are paid, and the browser should show what the server holds rather than
+         its own guess. Already-released months keep the figures they were
+         released with — the server refuses to rework them. */
+      saveAllowanceHead: (company: string, head: Record<string, unknown>) =>
+        server(
+          () => api.put<Record<string, unknown>>(`/allowance-heads/${company}/${head.code}`, head),
+          (saved, x) => {
+            const row = saved as unknown as BootstrapAllowanceHead;
+            const list = ((x.allowanceHeads?.[company] ?? []) as BootstrapAllowanceHead[]).filter(
+              (h) => h.code !== row.code,
+            );
+            return {
+              ...x,
+              allowanceHeads: {
+                ...x.allowanceHeads,
+                // Kept in the order the panel shows them, so a head that has
+                // just been saved does not jump to the bottom of the list.
+                [company]: [...list, row].sort(
+                  (a, b) => a.sort - b.sort || a.code.localeCompare(b.code),
+                ),
+              },
+            };
+          },
         ),
 
       /* Keyed by DEPARTMENT as well as title. One title means different jobs in

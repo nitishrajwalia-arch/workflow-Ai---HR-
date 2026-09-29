@@ -111,6 +111,7 @@ model Company {
   salaryPolicies SalaryPolicy[]
   payRuns        PayRun[]
   deductionHeads DeductionHead[]
+  allowanceHeads AllowanceHead[]
 
   @@map("company")
 }
@@ -567,6 +568,34 @@ model PayRunLine {
   extraDays   Float @default(0)
   extraAmount Int   @default(0)
   arrear      Int   @default(0)
+
+  /// Allowances paid on top, head by head, each with the policy behind it. The
+  /// same shape as `reductions` and stored for the same reason: a released line
+  /// must still read the same after the policy changes.
+  additions Json @default("[]")
+  /// The roll-up of the above — what Accounts adds to the earned gross.
+  eAllow    Int  @default(0)
+
+  /// THE ATTENDANCE THIS LINE WAS WORKED OUT FROM.
+  ///
+  /// `days` is the answer. These are the reasons for it, and they were computed
+  /// every month and then thrown away — leaving Accounts and the person holding
+  /// the payslip with a number and no way to check it. A query about a short
+  /// month came back to HR to re-derive by hand from the machine data.
+  ///
+  /// -1 means not recorded, which is not the same as 0. A person who is not on
+  /// the attendance machine is paid the full month and has no present count;
+  /// writing 0 there would read as somebody who never came in.
+  dPresent Float @default(-1)
+  dAbsent  Float @default(-1)
+  /// Their own weekly off. Paid, and not an absence.
+  dWeekOff Float @default(-1)
+  /// Days the company was closed. Paid.
+  dHoliday Float @default(-1)
+  /// Absences HR covered with paid leave.
+  dLeave   Float @default(-1)
+  /// Absences nothing covered — the days that actually cost pay.
+  dLost    Float @default(-1)
 
   net Int @default(0)
 
@@ -1342,7 +1371,9 @@ model IncentivePackage {
 model AttendanceDay {
   id        String   @id @default(cuid())
   personId  String
-  /// Display form as the importers give it, e.g. "28 Jul".
+  /// Display form, WITH THE YEAR: "28 Jul 2026". The weekly-off check has to
+  /// know which weekday this was, and a date without a year cannot be read —
+  /// it fails silently, and every Sunday in the month is docked as an absence.
   date      String
   /// Null means absent.
   inAt      String?
@@ -1499,4 +1530,73 @@ model DeductionHead {
 
   @@unique([companyId, code])
   @@map("deduction_head")
+}
+
+/// WHAT GOES ON A PAYSLIP ON TOP OF THE SALARY, AND UNDER WHICH RULE.
+///
+/// The mirror of DeductionHead. Basic, HRA, Travelling, Medical and Special are
+/// columns on the salary because they are the SPLIT of a gross somebody agreed;
+/// an allowance is different money — a site allowance, a fuel allowance, a
+/// night-shift allowance, an attendance bonus — granted by a company policy that
+/// can change without anybody's salary changing.
+///
+/// Before this existed the only way to pay one was to type it into "extra days
+/// amount", which is a lie about what the money was for, or to raise the
+/// person's gross, which is a lie about their salary. Neither survives being
+/// asked about a year later.
+///
+/// Rows, not code, for the same reason deductions are rows: a policy is
+/// something a person decides and signs, and the sheet has to be able to say who.
+model AllowanceHead {
+  id        String  @id @default(cuid())
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  /// Stable key the engine and the salary sheet use.
+  code  String
+  label String
+
+  /// earnedPct | wagePct | flat | entered — the same arithmetic as a deduction.
+  basis String @default("flat")
+
+  /// The percentage, or the rupees when the basis is 'flat'.
+  rate     Float   @default(0)
+  /// 'wagePct' and 'flat': the monthly wage or sum the rate applies to.
+  wage     Int     @default(0)
+  /// Above this monthly gross the allowance does not apply. ZERO MEANS NO CEILING.
+  ceiling  Int     @default(0)
+  /// Below this monthly gross it does not apply either. A site allowance meant
+  /// for labour should not quietly land on a general manager's payslip.
+  floor    Int     @default(0)
+  /// Scale by the days paid. True for anything earned by being there.
+  proRate  Boolean @default(true)
+  /// nearest | up.
+  rounding String  @default("nearest")
+
+  /// Who gets it. Empty means everybody on the company's payroll. Otherwise a
+  /// department ("Maintenance"), an employment type ("Site"), or a site's short
+  /// name ("Curo One") — matched against the person, not against the company.
+  appliesTo String @default("")
+
+  /// Whether it counts as pay for the statutory heads and for tax. A site
+  /// allowance does; a reimbursement of money somebody already spent does not,
+  /// and treating the two the same is how a reimbursement gets taxed.
+  taxable Boolean @default(true)
+
+  /// The policy it comes from, in words. It goes on the sheet Accounts reads,
+  /// so that a figure nobody recognises can be traced without asking HR.
+  authority String  @default("")
+  note      String  @default("")
+  /// Off means the company is not paying it at the moment. An allowance that
+  /// was granted and then withdrawn is kept, switched off, with the policy on
+  /// it — deleting it loses the fact that somebody looked and decided.
+  active    Boolean @default(true)
+  sort      Int     @default(0)
+
+  setBy     String   @default("")
+  setOn     String   @default("")
+  updatedAt DateTime @updatedAt
+
+  @@unique([companyId, code])
+  @@map("allowance_head")
 }

@@ -25,14 +25,18 @@
  */
 
 import {
+  allowanceTotals,
+  allowancesFor,
   asPayPolicy,
   computeLine,
   imeiCheck,
   emailCheck,
   payableDays,
   phoneCheck,
+  readAdditions,
   readReductions,
   schemas,
+  type AllowanceHead,
   type DeductionHead,
   type PayStructure,
 } from '@marbella/shared';
@@ -398,6 +402,97 @@ export const payrollRoutes: FastifyPluginAsyncZod = async (app) => {
     },
   );
 
+  /* ---------------------------------------------------- allowance heads */
+
+  app.get(
+    '/allowance-heads',
+    {
+      preHandler: app.requireRole('HR'),
+      schema: {
+        tags: ['payroll'],
+        summary: 'What goes on a payslip on top of the salary, per company',
+        response: { 200: z.any() },
+      },
+    },
+    async () => {
+      const rows = await db.allowanceHead.findMany({
+        orderBy: [{ companyId: 'asc' }, { sort: 'asc' }, { code: 'asc' }],
+      });
+      const out: Record<string, unknown[]> = {};
+      for (const h of rows) {
+        (out[h.companyId] ??= []).push({
+          code: h.code,
+          label: h.label,
+          basis: h.basis,
+          rate: h.rate,
+          wage: h.wage,
+          ceiling: h.ceiling,
+          floor: h.floor,
+          proRate: h.proRate,
+          rounding: h.rounding,
+          appliesTo: h.appliesTo,
+          taxable: h.taxable,
+          authority: h.authority,
+          note: h.note,
+          active: h.active,
+          sort: h.sort,
+          setBy: h.setBy,
+          setOn: h.setOn,
+        });
+      }
+      return out;
+    },
+  );
+
+  app.put(
+    '/allowance-heads/:company/:code',
+    {
+      preHandler: app.requireRole('HR'),
+      schema: {
+        tags: ['payroll'],
+        summary: 'Set or change an allowance',
+        description:
+          'The policy it comes from is required. A figure on a payslip that nobody ' +
+          'can trace to a decision is a figure somebody will have to defend without ' +
+          'help, and whoever saves it is named on it. An allowance already paid on a ' +
+          'RELEASED run is not reworked: those figures are what Accounts paid.',
+        params: z.object({ company: schemas.slug, code: z.string().trim().min(2).max(24) }),
+        body: schemas.allowanceHeadBody,
+        response: { 200: z.any(), 404: schemas.errorBody },
+      },
+    },
+    async (req) => {
+      const me = requireUser(req);
+      const { company, code } = req.params;
+      const bd = req.body;
+      if (bd.code !== code.toLowerCase()) {
+        throw unprocessable('The key in the address and the key in the body must match.', [
+          { path: 'code', message: 'does not match the address' },
+        ]);
+      }
+      const co = await db.company.findUnique({ where: { id: company } });
+      if (!co) throw notFound(`Company ${company}`);
+
+      const saved = await db.$transaction(async (tx) => {
+        const row = await tx.allowanceHead.upsert({
+          where: { companyId_code: { companyId: company, code: bd.code } },
+          create: { companyId: company, ...bd, setBy: me.name, setOn: nowStamp() },
+          update: { ...bd, setBy: me.name, setOn: nowStamp() },
+        });
+        await appendInTx(tx, {
+          kind: 'payroll',
+          subject: `${company} ${bd.code}`,
+          detail:
+            `${bd.label} ${bd.active ? 'set' : 'withdrawn'} for ${co.name}` +
+            `${bd.appliesTo ? ` (${bd.appliesTo} only)` : ''} — ${bd.authority}`,
+          who: me.name,
+        });
+        return row;
+      });
+      return { ...saved, updatedAt: undefined };
+    },
+  );
+
   /* ------------------------------------------------------------ pay runs */
 
   /** The policy and structure a person is paid on, ready for the engine. */
@@ -431,6 +526,29 @@ export const payrollRoutes: FastifyPluginAsyncZod = async (app) => {
       proRate: h.proRate,
       requires: h.requires,
       rounding: h.rounding === 'up' ? 'up' : 'nearest',
+      authority: h.authority,
+      active: h.active,
+    }));
+  };
+
+  /** What goes on it on top of the salary, in the order it is shown. */
+  const allowancesOf = async (companyId: string): Promise<AllowanceHead[]> => {
+    const rows = await db.allowanceHead.findMany({
+      where: { companyId },
+      orderBy: [{ sort: 'asc' }, { code: 'asc' }],
+    });
+    return rows.map((h) => ({
+      code: h.code,
+      label: h.label,
+      basis: h.basis as AllowanceHead['basis'],
+      rate: h.rate,
+      wage: h.wage,
+      ceiling: h.ceiling,
+      floor: h.floor,
+      proRate: h.proRate,
+      rounding: h.rounding === 'up' ? 'up' : 'nearest',
+      appliesTo: h.appliesTo,
+      taxable: h.taxable,
       authority: h.authority,
       active: h.active,
     }));
@@ -488,6 +606,18 @@ export const payrollRoutes: FastifyPluginAsyncZod = async (app) => {
         erPf: l.erPf,
         erOther: l.erOther,
         reductions: readReductions(l.reductions),
+        additions: readAdditions(l.additions),
+        eAllow: l.eAllow,
+        /* The attendance this line was worked out from. It goes to the client
+           because it goes on the file Accounts pays from, and a payslip query
+           that has to come back to HR to be re-derived is the thing this
+           replaces. -1 means not recorded, and stays -1 all the way through. */
+        dPresent: l.dPresent,
+        dAbsent: l.dAbsent,
+        dWeekOff: l.dWeekOff,
+        dHoliday: l.dHoliday,
+        dLeave: l.dLeave,
+        dLost: l.dLost,
         extraDays: l.extraDays,
         extraAmount: l.extraAmount,
         arrear: l.arrear,
@@ -556,6 +686,7 @@ export const payrollRoutes: FastifyPluginAsyncZod = async (app) => {
       }
       const policy = asPayPolicy(policyRow);
       const heads = await headsOf(company);
+      const allowHeads = await allowancesOf(company);
 
       const people = await db.person.findMany({
         where: {
@@ -595,6 +726,13 @@ export const payrollRoutes: FastifyPluginAsyncZod = async (app) => {
       }
       const holidays = await db.holiday.findMany({ where: { allSites: true } });
       const holidayDates = holidays.map((h) => h.on);
+
+      /* An allowance can be granted to one site. The person carries an office
+         id; the policy is written with the site's short name on it, because
+         that is what somebody says out loud. This is the join between them. */
+      const siteOf = new Map(
+        (await db.office.findMany({ select: { id: true, short: true } })).map((o) => [o.id, o.short]),
+      );
 
       const run = await db.$transaction(async (tx) => {
         const r = existing
@@ -641,6 +779,18 @@ export const payrollRoutes: FastifyPluginAsyncZod = async (app) => {
             },
             heads,
           );
+          /* Allowances granted by the company's policy, worked out from the
+             same days the salary was. `who` is how a policy reaches a group
+             somebody chose — the labour on one site, the whole of Maintenance
+             — so it is the PERSON that is matched, not the payslip. */
+          const adds = allowancesFor(allowHeads, {
+            gross: line.gross,
+            eGross: line.eGross,
+            days: line.days,
+            monthDays,
+            who: { dept: p.dept, type: p.type, site: siteOf.get(p.officeId ?? '') },
+          });
+          const allow = allowanceTotals(adds);
           await tx.payRunLine.create({
             data: {
               runId: r.id,
@@ -668,8 +818,31 @@ export const payrollRoutes: FastifyPluginAsyncZod = async (app) => {
               erPf: line.erPf,
               erOther: line.erOther,
               reductions: asJson(line.reductions),
-              net: line.net,
-              remark: d.lost ? d.why : '',
+              additions: asJson(adds),
+              eAllow: allow.total,
+              /* The days the line was worked out from, kept rather than
+                 discarded. -1 is "not recorded" and is not the same as 0. */
+              dPresent: d.present,
+              dAbsent: d.absent,
+              dWeekOff: d.weekOff,
+              dHoliday: d.holiday,
+              dLeave: d.leave,
+              dLost: d.counted ? d.lost : -1,
+              /* THE ALLOWANCE IS PART OF WHAT THEY ARE PAID.
+                 `net` is what goes to Accounts, so the allowance belongs in it.
+                 Left out, the file would list a ₹2,000 site allowance in one
+                 column and pay ₹2,000 less than it says in the next — and it
+                 would add up on every screen, because every screen shows the
+                 stored figure. The allowance has its own column beside it, so
+                 the arithmetic stays visible: earned, plus allowances, less
+                 deductions, plus arrear. */
+              net: line.net + allow.total,
+              /* The reason for a short month is worth saying whether or not it
+                 cost anything — a month that was short and covered by leave is
+                 exactly the one somebody queries. And a date the attendance
+                 file wrote without a year says CHECK BEFORE PAYING, which must
+                 reach the sheet even when no day was docked. */
+              remark: d.lost || /CHECK BEFORE PAYING/.test(d.why) ? d.why : '',
             },
           });
         }
@@ -772,6 +945,36 @@ export const payrollRoutes: FastifyPluginAsyncZod = async (app) => {
         heads,
       );
 
+      /* THE ALLOWANCES HAVE TO BE RE-WORKED TOO.
+         A site allowance is pro-rated for the days, so changing the days and
+         leaving the allowance at what it was worth under the old ones leaves a
+         net that does not add up — and it adds up on screen, because the screen
+         shows the stored figure. Recomputed from the same days as the salary,
+         off the same heads, every time. */
+      const allowHeads = await allowancesOf(line.run.companyId);
+      const office = line.person?.officeId
+        ? await db.office.findUnique({
+            where: { id: line.person.officeId },
+            select: { short: true },
+          })
+        : null;
+      const adds = allowancesFor(allowHeads, {
+        gross: g.gross,
+        eGross: g.eGross,
+        days: g.days,
+        monthDays: line.run.monthDays,
+        who: {
+          dept: line.person?.dept,
+          type: line.person?.type,
+          site: office?.short,
+        },
+        /* The one-off allowances HR named are re-sent whole rather than patched,
+           for the same reason the one-off reductions are: a list edited by
+           deltas is a list nobody can reconstruct six months on. */
+        others: b.allowances ?? readAdditions(line.additions).filter((a) => a.code === 'other'),
+      });
+      const allow = allowanceTotals(adds);
+
       const row = await db.$transaction(async (tx) => {
         const updated = await tx.payRunLine.update({
           where: { id: lineId },
@@ -793,10 +996,13 @@ export const payrollRoutes: FastifyPluginAsyncZod = async (app) => {
             erPf: g.erPf,
             erOther: g.erOther,
             reductions: asJson(g.reductions),
+            additions: asJson(adds),
+            eAllow: allow.total,
             extraDays: g.extraDays,
             extraAmount: g.extraAmount,
             arrear: g.arrear,
-            net: g.net,
+            // As above: what the person is paid, allowance included.
+            net: g.net + allow.total,
             ...(b.remark === undefined ? {} : { remark: b.remark }),
           },
         });

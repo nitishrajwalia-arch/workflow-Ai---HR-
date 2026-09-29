@@ -237,6 +237,28 @@ export interface BootstrapPayLine {
     why: string;
     statutory: boolean;
   }>;
+  /** Every allowance on this line, with the policy behind each. */
+  additions: Array<{
+    code: string;
+    label: string;
+    amount: number;
+    taxable: boolean;
+    why: string;
+    policy: boolean;
+  }>;
+  /** What those come to. */
+  eAllow: number;
+  /**
+   * THE ATTENDANCE THIS LINE WAS WORKED OUT FROM.
+   * -1 means NOT RECORDED, which is not zero — somebody off the attendance
+   * machine is paid the full month and has no present count.
+   */
+  dPresent: number;
+  dAbsent: number;
+  dWeekOff: number;
+  dHoliday: number;
+  dLeave: number;
+  dLost: number;
   extraDays: number;
   extraAmount: number;
   arrear: number;
@@ -278,6 +300,30 @@ export interface BootstrapDeductionHead {
   /** 'nearest' or 'up'. The ESI regulation says up; most of the books say nearest. */
   rounding: string;
   /** The rule it comes from, in words. */
+  authority: string;
+  note: string;
+  active: boolean;
+  sort: number;
+  setBy: string;
+  setOn: string;
+}
+
+/** One allowance — what goes on a payslip on top, and under which policy. */
+export interface BootstrapAllowanceHead {
+  code: string;
+  label: string;
+  basis: string;
+  rate: number;
+  wage: number;
+  ceiling: number;
+  floor: number;
+  proRate: boolean;
+  rounding: string;
+  /** '' for everybody, or a department, an employment type, or a site. */
+  appliesTo: string;
+  /** Whether it is pay — taxed, and seen by the statutory heads. */
+  taxable: boolean;
+  /** The policy it comes from, in words. */
   authority: string;
   note: string;
   active: boolean;
@@ -367,6 +413,7 @@ export interface BootstrapPayload {
    * are paid.
    */
   deductionHeads: Record<string, BootstrapDeductionHead[]>;
+  allowanceHeads: Record<string, BootstrapAllowanceHead[]>;
   /**
    * How each company splits a gross. Empty for any desk that may not see money.
    * The browser needs it to show HR what a salary she is about to agree will
