@@ -103,10 +103,11 @@ async function main() {
    * rather than in real-data.ts, which is GENERATED from the registers: a
    * project with no people on it cannot be derived from a list of people.
    *
-   * THE COMPANY IS AN ASSUMPTION, and it is flagged as one below. Every other
-   * project has its own entity — Grand is SRG, Royce is Garg, Twin is SRG
-   * Marbella, New Marbella its own LLP — and nobody has said which entity signs
-   * for Manifest.
+   * THE COMPANY IS AN ASSUMPTION, and it is flagged as one below. Grand is
+   * SRG, Royce is Garg, Twin Towers is SRG Marbella, Curo One its own LLP —
+   * and the management has since said the entity written against Manifest is
+   * NOT right, without yet saying which one is. Until they do, every document
+   * for Manifest is on a letterhead nobody has confirmed.
    */
   const ASKED_FOR = [
     {

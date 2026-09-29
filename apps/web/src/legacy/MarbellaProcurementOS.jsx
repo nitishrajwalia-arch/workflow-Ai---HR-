@@ -10563,8 +10563,8 @@ function ConnectionsView() {
    own and everybody posted to it would otherwise be shown as sitting at Grand. */
 const OFFICES = [
   { id: "grand",       name: "Marbella Grand · Site Office", short: "Grand",        tint: "#3E7C55" },
-  { id: "newmarbella", name: "New Marbella · Site Office",   short: "New Marbella", tint: "#224A85" },
-  { id: "twin",        name: "Twin Tower · Site Office",     short: "Twin Tower",   tint: "#8A6224" },
+  { id: "newmarbella", name: "Marbella Curo One · Site Office", short: "Curo One",    tint: "#224A85" },
+  { id: "twin",        name: "Marbella Twin Towers · Site Office", short: "Twin Towers", tint: "#8A6224" },
   { id: "royce",       name: "Marbella Royce · Site Office", short: "Royce",        tint: "#B0503C" },
 ];
 /* A colour per site, for the ones the server does not carry one for. Stable by
@@ -13322,7 +13322,7 @@ For {{company}}
 
 {{hrName}}
 {{hrTitle}}`,
-    fields: [["fromsite","From","Marbella Grand"],["tosite","To","Twin Tower"],["effective","Effective from","01 Oct 2026"],["reportto","Report to","the Site Engineer"],["reason","Why","The slab cycle there needs an experienced hand through the next two quarters."]] },
+    fields: [["fromsite","From","Marbella Grand"],["tosite","To","Marbella Twin Towers"],["effective","Effective from","01 Oct 2026"],["reportto","Report to","the Site Engineer"],["reason","Why","The slab cycle there needs an experienced hand through the next two quarters."]] },
 
   { id: "noc", cat: "certificate", channel: "letter", name: "No objection certificate",
     when: "For a passport, a visa, a loan or a bank.",

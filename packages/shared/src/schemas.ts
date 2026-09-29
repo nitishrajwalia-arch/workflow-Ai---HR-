@@ -162,7 +162,11 @@ export const personCore = z.object({
    * an org chart that only understands employee IDs leaves them reporting to
    * nobody.
    */
-  reportsToNote: z.string().trim().max(200).default(''),
+  /* Optional, NOT defaulted to "". A default survives .partial(), so every
+     PATCH that never mentioned this field arrived carrying an empty string —
+     and a route that wrote it would wipe the note every time somebody edited a
+     performance score. Absent has to stay absent. */
+  reportsToNote: z.string().trim().max(200).optional(),
   perf: z.number().int().min(0).max(100).default(75),
   growth: z.string().max(2000).default(''),
   notes: z.array(note).default([]),

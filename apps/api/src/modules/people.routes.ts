@@ -288,6 +288,13 @@ export const peopleRoutes: FastifyPluginAsyncZod = async (app) => {
             ...(b.photo !== undefined ? { photo: b.photo } : {}),
             ...(b.office !== undefined ? { officeId: b.office } : {}),
             ...(b.reportsTo !== undefined ? { reportsToId: b.reportsTo } : {}),
+            /* Somebody whose manager is not an employee — a director, an owner —
+               is recorded in this note. It could be set when they were enrolled
+               and never changed afterwards: this route took the field, passed
+               its validation, and dropped it on the floor. So the four heads who
+               report to the board were stuck with whatever the intake sheet
+               guessed, and no screen could correct it. */
+            ...(b.reportsToNote !== undefined ? { reportsToNote: b.reportsToNote } : {}),
             ...(b.shift
               ? { shiftIn: b.shift.in, shiftOut: b.shift.out, shiftHours: b.shift.hours }
               : {}),

@@ -306,6 +306,63 @@ describe('pending people', () => {
   });
 });
 
+/**
+ * A manager who is not an employee.
+ *
+ * Four heads report to the board, not to anybody on the payroll, and that is
+ * recorded as a note against the person. The update route took the field,
+ * passed it through validation, and then never wrote it — so the note set at
+ * enrolment was the note forever, and the four who report upstairs were stuck
+ * with whatever the intake sheet had guessed.
+ */
+describe('reporting to somebody who is not on the payroll', () => {
+  it('saves a change to the note, and clears the employee manager with it', async () => {
+    const before = await db.person.findUnique({
+      where: { id: 'MB-PRJ-0014' },
+      select: { reportsToNote: true, reportsToId: true },
+    });
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/api/v1/people/MB-PRJ-0014',
+      headers: auth(token),
+      payload: { reportsTo: null, reportsToNote: 'Deepak Garg (Director)' },
+    });
+    expect(res.statusCode).toBe(200);
+
+    const after = await db.person.findUnique({
+      where: { id: 'MB-PRJ-0014' },
+      select: { reportsToNote: true, reportsToId: true },
+    });
+    expect(after?.reportsToNote, 'the note is what was sent').toBe('Deepak Garg (Director)');
+    expect(after?.reportsToId, 'and no employee is left as their manager').toBeNull();
+
+    await db.person.update({
+      where: { id: 'MB-PRJ-0014' },
+      data: { reportsToNote: before?.reportsToNote ?? '', reportsToId: before?.reportsToId ?? null },
+    });
+  });
+
+  it('leaves the note alone when the change is about something else', async () => {
+    const was = await db.person.findUnique({
+      where: { id: 'MB-PRJ-0014' },
+      select: { reportsToNote: true, perf: true },
+    });
+    await app.inject({
+      method: 'PATCH',
+      url: '/api/v1/people/MB-PRJ-0014',
+      headers: auth(token),
+      payload: { perf: 76 },
+    });
+    const now = await db.person.findUnique({
+      where: { id: 'MB-PRJ-0014' },
+      select: { reportsToNote: true },
+    });
+    expect(now?.reportsToNote).toBe(was?.reportsToNote);
+    await db.person.update({ where: { id: 'MB-PRJ-0014' }, data: { perf: was?.perf ?? 75 } });
+  });
+});
+
 describe('the org endpoint', () => {
   it('walks the manager chain up to the department head', async () => {
     const res = await app.inject({

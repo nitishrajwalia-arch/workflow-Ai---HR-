@@ -46,7 +46,7 @@ LINE = 'D9D2C4'
 # when there is no database to ask — building the sheet should not need one.
 FALLBACK_DEPARTMENTS = ['Accounts', 'Admin', 'CRM', 'HR', 'Horticulture', 'IT', 'Maintenance',
                         'Marketing', 'Pantry', 'Project', 'Purchase', 'Sales']
-FALLBACK_SITES = ['Marbella Grand', 'Twin Tower', 'Marbella Royce', 'New Marbella']
+FALLBACK_SITES = ['Grand', 'Twin Towers', 'Royce', 'Curo One', 'Manifest']
 FALLBACK_COMPANIES = ['SRG Developers & Promoters', 'SRG Marbella Developers And Promoters LLP',
                       'Garg Builders And Promoters LLP', 'New Marbella Developers And Promoters LLP']
 

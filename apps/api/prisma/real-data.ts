@@ -50,15 +50,18 @@ export const REAL_PROJECTS = [
   },
   {
     id: 'newmarbella',
-    name: 'New Marbella',
-    short: 'New Marbella',
+    /* The project is Marbella Curo One. The id and the LLP that pays for it
+       still carry the older "New Marbella" name — the entity is registered
+       under it — and only the project was renamed. */
+    name: 'Marbella Curo One',
+    short: 'Curo One',
     firm: 'New Marbella Developers And Promoters LLP',
     companyId: 'newmarb',
   },
   {
     id: 'twin',
-    name: 'Twin Tower',
-    short: 'Twin Tower',
+    name: 'Marbella Twin Towers',
+    short: 'Twin Towers',
     firm: 'SRG Marbella Developers And Promoters LLP',
     companyId: 'srgmarb',
   },
