@@ -252,8 +252,37 @@ edit attempt is refused by PostgreSQL itself and surfaces as
 
 ### `GET /exits` · `GET /exits/stages` · `POST /exits` — HR
 
+```json
+{ "pid": "MB-ACC-0001", "reason": "Resigned", "lastDay": "03 Sep 2026" }
+```
+
+`lastDay` is **required**. It is the day they actually stopped working, and
+their final salary is worked out to it. It is asked for here rather than at the
+end because it is knowable now — the resignation states it, or they walked out
+on it — and because payroll needs it long before the assets come back:
+full-and-final is the stage *after* the one that marks somebody gone.
+
+Before it existed, the register was stamped with the day the assets came back.
+A man who stopped coming in on the 3rd and returned his laptop on the 29th was
+paid twenty-nine days.
+
 Opening a second deboarding for someone who already has one open is a 409 that
 names the stage the existing one is at.
+
+### `PATCH /exits/:id/last-day` — HR
+
+```json
+{ "lastDay": "19 Sep 2026", "why": "Notice extended by a fortnight at his request." }
+```
+
+A notice period changes, or somebody turns out to have stopped coming in
+earlier than they said. `why` is required because it changes what a person is
+paid; both dates and the reason go on the ledger. If they have already been
+marked as gone, their record moves with it — payroll reads the register, so the
+two cannot be allowed to disagree.
+
+A **closed** deboarding is a 422: what it says is what was settled and what the
+person was paid.
 
 ### `POST /exits/:id/advance` — HR
 
@@ -267,11 +296,95 @@ this, two people advancing from two screens would skip a stage between them —
 assets never collected, but recorded as collected.
 
 Clearing `assets` marks the person exited, in the same transaction as the stage
-change. There is no window where one is true and the other is not.
+change. There is no window where one is true and the other is not. The date
+written on their record is the deboarding's `lastDay`, not the day the stage
+was cleared.
 
 ---
 
-## Payroll · contacts · devices
+## Payroll
+
+### `POST /pay-runs` — HR
+
+Works a month out for one company. Takes `month`, `company`, `monthDays`,
+`attendanceMonth`, and optionally `only` — a list of employee IDs, when HR is
+re-working a chosen few rather than the whole company. Re-running the whole
+company replaces every line; re-running three people replaces those three and
+leaves the rest of the draft alone, including the days and remarks somebody
+had already set.
+
+The run includes anybody whose **last day falls inside the month**, not only
+people who are currently active. Deboarding marks somebody exited when their
+assets come back, which is the stage before full-and-final — so a run that
+asked only for active people dropped them at exactly the point HR was settling
+their dues, and paid them nothing for the days they had worked.
+
+Days are capped at both ends by the part of the month that was actually theirs:
+somebody who joined on the 20th was there for eleven days of a thirty-day
+month. Neither fact is in the attendance file, because the machine has no rows
+for a person before they are enrolled or after they go — and no rows reads as
+"not on the machine", which pays the whole month.
+
+### `PATCH /pay-runs/:id/lines/:lineId` — HR
+
+Changes one person's days, adjustments or remark on a **draft**. Everything is
+recomputed from the structure rather than patched in place: an earned gross
+arrived at by adding a delta to an old one is a figure nobody can check. The
+allowances are recomputed too — a pro-rated allowance left at what it was worth
+under the old days is a net that does not add up, and it adds up on screen,
+because the screen shows the stored figure.
+
+### `GET|PUT /allowance-heads` · `/allowance-heads/:company/:code` — HR
+
+What the company pays **on top** of the salary, per company: a rule, a rate, a
+ceiling and a floor, whether it is pro-rated, who it reaches, whether it counts
+as pay, and the policy it comes from in words. The mirror of
+`/deduction-heads`.
+
+`appliesTo` is empty for everybody, or a department, an employment type or a
+site's short name. **A value that matches nobody pays nobody** — the dangerous
+way round would be treating an unmatched scope as no scope and paying the whole
+company.
+
+`taxable` is true for an allowance and false for a reimbursement of money
+somebody already spent. Taxing one is taxing a man on his own bus fare.
+
+An allowance is part of what the person is **paid**: it lands in the line's
+`net`. Left out, the file would list a ₹2,000 allowance in one column and pay
+₹2,000 less in the next.
+
+### `POST /pay-runs/:id/lines/:lineId/identify` — HR
+
+Says who a payslip belongs to when nobody on the register answers to the name
+on it. Thirteen people were paid in August in exactly that position.
+
+```json
+{ "kind": "known", "pid": "MB-PRJ-0026" }
+```
+
+```json
+{ "kind": "former", "dept": "Project", "type": "Site", "office": "grand",
+  "lastDay": "31 Mar 2024", "reason": "Resigned", "joined": "",
+  "note": "How this was established." }
+```
+
+`known` attaches the line to somebody already on the rolls and creates nothing.
+Two payslips for one person in one month is a **409** — that is the thing this
+exists to catch, not to record.
+
+`former` makes a record from what the book carries and what HR can establish,
+marked as having left, and attaches the line in the same transaction. Name and
+designation come off the book. `joined` is left **empty** when nobody knows it:
+a made-up date would put a length of service on a record and be read as a fact
+by every letter and report. No date of birth, no mobile, no salary structure is
+created — nobody has those.
+
+**Allowed on a released run**, deliberately. It changes no figure. It says who
+the person was, which is the one thing a released sheet is missing.
+
+---
+
+## Contacts · devices · salaries
 
 - `GET /salaries`, `PUT /salaries/:pid` — **HR**. The ledger records _that_ pay
   changed and who changed it, never the figures. The body carries the whole

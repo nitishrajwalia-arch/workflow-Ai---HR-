@@ -85,7 +85,10 @@ const schema = z.object({
    * password once and never again; the account must change it at first login.
    */
   BOOTSTRAP_ADMIN_EMAIL: z.string().default('hr@marbellagroup.in'),
-  BOOTSTRAP_ADMIN_NAME: z.string().default('Simran Kaur'),
+  /* BOOTSTRAP_ADMIN_NAME used to sit here, defaulting to a name nobody at
+     Marbella has. Nothing ever read it — the seed names the account after the
+     HR person on the register — so it was a made-up name in the configuration
+     of a real company, waiting to be copied into a .env and believed. */
   BOOTSTRAP_ADMIN_PASSWORD: z.string().optional(),
 });
 

@@ -10,7 +10,7 @@ Purchasing, stores, accounts, the gate and the people system for Marbella
 Group, as one real full-stack application.
 
 React front end. Fastify + PostgreSQL back end. One command to start, one
-command to deploy, and 164 tests that run against a real database.
+command to deploy, and 409 tests that run against a real database.
 
 This is the single-file `MarbellaProcurementOS.jsx` build with a server
 underneath it. The UI is the same UI — **ten edits**, all listed in
@@ -426,7 +426,7 @@ at a time when it does — the per-screen endpoints all exist already.
 | -------------------- | -------------------------------------------- |
 | `npm run dev`        | API and web, both watching                   |
 | `npm run check`      | format, lint, typecheck, test — what CI runs |
-| `npm test`           | 164 tests against a real PostgreSQL          |
+| `npm test`           | 409 tests against a real PostgreSQL          |
 | `npm run build`      | production build of all three packages       |
 | `npm run db:migrate` | create/apply a migration                     |
 | `npm run db:seed`    | seed (idempotent — safe to re-run)           |

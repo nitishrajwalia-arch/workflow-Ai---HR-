@@ -23,3 +23,10 @@ npm-debug.log*
 .idea/
 pgdata/
 Marbella-payroll-report-*.xlsx
+
+# The prototype this was built from. It lives in git history; a copy at the
+# root of a working repo only rots and confuses.
+files.zip
+
+# Salary files somebody generated while testing. They carry real pay.
+Marbella-salary-*.xlsx

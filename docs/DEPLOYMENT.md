@@ -263,8 +263,13 @@ that, and there is nothing to gain from it here.
 
 Work through all of it before handing over.
 
-- [ ] `curl https://hr.marbellagroup.in/api/v1/health/ready` returns
-      `{"status":"ready","database":"ok"}`
+- [ ] **On the server**, `curl -s localhost:4000/health/ready` returns
+      `{"status":"ready","database":"ok"}`. It is deliberately NOT proxied by
+      nginx and has no `/api/v1` prefix: a readiness probe tells the internet
+      when your database is down, so it stays on the box.
+- [ ] From outside, `curl -sI https://hr.marbellagroup.in/` returns `200` and
+      `curl -s https://hr.marbellagroup.in/api/v1/auth/login -X POST` returns a
+      `400`, not a `502`. A 502 means nginx cannot reach the API.
 - [ ] The three `ledger_entry` triggers exist (query in section 1)
 - [ ] Sign in as the bootstrap administrator and **change the password**
 - [ ] Create a real account for each person who needs one, with the lowest role

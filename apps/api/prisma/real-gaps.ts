@@ -400,7 +400,7 @@ export const GAP_PEOPLE = [
     "name": "Ajay Goel",
     "gender": "male",
     "email": "ajaygoel1965@gmail.com",
-    "reportsToNote": "Managing Directors (Rajesh Walia, Deepak Garg, Girish Goel, Parveen Garg)"
+    "reportsToNote": "Deepak Garg (Director)"
   },
   {
     "id": "MB-PRJ-0015",
@@ -694,7 +694,7 @@ export const GAP_PEOPLE = [
     "id": "MB-PUR-0001",
     "gender": "male",
     "email": "dchetanmalik@gmail.com",
-    "reportsToNote": "Managing Directors (Rajesh Walia, Deepak Garg, Girish Goel, Parveen Garg)"
+    "reportsToNote": "The board — which director has not been confirmed"
   },
   {
     "id": "MB-PUR-0002",
@@ -754,7 +754,7 @@ export const GAP_PEOPLE = [
     "id": "MB-SAL-0007",
     "gender": "male",
     "email": "saransh.sr@hotmail.com",
-    "reportsToNote": "Managing Directors (Rajesh Walia, Deepak Garg, Girish Goel, Parveen Garg)"
+    "reportsToNote": "Deepak Garg (Director)"
   },
   {
     "id": "MB-SAL-0008",

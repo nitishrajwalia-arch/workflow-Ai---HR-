@@ -96,10 +96,33 @@ def rows(ws, first=4):
 DIRECTORS = {
     'managing director(deepak garg)': 'Managing Director (Deepak Garg)',
     'managing director(rajesh walia)': 'Managing Director (Rajesh Walia)',
+    # The sheet answered "all four" for three people. The management has since
+    # said who each of them actually reports to, so the sheet's answer is
+    # replaced rather than loaded — see CORRECTED below. This entry stays so a
+    # sheet that still says it is recognised and corrected rather than dropped.
     'managing director(rajesh walia,deepak garg,girish goel,parveen garg)':
         'Managing Directors (Rajesh Walia, Deepak Garg, Girish Goel, Parveen Garg)',
     'managing director rajesh walia,deepak garg,girish goel, parveen garg)':
         'Managing Directors (Rajesh Walia, Deepak Garg, Girish Goel, Parveen Garg)',
+}
+
+# WHO THE HEADS ACTUALLY REPORT TO.
+#
+# The intake sheet gave three of them the same answer — all four directors —
+# which is what somebody writes when the question is "who is above you" and the
+# honest answer is "the board". The management has since named them, and their
+# own spelling of the directors' names is used: Gireesh Goyal, Praveen Garg.
+#
+# Applied here, in the importer, rather than by hand on a live database. A
+# correction that lives only in one database is lost the first time anybody
+# clones this and seeds it, and then the app disagrees with the company.
+CORRECTED = {
+    'MB-PRJ-0014': 'Deepak Garg (Director)',        # Ajay Goel, Project Head
+    'MB-SAL-0007': 'Deepak Garg (Director)',        # Saransh Rao, Vice President
+    # Not confirmed. The sheet guessed all four for him too and nobody has said
+    # otherwise, so it says what is true — that it is the board, and which
+    # director is not known — rather than repeating the guess.
+    'MB-PUR-0001': 'The board — which director has not been confirmed',
 }
 
 GENDERS = {'male': 'male', 'female': 'female', 'other': 'other',
@@ -205,6 +228,18 @@ def read(wb):
         elif re.fullmatch(r'MB-[A-Z]{2,3}-\d{4}', boss) and boss != pid:
             p.pop('reportsToNote', None)
             p['reportsTo'] = boss
+
+    # --------------------------------------------- 2b. What the management said
+    #
+    # Applied LAST, over both sheets, because it is the only answer here that
+    # came from the people who know. Everything above is what somebody filled in
+    # on a form.
+    for pid, note in CORRECTED.items():
+        p = byid.get(pid)
+        if not p:
+            continue
+        p.pop('reportsTo', None)
+        p['reportsToNote'] = note
 
     # ------------------------------------------------------------ 3. Leave Rules
     #

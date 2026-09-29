@@ -165,13 +165,33 @@ describe('reporting lines', () => {
     const { people } = await boot();
     const head = people.find((p) => p.id === 'MB-PRJ-0014')!;
     expect(head.reportsTo).toBeNull();
-    expect(head.reportsToNote).toMatch(/Managing Director/);
+    expect(head.reportsToNote).toMatch(/Director/);
     // And the directors did NOT become employees to make that line work: the
     // roster is still exactly the people on the company's own register. Other
     // suites add people to this same database, so this counts the seeded ones.
     const seeded = new Set(REAL_PEOPLE.map((p) => p.id));
     expect(people.filter((p) => seeded.has(p.id))).toHaveLength(REAL_PEOPLE.length);
     expect(people.some((p) => /director/i.test(p.id))).toBe(false);
+  });
+
+  it('carries what the management said, not what the sheet guessed', async () => {
+    /* The intake sheet gave three of the heads the same answer — all four
+       directors — which is what somebody writes when the question is "who is
+       above you" and the honest answer is "the board". The management has
+       since named them. That correction is applied in the IMPORTER, not by
+       hand on one database, because a correction that lives in one database is
+       lost the first time anybody clones this and seeds it. */
+    const { people } = await boot();
+    const note = (id: string) => people.find((p) => p.id === id)?.reportsToNote;
+    expect(note('MB-PRJ-0014'), 'Ajay Goel').toBe('Deepak Garg (Director)');
+    expect(note('MB-SAL-0007'), 'Saransh Rao').toBe('Deepak Garg (Director)');
+    expect(note('MB-HR-0001'), 'the HR manager').toBe('Managing Director (Rajesh Walia)');
+    expect(note('MB-MKT-0001'), 'the marketing manager').toBe('Managing Director (Rajesh Walia)');
+    // Nobody has said who the purchase head reports to. It says that, rather
+    // than repeating the sheet's guess as though it were an answer.
+    expect(note('MB-PUR-0001')).toBe('The board — which director has not been confirmed');
+    // And the guess is gone from the seed entirely.
+    expect(people.some((p) => /Girish Goel|Parveen Garg/.test(p.reportsToNote ?? ''))).toBe(false);
   });
 
   it('leaves nobody without a line at all', async () => {
