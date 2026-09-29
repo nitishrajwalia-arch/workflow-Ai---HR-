@@ -176,3 +176,74 @@ describe('what it will not do', () => {
     expect(ask('   ', WORLD).understood).toBe(false);
   });
 });
+
+/* ------------------------------------------------------------ attendance */
+
+describe('asking about attendance', () => {
+  const ATT = {
+    ...WORLD,
+    attendance: [
+      // Deepak was there every working day and worked his Sundays too.
+      { pid: 'MB-PRJ-0023', month: 'Jun 2026', monthDays: 30, present: 30, absent: 0, weekOff: 0, holiday: 0 },
+      // Kushal took one Sunday and missed nothing else. Still a clean month.
+      { pid: 'MB-PRJ-0014', month: 'Jun 2026', monthDays: 30, present: 29, absent: 0, weekOff: 1, holiday: 0 },
+      { pid: 'MB-MNT-0010', month: 'Jun 2026', monthDays: 30, present: 22, absent: 6, weekOff: 2, holiday: 0 },
+      { pid: 'MB-ACC-0001', month: 'Jun 2026', monthDays: 30, present: 27, absent: 1, weekOff: 2, holiday: 0 },
+    ],
+  };
+
+  for (const q of [
+    'who has full attendance',
+    'people with perfect attendance',
+    'who was present every day',
+    'anybody with a clean month',
+  ]) {
+    it(`reads "${q}"`, () => {
+      const r = ask(q, ATT);
+      expect(r.understood).toBe(true);
+      expect(r.matched).toBe('attendance-full');
+      expect(r.answer).toContain('Avtar Singh');
+      expect(r.answer).toContain('Ajay Goel');
+      expect(r.answer).not.toContain('Parmjeet');
+    });
+  }
+
+  it('counts a weekly off as an off day, not an absence', () => {
+    // Kushal's stand-in took one Sunday. A count that called that an absence
+    // would disagree with the payslip he was paid on.
+    const r = ask('who has full attendance', ATT);
+    expect(r.answer).toContain('weekly off, not an absence');
+  });
+
+  it('says how many people it could actually see', () => {
+    const r = ask('who has full attendance', ATT);
+    // Five active people in the world, four on the machine.
+    expect(r.answer).toContain('4 people the machine covers');
+    expect(r.answer).toContain('not on it, so nothing is claimed about them');
+  });
+
+  it('answers the other way round too', () => {
+    const r = ask('who was absent the most', ATT);
+    expect(r.matched).toBe('attendance-absent');
+    expect(r.answer).toContain('6 days absent');
+    expect(r.answer).toContain('Parmjeet Singh');
+  });
+
+  it('says nobody rather than inventing a name', () => {
+    const none = {
+      ...WORLD,
+      attendance: [
+        { pid: 'MB-PRJ-0023', month: 'Jun 2026', monthDays: 30, present: 25, absent: 3, weekOff: 2, holiday: 0 },
+      ],
+    };
+    expect(ask('who has full attendance', none).answer).toContain('Nobody had a clean month');
+  });
+
+  it('refuses to answer when nothing has been loaded', () => {
+    const r = ask('who has full attendance', WORLD);
+    expect(r.matched).toBe('attendance-none');
+    expect(r.answer).toContain('No attendance has been loaded yet');
+    // The trap: "nobody was absent" is a lie when nobody was counted.
+    expect(r.answer).not.toMatch(/nobody was absent/i);
+  });
+});

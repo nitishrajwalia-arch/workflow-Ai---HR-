@@ -48,10 +48,38 @@ export interface AskPerson {
   readonly reportsTo?: string | null;
 }
 
+/**
+ * ONE PERSON'S MONTH ON THE ATTENDANCE MACHINE.
+ *
+ * Counted the same way payroll counts it, and that is the whole point: an
+ * assistant that answers "who had full attendance" with a different sum from
+ * the one the payslip was worked out on is worse than one that cannot answer.
+ *
+ * A day their own weekly off falls on is not an absence. Neither is a company
+ * holiday. What is left is what actually cost them a day.
+ */
+export interface AskAttendance {
+  readonly pid: string;
+  /** The month, as the sheet heads it: "Jun 2026". */
+  readonly month: string;
+  readonly monthDays: number;
+  readonly present: number;
+  /** Absences nothing covered. */
+  readonly absent: number;
+  readonly weekOff: number;
+  readonly holiday: number;
+}
+
 export interface AskWorld {
   readonly people: readonly AskPerson[];
   /** Overridable so a test can pin the day. */
   readonly asOf?: Date;
+  /**
+   * The attendance the machine holds, where there is any. Most companies cover
+   * some of their people and not others, so a question about attendance says
+   * how many it could see rather than answering for everybody.
+   */
+  readonly attendance?: readonly AskAttendance[];
 }
 
 export interface AskResult {
@@ -70,6 +98,7 @@ export const ASK_EXAMPLES: readonly string[] = [
   'Whose birthday is coming up?',
   'Who reports to Ajay Goel?',
   'Who has been here the longest?',
+  'Who had full attendance last month?',
 ];
 
 /* ------------------------------------------------------------------ reading */
@@ -429,6 +458,93 @@ export function ask(question: string, world: AskWorld): AskResult {
       answer: listed(
         reports.map((p) => line(p)),
         `${reports.length} ${reports.length === 1 ? 'person reports' : 'people report'} to ${named.name}:`,
+      ),
+    };
+  }
+
+  /* 5b. ATTENDANCE — who was there every day, and who was not.
+     Only for the people the machine covers. Answering "nobody was absent" for
+     a hundred people nobody counted would be a lie told confidently. */
+  const att: readonly AskAttendance[] = world.attendance ?? [];
+  const wantsAttendance =
+    /\b(attendance|absent|absence|present|punched|days worked)\b/.test(q) ||
+    /\b(full|whole|clean|perfect)\s+(month|attendance|sheet|record)\b/.test(q) ||
+    /\bevery (working )?day\b/.test(q);
+  if (wantsAttendance && /\b(full|perfect|clean|every day|whole month|nobody missed|no absence|not absent)\b/.test(q)) {
+    if (!att.length) {
+      return {
+        understood: true,
+        matched: 'attendance-none',
+        answer:
+          'No attendance has been loaded yet, so there is nothing to count. ' +
+          'Upload a month on the Payroll screen and ask again.',
+      };
+    }
+    const month = att[0]?.month ?? '';
+    const perfect = att.filter((a) => a.absent === 0);
+    const byId = new Map(all.map((p) => [p.id, p]));
+    const rows = perfect
+      .map((a) => byId.get(a.pid))
+      .filter((p): p is AskPerson => Boolean(p))
+      .map((p) => line(p));
+    const covered = `Counted from the ${att.length} ${att.length === 1 ? 'person' : 'people'} the machine covers in ${month}${
+      all.filter(active).length > att.length
+        ? ` — the other ${all.filter(active).length - att.length} are not on it, so nothing is claimed about them`
+        : ''
+    }.`;
+    if (!rows.length) {
+      return {
+        understood: true,
+        matched: 'attendance-full',
+        answer: `Nobody had a clean month in ${month} — everybody the machine covers missed at least one working day. ${covered}`,
+      };
+    }
+    return {
+      understood: true,
+      matched: 'attendance-full',
+      answer:
+        listed(
+          rows,
+          `${rows.length} ${rows.length === 1 ? 'person was' : 'people were'} there every working day of ${month}:`,
+        ) +
+        `\n\nA Sunday they did not come in is their own weekly off, not an absence, and neither is a company holiday. ${covered}`,
+    };
+  }
+
+  /* Attendance the other way round — who missed the most. */
+  if (wantsAttendance) {
+    if (!att.length) {
+      return {
+        understood: true,
+        matched: 'attendance-none',
+        answer:
+          'No attendance has been loaded yet, so there is nothing to count. ' +
+          'Upload a month on the Payroll screen and ask again.',
+      };
+    }
+    const month = att[0]?.month ?? '';
+    const byId = new Map(all.map((p) => [p.id, p]));
+    const worst = [...att]
+      .filter((a) => a.absent > 0)
+      .sort((a, b) => b.absent - a.absent)
+      .slice(0, 12);
+    if (!worst.length) {
+      return {
+        understood: true,
+        matched: 'attendance-absent',
+        answer: `Nobody the machine covers was absent a single working day in ${month}.`,
+      };
+    }
+    return {
+      understood: true,
+      matched: 'attendance-absent',
+      answer: listed(
+        worst.map((a) => {
+          const p = byId.get(a.pid);
+          const who = p ? line(p) : a.pid;
+          return `${who} — ${a.absent} day${a.absent === 1 ? '' : 's'} absent, ${a.present} present`;
+        }),
+        `Days missed in ${month}, most first:`,
       ),
     };
   }

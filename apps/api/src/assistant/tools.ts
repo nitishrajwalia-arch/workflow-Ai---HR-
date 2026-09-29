@@ -17,7 +17,13 @@
  */
 
 import type { PrismaClient } from '@prisma/client';
-import { ageFromDisplayDate, ask as readQuestion, type AskPerson } from '@marbella/shared';
+import {
+  ageFromDisplayDate,
+  ask as readQuestion,
+  parseDisplayDate,
+  type AskAttendance,
+  type AskPerson,
+} from '@marbella/shared';
 
 export interface ToolContext {
   readonly db: PrismaClient;
@@ -73,6 +79,70 @@ export async function register(db: PrismaClient): Promise<AskPerson[]> {
   }));
 }
 
+/**
+ * THE MONTH THE ATTENDANCE MACHINE HOLDS, COUNTED AS PAYROLL COUNTS IT.
+ *
+ * The latest month on file, because "who had full attendance" means the month
+ * anybody would mean out loud, and asking it about a month nobody has uploaded
+ * is a question with no answer rather than an answer of nobody.
+ *
+ * A day their own weekly off falls on is not an absence, and neither is a
+ * company holiday. That is the same rule `payableDays` applies, deliberately:
+ * an assistant that answers with a different sum from the one the payslip was
+ * worked out on is worse than one that cannot answer at all.
+ */
+export async function attendanceFor(db: PrismaClient): Promise<AskAttendance[]> {
+  const [rows, people, holidays] = await Promise.all([
+    db.attendanceDay.findMany({ select: { personId: true, date: true, inAt: true, outAt: true } }),
+    db.person.findMany({ select: { id: true, offDay: true } }),
+    db.holiday.findMany({ where: { allSites: true }, select: { on: true } }),
+  ]);
+  if (!rows.length) return [];
+
+  /* The latest month present, by date rather than by string: "Jun 2026" sorts
+     before "May 2026" alphabetically, which would answer for the wrong month. */
+  const monthOf = (d: string): string => d.slice(3);
+  const months = [...new Set(rows.map((r) => monthOf(r.date)))];
+  const latest = months
+    .map((m) => ({ m, t: parseDisplayDate(`01 ${m}`)?.getTime() ?? 0 }))
+    .sort((a, b) => b.t - a.t)[0]?.m;
+  if (!latest) return [];
+
+  const mine = rows.filter((r) => monthOf(r.date) === latest);
+  const monthDays = new Set(mine.map((r) => r.date)).size;
+  const offDay = new Map(people.map((p) => [p.id, p.offDay]));
+  const shut = new Set(holidays.map((h) => h.on));
+
+  const by = new Map<string, { present: number; absent: number; weekOff: number; holiday: number }>();
+  for (const r of mine) {
+    const acc = by.get(r.personId) ?? { present: 0, absent: 0, weekOff: 0, holiday: 0 };
+    if (r.inAt || r.outAt) {
+      // One punch instead of two is a day worked with a missing swipe. It is
+      // not docked by payroll and it is not counted absent here.
+      acc.present += 1;
+    } else if (isOwnOffDay(r.date, offDay.get(r.personId))) {
+      acc.weekOff += 1;
+    } else if (shut.has(r.date)) {
+      acc.holiday += 1;
+    } else {
+      acc.absent += 1;
+    }
+    by.set(r.personId, acc);
+  }
+
+  return [...by.entries()].map(([pid, a]) => ({ pid, month: latest, monthDays, ...a }));
+}
+
+/** Whether that date is the weekly off recorded against them. */
+function isOwnOffDay(date: string, offDay: string | null | undefined): boolean {
+  const want = String(offDay ?? '').trim().toLowerCase();
+  const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+  const i = days.indexOf(want);
+  if (i < 0) return false;
+  const d = parseDisplayDate(date);
+  return d !== null && d.getUTCDay() === i;
+}
+
 type Args = Record<string, unknown>;
 const str = (a: Args, k: string): string => String(a[k] ?? '').trim();
 const num = (a: Args, k: string, fallback: number): number => {
@@ -94,8 +164,10 @@ export const TOOL_RUNNERS: Record<
   async ask(ctx, args) {
     const question = str(args, 'question');
     if (!question) return 'Ask me something about the staff register.';
-    const result = readQuestion(question, { people: await register(ctx.db) });
-    return result.answer;
+    /* Both halves, so an assistant coming in through the connector can answer
+       an attendance question as well as the co-pilot in the app can. */
+    const [people, attendance] = await Promise.all([register(ctx.db), attendanceFor(ctx.db)]);
+    return readQuestion(question, { people, attendance }).answer;
   },
 
   async find_people(ctx, args) {

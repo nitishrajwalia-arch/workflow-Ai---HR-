@@ -31,7 +31,12 @@ import { requireUser } from '../plugins/auth.js';
 import { append } from '../services/ledger.js';
 import { ask as readQuestion } from '@marbella/shared';
 import { ASSISTANT_TOOLS, NOT_EXPOSED, mayUse, toolFor, toolsFor } from './permissions.js';
-import { TOOL_RUNNERS, register as people_for, type ToolContext } from './tools.js';
+import {
+  TOOL_RUNNERS,
+  attendanceFor,
+  register as people_for,
+  type ToolContext,
+} from './tools.js';
 
 /** The JSON-RPC envelope MCP speaks over HTTP. */
 const rpc = z.object({
@@ -279,8 +284,8 @@ export const assistantRoutes: FastifyPluginAsyncZod = async (app) => {
           matched: 'refused',
         };
       }
-      const people = await people_for(db);
-      return readQuestion(req.body.question, { people });
+      const [people, attendance] = await Promise.all([people_for(db), attendanceFor(db)]);
+      return readQuestion(req.body.question, { people, attendance });
     },
   );
 

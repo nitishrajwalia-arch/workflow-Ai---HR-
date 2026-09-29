@@ -124,7 +124,7 @@ What is still on you:
 npm ci
 npm run typecheck     # 0 errors
 npm run lint          # 0 errors (warnings are allowed)
-npm test              # 409 tests, all passing
+npm test              # 418 tests, all passing
 python3 scripts/leak-check.py    # 0 found
 ```
 
