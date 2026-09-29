@@ -40,6 +40,7 @@ export const exitsRoutes: FastifyPluginAsyncZod = async (app) => {
     stage: string;
     reason: string;
     opened: string;
+    lastDay: string | null;
     closedAt: string | null;
     steps?: Array<{ stage: string; payload: unknown }>;
   }) => ({
@@ -48,6 +49,7 @@ export const exitsRoutes: FastifyPluginAsyncZod = async (app) => {
     stage: e.stage,
     reason: e.reason,
     opened: e.opened,
+    lastDay: e.lastDay,
     closedAt: e.closedAt,
     record: Object.fromEntries((e.steps ?? []).map((s) => [s.stage, s.payload])),
   });
@@ -93,7 +95,7 @@ export const exitsRoutes: FastifyPluginAsyncZod = async (app) => {
     },
     async (req, reply) => {
       const me = requireUser(req);
-      const { pid, reason } = req.body;
+      const { pid, reason, lastDay } = req.body;
 
       const person = await db.person.findUnique({ where: { id: pid } });
       if (!person) throw notFound(`Employee ${pid}`);
@@ -110,19 +112,77 @@ export const exitsRoutes: FastifyPluginAsyncZod = async (app) => {
 
       const created = await db.$transaction(async (tx) => {
         const exit = await tx.exit.create({
-          data: { personId: pid, reason, opened: nowStamp(), stage: 'decision' },
+          data: { personId: pid, reason, lastDay, opened: nowStamp(), stage: 'decision' },
           include: { steps: true },
         });
         await appendInTx(tx, {
           kind: 'exit',
           subject: pid,
-          detail: `Deboarding opened for ${person.name}. Reason: ${reason}.`,
+          detail:
+            `Deboarding opened for ${person.name}. Reason: ${reason}. ` +
+            `Last working day ${lastDay}.`,
           who: me.name,
         });
         return exit;
       });
 
       return reply.status(201).send(serialise(created));
+    },
+  );
+
+  app.patch(
+    '/exits/:id/last-day',
+    {
+      preHandler: app.requireRole('HR'),
+      schema: {
+        tags: ['exits'],
+        summary: 'Move the last working day on a deboarding still in progress',
+        description:
+          'A notice period gets extended, or somebody stops coming in earlier than they said ' +
+          'they would. It changes what their final salary comes to, so the reason is required ' +
+          'and both dates go on the ledger. A closed deboarding is not edited: what it says is ' +
+          'what was settled and what the person was paid.',
+        params: z.object({ id: z.string() }),
+        body: schemas.exitLastDayBody,
+        response: { 200: z.any(), 404: schemas.errorBody, 422: schemas.errorBody },
+      },
+    },
+    async (req) => {
+      const me = requireUser(req);
+      const { lastDay, why } = req.body;
+      const exit = await db.exit.findUnique({ where: { id: req.params.id }, include: { person: true } });
+      if (!exit) throw notFound(`Exit ${req.params.id}`);
+      if (exit.stage === 'closed') {
+        throw unprocessable(
+          'That deboarding is closed. What it says is what was settled and what the person ' +
+            'was paid, so the last working day on it does not move.',
+        );
+      }
+      const was = exit.lastDay;
+
+      const updated = await db.$transaction(async (tx) => {
+        const row = await tx.exit.update({
+          where: { id: exit.id },
+          data: { lastDay },
+          include: { steps: true },
+        });
+        /* If they have already been marked as gone, the date on their record is
+           this one — otherwise the register and the deboarding would disagree
+           about the same fact, and payroll reads the register. */
+        if (exit.person.status !== 'active') {
+          await tx.person.update({ where: { id: exit.personId }, data: { exitedOn: lastDay } });
+        }
+        await appendInTx(tx, {
+          kind: 'exit',
+          subject: exit.personId,
+          detail:
+            `Last working day for ${exit.person.name} moved ` +
+            `${was ? `from ${was} ` : ''}to ${lastDay}. ${why}`,
+          who: me.name,
+        });
+        return row;
+      });
+      return serialise(updated);
     },
   );
 
@@ -186,7 +246,16 @@ export const exitsRoutes: FastifyPluginAsyncZod = async (app) => {
         if (exit.stage === EXIT_STAGE_THAT_DEACTIVATES) {
           await tx.person.update({
             where: { id: exit.personId },
-            data: { status: 'exited', exitedOn: toDisplayDate(new Date()) },
+            data: {
+              status: 'exited',
+              /* THE DAY THEY STOPPED WORKING, not today. Today is the day their
+                 assets came back, which is a different date and the one this
+                 used to write — so a man who stopped coming in on the 5th and
+                 handed his laptop back on the 20th was paid to the 20th.
+                 An exit opened before the last day was recorded has none, and
+                 falls back to what this always did rather than to nothing. */
+              exitedOn: exit.lastDay ?? toDisplayDate(new Date()),
+            },
           });
         }
 

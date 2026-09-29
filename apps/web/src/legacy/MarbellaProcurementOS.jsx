@@ -7718,6 +7718,43 @@ const typeTone = (t) => t === "Labour" ? "amber" : t === "Security" ? "stone" : 
 
 
 const fmtToday = () => new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+/* A date the register can hold, from the date a browser's picker gives back.
+   The picker speaks 2026-09-05; everything written down here says 05 Sep 2026,
+   and a mismatch between the two is refused by the server rather than guessed
+   at, so the conversion lives in one place. */
+const M3 = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const fromPicker = (iso) => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso || ""));
+  return m ? `${m[3]} ${M3[Number(m[2]) - 1]} ${m[1]}` : "";
+};
+const toPicker = (shown) => {
+  const m = /^(\d{1,2}) ([A-Za-z]{3}) (\d{4})$/.exec(String(shown || "").trim());
+  if (!m) return "";
+  const i = M3.findIndex(x => x.toLowerCase() === m[2].toLowerCase());
+  return i < 0 ? "" : `${m[3]}-${String(i + 1).padStart(2, "0")}-${m[1].padStart(2, "0")}`;
+};
+const todayPicker = () => new Date().toISOString().slice(0, 10);
+
+/**
+ * THE LAST DAY THEY WORKED.
+ *
+ * Asked wherever a deboarding starts, because it is knowable then and stops
+ * being knowable later — and because their final salary is worked out from it.
+ * Before this it was typed into the decision step, kept in a note nothing read,
+ * and the register was stamped with the day their laptop came back instead.
+ */
+function LastDayField({ value, onChange, hint }) {
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <label style={lbl}>Last working day</label>
+      <input type="date" value={value} onChange={e => onChange(e.target.value)}
+        style={{ ...inp, margin: "6px 0 0" }} />
+      <div style={{ font: `11px ${sans}`, color: C.stone, marginTop: 4, lineHeight: 1.5 }}>
+        {hint || "The day they actually stopped working — not today, and not the day their laptop comes back. Their last salary is worked out to this day."}
+      </div>
+    </div>
+  );
+}
 /* EDIT 18 of 23: eight buttons said "Sending to printer…" and did nothing at all
    — no dialog, no document, nothing reaching a printer. This is what a browser
    actually has. If the print dialog is blocked (some kiosk browsers do), it
@@ -12517,7 +12554,7 @@ function Flowchart({ stages, current, doneKeys, onPick, blocked }) {
 
 function ExitRunner({ ex, p, onClose }) {
   const mob = useIsMobile();
-  const { advanceExit, devices, cardLog, salaries, people } = useProc();
+  const { advanceExit, setExitLastDay, devices, cardLog, salaries, people } = useProc();
   const [view, setView] = useState(ex.stage);
   const [f, setF] = useState({});
   const set = (k, v) => setF(s => ({ ...s, [k]: v }));
@@ -12575,18 +12612,40 @@ function ExitRunner({ ex, p, onClose }) {
           {isCurrent && view === "decision" && (
             <>
               <label style={lbl}>Why are they leaving</label>
-              <select value={f.reason || ""} onChange={e => set("reason", e.target.value)} style={{ ...inp, margin: "7px 0 14px" }}>
+              <select value={f.reason || ex.reason || ""} onChange={e => set("reason", e.target.value)} style={{ ...inp, margin: "7px 0 14px" }}>
                 <option value="">— choose —</option>{EXIT_REASONS.map(r => <option key={r}>{r}</option>)}
               </select>
               <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr" : "1fr 1fr", gap: 12 }}>
-                <div><label style={lbl}>Last working day</label><input type="date" value={f.lwd || ""} onChange={e => set("lwd", e.target.value)} style={{ ...inp, margin: "7px 0 14px" }} /></div>
+                <div>
+                  <label style={lbl}>Last working day</label>
+                  {/* Recorded when the deboarding was opened and shown here to
+                      be confirmed. It used to be typed in fresh at this step,
+                      kept in a note nothing read, and the register was stamped
+                      with the day their laptop came back instead. Changing it
+                      here writes it where payroll looks. */}
+                  <input type="date" value={f.lwd ?? toPicker(ex.lastDay)} onChange={e => set("lwd", e.target.value)} style={{ ...inp, margin: "7px 0 4px" }} />
+                  <div style={{ font: `10.5px ${sans}`, color: C.stone, marginBottom: 12, lineHeight: 1.45 }}>
+                    {ex.lastDay ? `Recorded as ${ex.lastDay} when this was opened. Their last salary is worked out to it — change it here if it was wrong.` : "Their last salary is worked out to this day."}
+                  </div>
+                </div>
                 <div><label style={lbl}>Approved by</label><input value={f.approver || ""} onChange={e => set("approver", e.target.value)} placeholder="Name and designation" style={{ ...inp, margin: "7px 0 14px" }} /></div>
               </div>
               <Field label="What happened" area hint="Plain sentences. This is what gets read back in a dispute — not a code."
                 value={f.note || ""} onChange={v => set("note", v)} placeholder="Resigned on 12 Aug citing a family move to Delhi. Served notice in full." />
-              <GoldButton onClick={() => {
-                if (!f.reason || !f.lwd || !f.approver || (f.note || "").trim().length < 20) { toast("Reason, last day, approver and a real note", "amber"); return; }
-                submit({ reason: f.reason, lastWorkingDay: f.lwd, approvedBy: f.approver, note: f.note }, `Exit opened — ${p.name} (${f.reason})`);
+              <GoldButton onClick={async () => {
+                const lwd = f.lwd ?? toPicker(ex.lastDay);
+                const reason = f.reason || ex.reason;
+                if (!reason || !lwd || !f.approver || (f.note || "").trim().length < 20) { toast("Reason, last day, approver and a real note", "amber"); return; }
+                const shown = fromPicker(lwd);
+                /* Moved at this step rather than when it was opened — a notice
+                   period that changed, or a date somebody got wrong. It changes
+                   what they are paid, so it goes on the ledger with both dates
+                   rather than quietly into this step's note. */
+                if (shown && shown !== ex.lastDay) {
+                  const ok = await setExitLastDay(ex.id, shown, `Confirmed at the decision step by ${f.approver}.`);
+                  if (!ok) return;
+                }
+                submit({ reason, lastWorkingDay: shown, approvedBy: f.approver, note: f.note }, `Exit opened — ${p.name} (${reason})`);
               }}>Record the decision</GoldButton>
             </>
           )}
@@ -12841,28 +12900,24 @@ function ExitsView() {
         </Card>
       )}
 
+      {/* The same form as the one on the payroll screen, rather than a second
+          one beside it. This used to be its own list that opened an exit the
+          moment a name was clicked — with no last working day and no reason,
+          so every exit started here said "Resigned" whether they had or not. */}
       {pick && (
-        <Overlay onClose={() => setPick(false)} width={480}>
-          <div style={{ padding: mob ? 16 : 22 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
-              <LogOut size={18} color={C.red} /><Eyebrow color={C.red}>Who is leaving</Eyebrow>
-              <button data-icon-btn onClick={() => setPick(false)} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: C.stone }}><X size={18} /></button>
-            </div>
-            <input autoFocus value={q} onChange={e => setQ(e.target.value)} placeholder="Name or Employee ID" style={{ ...inp, margin: "0 0 12px" }} />
-            {hits.map(p => (
-              <button key={p.id} onClick={async () => { const id = await openExit(p); setPick(false); setQ(""); if (id) setRun(id); }}
-                style={{ width: "100%", textAlign: "left", cursor: "pointer", border: `1px solid ${C.line}`, background: "#fff",
-                  borderRadius: 10, padding: "11px 13px", display: "flex", alignItems: "center", gap: 10, marginBottom: 7 }}>
-                <span style={{ flex: 1, minWidth: 0 }}>
-                  <span style={{ display: "block", font: `600 13px ${sans}`, color: C.ink }}>{p.name}</span>
-                  <span style={{ display: "block", font: `11px ${sans}`, color: C.stone }}>{p.designation} · {p.id}</span>
-                </span>
-                <ChevronRight size={16} color={C.stone} />
-              </button>
-            ))}
-            {q.trim() && !hits.length && <div style={{ font: `12px ${sans}`, color: C.stone }}>Nobody matches that.</div>}
-          </div>
-        </Overlay>
+        <DeboardPicker
+          people={people}
+          onClose={() => { setPick(false); setQ(""); }}
+          onOpened={(person, id) => {
+            setPick(false);
+            setQ("");
+            if (id) setRun(id);
+            else {
+              const open = exits.find(e => e.pid === person.id && e.stage !== "closed");
+              if (open) setRun(open.id);
+            }
+          }}
+        />
       )}
 
       {run && (() => {
@@ -14304,7 +14359,9 @@ function StepCard({ n, title, note, done, last, children }) {
  */
 function LeaversCheck({ month, count, suspects, leaving = [], onEnd, onConfirm, onClose, busy }) {
   const mob = useIsMobile();
-  const [ending, setEnding] = useState({});   // pid -> reason chosen
+  const [ending, setEnding] = useState({});   // pid -> reason, once opened
+  const [picked, setPicked] = useState({});   // pid -> reason chosen, not yet opened
+  const [day, setDay] = useState({});         // pid -> last working day, from the picker
   const [keep, setKeep] = useState([]);       // pids waved through
   const left = suspects.filter(s => !ending[s.p.id] && !keep.includes(s.p.id));
   const lastPay = leaving.reduce((a, l) => a + Number(String(l.last).split(" ")[0] || 0), 0);
@@ -14399,16 +14456,35 @@ function LeaversCheck({ month, count, suspects, leaving = [], onEnd, onConfirm, 
                       <button onClick={() => setKeep(k => [...k, s.p.id])} style={{ ...softBtn, borderColor: C.green, color: C.green }}>
                         {s.open ? "Already being deboarded — pay them for this month" : "Still with us"}
                       </button>
-                      {!s.open && <select defaultValue="" onChange={async (e) => {
-                        const reason = e.target.value;
-                        if (!reason) return;
-                        const ok = await onEnd(s.p, reason);
-                        if (ok) setEnding(m => ({ ...m, [s.p.id]: reason }));
-                        e.target.value = "";
+                      {!s.open && <select value={picked[s.p.id] || ""} onChange={(e) => {
+                        setPicked(m => ({ ...m, [s.p.id]: e.target.value }));
+                        if (e.target.value && !day[s.p.id]) setDay(m => ({ ...m, [s.p.id]: todayPicker() }));
                       }} style={{ ...sel, margin: 0, width: 240 }}>
                         <option value="">They have left — end their term…</option>
                         {EXIT_REASONS.map(r => <option key={r} value={r}>{r}</option>)}
                       </select>}
+                    </div>
+                  )}
+                  {/* The last day they worked, asked before anything is opened.
+                      Their final salary is worked out to it, and it is not
+                      today — today is the day somebody noticed. */}
+                  {!done && !kept && picked[s.p.id] && (
+                    <div style={{ marginTop: 10, borderTop: `1px solid ${C.lineSoft}`, paddingTop: 10 }}>
+                      <div style={{ display: "flex", gap: 9, alignItems: "flex-end", flexWrap: "wrap" }}>
+                        <div style={{ minWidth: 190 }}>
+                          <label style={lbl}>Last working day</label>
+                          <input type="date" value={day[s.p.id] || ""} style={{ ...inp, margin: "6px 0 0" }}
+                            onChange={(e) => setDay(m => ({ ...m, [s.p.id]: e.target.value }))} />
+                        </div>
+                        <GoldButton small disabled={!day[s.p.id]} onClick={async () => {
+                          const ok = await onEnd(s.p, picked[s.p.id], fromPicker(day[s.p.id]));
+                          if (ok) setEnding(m => ({ ...m, [s.p.id]: picked[s.p.id] }));
+                        }}>Open the deboarding</GoldButton>
+                        <button onClick={() => setPicked(m => ({ ...m, [s.p.id]: "" }))} style={{ ...softBtn, padding: "7px 11px" }}>Cancel</button>
+                      </div>
+                      <div style={{ font: `11px ${sans}`, color: C.stone, marginTop: 5, lineHeight: 1.5 }}>
+                        The day they actually stopped working. Their last salary is worked out to it.
+                      </div>
                     </div>
                   )}
                 </div>
@@ -14452,6 +14528,7 @@ function DeboardPicker({ people, onClose, onOpened }) {
   const [q, setQ] = useState("");
   const [pick, setPick] = useState(null);
   const [reason, setReason] = useState("");
+  const [lastDay, setLastDay] = useState(todayPicker());
   const [busy, setBusy] = useState(false);
   const [snag, setSnag] = useState(false);
   const active = people.filter(p => (p.status || "active") === "active");
@@ -14459,10 +14536,10 @@ function DeboardPicker({ people, onClose, onOpened }) {
     ? active.filter(p => (p.name + " " + p.id + " " + p.designation).toLowerCase().includes(q.trim().toLowerCase())).slice(0, 8)
     : [];
   const start = async () => {
-    if (!pick || !reason) return;
+    if (!pick || !reason || !lastDay) return;
     setBusy(true);
     setSnag(false);
-    const id = await openExit(pick, reason);
+    const id = await openExit(pick, reason, fromPicker(lastDay));
     setBusy(false);
     if (id) onOpened(pick, id);
     /* The server refuses a second deboarding for somebody who already has one
@@ -14506,8 +14583,11 @@ function DeboardPicker({ people, onClose, onOpened }) {
               <option value="">— choose —</option>
               {EXIT_REASONS.map(r => <option key={r} value={r}>{r}</option>)}
             </select>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
-              <GoldButton disabled={!reason || busy} onClick={start}>
+            <div style={{ marginTop: 12 }}>
+              <LastDayField value={lastDay} onChange={setLastDay} />
+            </div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 4 }}>
+              <GoldButton disabled={!reason || !lastDay || busy} onClick={start}>
                 <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><LogOut size={14} /> Start the deboarding</span>
               </GoldButton>
               <button onClick={() => { setPick(null); setReason(""); setSnag(false); }} style={softBtn}>Somebody else</button>
@@ -15079,11 +15159,11 @@ function PayrollView({ go }) {
           suspects={check.suspects}
           leaving={check.leaving || []}
           busy={busy}
-          onEnd={async (p, reason) => {
-            const id = await openExit(p, reason);
+          onEnd={async (p, reason, lastDay) => {
+            const id = await openExit(p, reason, lastDay);
             if (id) {
               track("payroll:exit");
-              toast(`Deboarding opened for ${p.name} — ${reason}. They are still paid for this month.`, "gold");
+              toast(`Deboarding opened for ${p.name} — ${reason}. Last day ${lastDay}; they are paid up to it.`, "gold");
             }
             return !!id;
           }}

@@ -704,6 +704,19 @@ model Exit {
   stage    String  @default("decision")
   reason   String
   opened   String
+
+  /// THE LAST DAY THEY WORKED. Recorded when the deboarding is opened, because
+  /// that is when it is known — the resignation says it, or they walked out on
+  /// it — and because payroll needs it before the assets ever come back.
+  ///
+  /// It used to not exist. The person was stamped as having left on the day
+  /// their laptop was returned, which is the wrong date and quietly wrong: a
+  /// man who stopped coming in on the 5th and handed his laptop back on the
+  /// 20th was paid to the 20th.
+  ///
+  /// Null only on an exit opened before this existed. Those keep whatever date
+  /// they were stamped with, because rewriting them would be inventing a fact.
+  lastDay  String?
   closedAt String?
 
   createdAt DateTime @default(now())

@@ -367,6 +367,9 @@ export const bootstrapRoutes: FastifyPluginAsyncZod = async (app) => {
           stage: e.stage,
           reason: e.reason,
           opened: e.opened,
+          /* The day they stopped working, which is what their final salary is
+             worked out to. Null on an exit opened before it was recorded. */
+          lastDay: e.lastDay,
           closedAt: e.closedAt,
           record: Object.fromEntries(e.steps.map((s) => [s.stage, s.payload as unknown])),
         })),

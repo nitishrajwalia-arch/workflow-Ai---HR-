@@ -109,6 +109,13 @@ export interface BootstrapExit {
   record: Record<string, unknown>;
   opened: string;
   reason: string;
+  /**
+   * THE DAY THEY STOPPED WORKING, which is what their final salary is worked
+   * out to. Null only on an exit opened before it was recorded — those were
+   * stamped with the day the assets came back, and are left as they are rather
+   * than rewritten with a date nobody can now establish.
+   */
+  lastDay: string | null;
   closedAt: string | null;
 }
 

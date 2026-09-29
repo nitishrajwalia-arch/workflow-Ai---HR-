@@ -1107,13 +1107,27 @@ export function ProcurementProvider({ children, toast }: Props) {
       // The reason is chosen by whoever is deboarding. It used to be hardcoded
       // to "Resigned", which put a made-up reason on the record of everybody who
       // was let go, retired or absconded.
-      openExit: async (p: any, reason = 'Resigned') => {
+      /* `lastDay` is the day they actually stopped working, and the server
+         insists on it: their final salary is worked out from it, and without
+         it the register used to be stamped with the day their assets came
+         back — a different date, and one that pays a man who stopped coming in
+         on the 5th up to the 20th. */
+      openExit: async (p: any, reason = 'Resigned', lastDay?: string) => {
         const r = await server(
-          () => api.post<any>('/exits', { pid: p.id, reason }),
+          () => api.post<any>('/exits', { pid: p.id, reason, lastDay }),
           (row, x) => ({ ...x, exits: [row, ...x.exits] }),
         );
         return r?.id ?? null;
       },
+
+      /* A notice period gets extended, or somebody turns out to have stopped
+         coming in earlier than they said. It changes what they are paid, so the
+         reason goes on the ledger with both dates. */
+      setExitLastDay: (id: string, lastDay: string, why: string) =>
+        server(
+          () => api.patch<any>(`/exits/${id}/last-day`, { lastDay, why }),
+          (r, x) => ({ ...x, exits: x.exits.map((e: any) => (e.id === id ? r : e)) }),
+        ),
       advanceExit: (id: string, payload: any, summary: string) => {
         const cur = ref.current?.exits.find((e: any) => e.id === id);
         return server(

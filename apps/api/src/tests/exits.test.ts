@@ -45,7 +45,7 @@ describe('opening a deboarding', () => {
       method: 'POST',
       url: '/api/v1/exits',
       headers: auth(token),
-      payload: { pid: SUBJECT, reason: 'Resigned' },
+      payload: { pid: SUBJECT, reason: 'Resigned', lastDay: '12 Sep 2026' },
     });
     expect(res.statusCode).toBe(201);
     const body = res.json<{ id: string; stage: string }>();
@@ -58,7 +58,7 @@ describe('opening a deboarding', () => {
       method: 'POST',
       url: '/api/v1/exits',
       headers: auth(token),
-      payload: { pid: SUBJECT, reason: 'Resigned' },
+      payload: { pid: SUBJECT, reason: 'Resigned', lastDay: '12 Sep 2026' },
     });
     expect(res.statusCode).toBe(409);
     expect(res.json<{ error: { message: string } }>().error.message).toMatch(
@@ -126,7 +126,7 @@ describe('the stage gate', () => {
       method: 'POST',
       url: '/api/v1/exits',
       headers: auth(token),
-      payload: { pid: 'MB-ADM-0002', reason: 'Contract ended' },
+      payload: { pid: 'MB-ADM-0002', reason: 'Contract ended', lastDay: '30 Sep 2026' },
     });
     const id = opened.json<{ id: string }>().id;
 

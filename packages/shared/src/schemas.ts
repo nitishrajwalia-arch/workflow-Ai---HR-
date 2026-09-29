@@ -400,6 +400,27 @@ export const ledgerVerification = z.object({
 export const openExitBody = z.object({
   pid: employeeId,
   reason: z.enum(EXIT_REASONS),
+  /**
+   * THE LAST DAY THEY WORKED.
+   *
+   * Required, and required HERE rather than at the end, for two reasons. It is
+   * known now — the resignation states it, or they walked out on it — and it
+   * stops being knowable later, once everybody is going on memory. And payroll
+   * needs it before the assets ever come back: the exit date is what their
+   * final month is worked out from, and stamping it with the day the laptop
+   * was returned pays a man who stopped coming in on the 5th up to the 20th.
+   *
+   * It can be moved while the deboarding is open — a notice period changes —
+   * but it cannot be left out.
+   */
+  lastDay: displayDate,
+});
+
+/** Moving the last working day on a deboarding that is still open. */
+export const exitLastDayBody = z.object({
+  lastDay: displayDate,
+  /** Why it moved. It changes what somebody is paid, so it is not a silent edit. */
+  why: z.string().trim().min(4).max(300),
 });
 
 export const advanceExitBody = z.object({
@@ -790,6 +811,7 @@ export type IssueCardBody = z.infer<typeof issueCardBody>;
 export type LedgerEntry = z.infer<typeof ledgerEntry>;
 export type LedgerVerification = z.infer<typeof ledgerVerification>;
 export type OpenExitBody = z.infer<typeof openExitBody>;
+export type ExitLastDayBody = z.infer<typeof exitLastDayBody>;
 export type AdvanceExitBody = z.infer<typeof advanceExitBody>;
 export type SalaryBody = z.infer<typeof salaryBody>;
 export type PayRunBody = z.infer<typeof payRunBody>;
