@@ -103,24 +103,27 @@ async function main() {
    * rather than in real-data.ts, which is GENERATED from the registers: a
    * project with no people on it cannot be derived from a list of people.
    *
-   * THE COMPANY IS AN ASSUMPTION, and it is flagged as one below. Grand is
-   * SRG, Royce is Garg, Twin Towers is SRG Marbella, Curo One its own LLP —
-   * and the management has since said the entity written against Manifest is
-   * NOT right, without yet saying which one is. Until they do, every document
-   * for Manifest is on a letterhead nobody has confirmed.
+   * Who signs for which project was an assumption here until the management
+   * confirmed all five by name. It is no longer one:
+   *
+   *   Marbella Grand         SRG Developers & Promoters
+   *   Marbella Curo One      New Marbella Developers And Promoters LLP
+   *   Marbella Manifest      New Marbella Developers And Promoters LLP
+   *   Marbella Twin Towers   SRG Marbella Developers And Promoters LLP
+   *   Marbella Royce         Garg Builders And Promoters LLP
+   *
+   * Manifest had been written against SRG on the same reasoning that put Grand
+   * there, and the management has corrected it: the same LLP signs for Manifest
+   * as for Curo One. Nobody is posted to Manifest yet, so no payslip or letter
+   * carried the wrong letterhead.
    */
   const ASKED_FOR = [
     {
       id: 'manifest',
       name: 'Marbella Manifest',
       short: 'Manifest',
-      firm: 'SRG Developers & Promoters',
-      companyId: 'srg',
-      assumption:
-        'Marbella Manifest has been added as a project with its own site office, so people ' +
-        'can be posted to it. It is under SRG Developers & Promoters because nobody has said ' +
-        'which company signs for it — every other project has its own entity. Change it on ' +
-        'Companies & projects, or tell the management it is right.',
+      firm: 'New Marbella Developers And Promoters LLP',
+      companyId: 'newmarb',
     },
   ];
 
@@ -143,16 +146,13 @@ async function main() {
       update: { short: p.short, name: p.name, firm: p.firm },
     });
   }
-  for (const p of ASKED_FOR) {
-    const text = p.assumption;
-    const have = await prisma.hrTask.findFirst({ where: { text } });
-    if (!have) await prisma.hrTask.create({ data: { text, who: 'HR', due: '' } });
-  }
+  /* There used to be an HR task here asking who signs for Manifest. The
+     management has answered, so the task is retired rather than raised again on
+     every seed — and any copy already sitting on somebody's list is cleared. */
+  await prisma.hrTask.deleteMany({ where: { text: { contains: 'which company signs for it' } } });
   console.log(
     `  projects    ${REAL_PROJECTS.length + ASKED_FOR.length} (with a site office each)` +
-      (ASKED_FOR.length
-        ? ` — ${ASKED_FOR.map((p) => p.name).join(', ')} added with an assumed company`
-        : ''),
+      (ASKED_FOR.length ? ` — including ${ASKED_FOR.map((p) => p.name).join(', ')}, which nobody is posted to yet` : ''),
   );
 
   /* --------------------------------------------------------------- people */

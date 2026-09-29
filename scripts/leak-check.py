@@ -97,11 +97,34 @@ for line in subprocess.run(['psql', url, '-At', '-F', '\t', '-c', BREAKUP],
         breakups.append((cells[0], figures))
 
 
+# A leak puts a person's whole breakup in ONE record — that is what a payroll
+# row is. Scattered hits are noise: 15000 is the statutory P.F. wage ceiling and
+# sits in the deduction heads by law, 20000 is a ledger entry, and a database id
+# like "cmum4ndk1000k667d" contains 1000 with a letter either side. Two rules
+# keep the check honest about that without softening it:
+#
+#   * a figure counts only at a real boundary — no letter or digit touching it,
+#     so an id cannot supply one;
+#   * every figure of a breakup has to land inside the SAME short window, close
+#     enough to be one person's record rather than five unrelated collections.
+#
+# A file that carries an actual pay line still fails: the figures are adjacent
+# there by construction.
+WINDOW = 600
+
+
 def salary_hits(text):
-    """People whose every salary figure is present in the file as a bare number."""
+    """People whose whole salary breakup sits together in one place in the file."""
     out = []
     for pid, figures in breakups:
-        if all(re.search(rf'(?<![0-9.]){n}(?![0-9.])', text) for n in figures):
+        spots = [[m.start() for m in re.finditer(rf'(?<![0-9A-Za-z.]){n}(?![0-9A-Za-z.])', text)]
+                 for n in figures]
+        if not all(spots):
+            continue
+        # The rarest figure anchors the search; the rest must sit beside it.
+        anchor = min(spots, key=len)
+        if any(all(any(abs(q - at) <= WINDOW for q in where) for where in spots)
+               for at in anchor):
             out.append((pid, figures))
     return out
 

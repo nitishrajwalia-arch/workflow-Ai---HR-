@@ -10557,15 +10557,16 @@ function ConnectionsView() {
    opens doors that are shut to outsiders, so the check had to be somewhere a colleague
    cannot read.  */
 
-/* The four sites the company had when this was written. They are a FALLBACK for
-   the self-contained demo provider only — the real list comes from the server,
-   because a fifth project added on the Companies screen has a site office of its
+/* The five projects the management has confirmed. They are a FALLBACK for the
+   self-contained demo provider only — the real list comes from the server,
+   because a sixth project added on the Companies screen has a site office of its
    own and everybody posted to it would otherwise be shown as sitting at Grand. */
 const OFFICES = [
   { id: "grand",       name: "Marbella Grand · Site Office", short: "Grand",        tint: "#3E7C55" },
   { id: "newmarbella", name: "Marbella Curo One · Site Office", short: "Curo One",    tint: "#224A85" },
   { id: "twin",        name: "Marbella Twin Towers · Site Office", short: "Twin Towers", tint: "#8A6224" },
   { id: "royce",       name: "Marbella Royce · Site Office", short: "Royce",        tint: "#B0503C" },
+  { id: "manifest",    name: "Marbella Manifest · Site Office", short: "Manifest",   tint: "#5B4B8A" },
 ];
 /* A colour per site, for the ones the server does not carry one for. Stable by
    position so a site does not change colour when another is added. */
