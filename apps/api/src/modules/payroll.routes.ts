@@ -44,8 +44,9 @@ import {
 import type { Prisma } from '@prisma/client';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
-import { nowStamp } from '../lib/dates.js';
-import { notFound, unprocessable } from '../lib/errors.js';
+import { nowStamp, parseDisplayDate } from '../lib/dates.js';
+import { conflict, notFound, unprocessable } from '../lib/errors.js';
+import { nextEmployeeId } from '../lib/ids.js';
 import { requireUser } from '../plugins/auth.js';
 import { appendInTx } from '../services/ledger.js';
 
@@ -1052,6 +1053,125 @@ export const payrollRoutes: FastifyPluginAsyncZod = async (app) => {
         return updated;
       });
       return { run: await fullRun(row.runId) };
+    },
+  );
+
+  /* -------------------------------- a name on a book with nobody behind it */
+
+  app.post(
+    '/pay-runs/:id/lines/:lineId/identify',
+    {
+      preHandler: app.requireRole('HR'),
+      schema: {
+        tags: ['payroll'],
+        summary: 'Say who a payslip with nobody on the register behind it belongs to',
+        description:
+          'Thirteen people were paid in August whom the register has never heard of. Each one ' +
+          'is either somebody already on the rolls under a different spelling, or somebody who ' +
+          'worked here and was never enrolled — and some of those have since left. ' +
+          'This is ALLOWED ON A RELEASED RUN, deliberately: it changes no figure. It says who ' +
+          'the person was, which is the one thing a released sheet is missing.',
+        params: z.object({ id: z.string().min(1), lineId: z.string().min(1) }),
+        body: schemas.identifyPayLineBody,
+        response: { 200: z.any(), 404: schemas.errorBody, 409: schemas.errorBody, 422: schemas.errorBody },
+      },
+    },
+    async (req) => {
+      const me = requireUser(req);
+      const { id, lineId } = req.params;
+      const b = req.body;
+
+      const line = await db.payRunLine.findUnique({
+        where: { id: lineId },
+        include: { run: { include: { company: true } } },
+      });
+      if (!line || line.runId !== id) throw notFound('That line is not on that pay run.');
+      if (line.personId) {
+        throw unprocessable(
+          `That payslip is already ${line.name}'s. Nothing to identify.`,
+          [{ path: 'lineId', message: 'already identified' }],
+        );
+      }
+
+      if (b.kind === 'known') {
+        const person = await db.person.findUnique({ where: { id: b.pid } });
+        if (!person) throw notFound(`Employee ${b.pid}`);
+        /* The one thing that must not happen here is two payslips for the same
+           person in the same month, which is what the three duplicate records
+           on the register would produce if somebody attached both. */
+        const clash = await db.payRunLine.findFirst({
+          where: { runId: id, personId: b.pid, NOT: { id: lineId } },
+        });
+        if (clash) {
+          throw conflict(
+            `${person.name} is already on this sheet as "${clash.name}". Two payslips for one ` +
+              'person in one month is what this is meant to catch, not to record — look at ' +
+              'both lines before attaching this one.',
+          );
+        }
+        const saved = await db.$transaction(async (tx) => {
+          const row = await tx.payRunLine.update({
+            where: { id: lineId },
+            data: { personId: b.pid },
+          });
+          await appendInTx(tx, {
+            kind: 'payroll',
+            subject: b.pid,
+            detail:
+              `${line.run.month}: the payslip for "${line.name}" at ${line.run.company.name} ` +
+              `is ${person.name} (${b.pid}).`,
+            who: me.name,
+          });
+          return row;
+        });
+        return { line: saved, person: { id: person.id, name: person.name } };
+      }
+
+      /* Somebody who worked here and was never enrolled. A record is made from
+         what the salary book carries and what HR can establish, and NOTHING
+         ELSE — no joining date unless it is known, no date of birth, no salary
+         structure. The blanks stay blank and the note says why. */
+      const created = await db.$transaction(async (tx) => {
+        const pid = await nextEmployeeId(tx, b.dept);
+        const person = await tx.person.create({
+          data: {
+            id: pid,
+            name: line.name,
+            designation: line.designation || 'Not recorded',
+            dept: b.dept,
+            type: b.type,
+            joined: b.joined,
+            joinedOn: b.joined ? parseDisplayDate(b.joined) : null,
+            officeId: b.office,
+            employerId: line.run.companyId,
+            status: 'exited',
+            exitedOn: b.lastDay,
+          },
+        });
+        await tx.personNote.create({
+          data: {
+            personId: pid,
+            when: nowStamp(),
+            text:
+              `Reconstructed from the ${line.run.month} salary book of ${line.run.company.name}, ` +
+              `where they were paid as "${line.name}" and no employee record existed. ` +
+              `Recorded as having left on ${b.lastDay} — ${b.reason}. ${b.note}` +
+              (b.joined ? '' : ' Their joining date is not known and has been left blank.') +
+              ` — ${me.name}`,
+          },
+        });
+        await tx.payRunLine.update({ where: { id: lineId }, data: { personId: pid } });
+        await appendInTx(tx, {
+          kind: 'payroll',
+          subject: pid,
+          detail:
+            `"${line.name}" on the ${line.run.month} book of ${line.run.company.name} was an ` +
+            `employee nobody had enrolled. Recorded as ${pid}, left ${b.lastDay} — ${b.reason}.`,
+          who: me.name,
+        });
+        return person;
+      });
+      return { person: { id: created.id, name: created.name, status: created.status } };
     },
   );
 

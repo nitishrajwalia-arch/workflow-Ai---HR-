@@ -12796,9 +12796,235 @@ function ExitRunner({ ex, p, onClose }) {
   );
 }
 
+/**
+ * ANSWERING FOR A NAME ON A SALARY BOOK.
+ *
+ * Two answers, and nothing is invented for either.
+ *
+ *   They are one of ours — the payslip is an employee's, spelt differently on
+ *   the book. Nothing is created; the line is attached to them.
+ *
+ *   They worked here and were never enrolled — a record is made from what the
+ *   book carries and what HR can establish, marked as having left. The joining
+ *   date is asked for and LEFT BLANK when nobody knows it: a made-up one would
+ *   put a length of service on a record and be read as a fact by every letter
+ *   and report downstream.
+ */
+function IdentifyPayslip({ u, onClose }) {
+  const mob = useIsMobile();
+  const { people, offices = [], identifyPayLine } = useProc();
+  const [how, setHow] = useState("");
+  const [q, setQ] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [f, setF] = useState({
+    dept: "", type: "Site", office: "", lastDay: todayPicker(), reason: "", joined: "", note: "",
+  });
+  const set = (k, v) => setF(s => ({ ...s, [k]: v }));
+
+  const hits = q.trim()
+    ? people.filter(p => (p.name + " " + p.id + " " + p.designation).toLowerCase().includes(q.trim().toLowerCase())).slice(0, 8)
+    : [];
+
+  /* THE NAMES ON THE REGISTER CLOSEST TO THE ONE ON THE BOOK.
+     Weighted by how rare the word is. Counting shared words alone offered five
+     people for "Gurjant Singh" whose only thing in common was Singh — a
+     surname half the company has — which is noise wearing the clothes of a
+     match, and worse than offering nothing, because somebody will click one.
+     A word that many people share carries almost no weight; a distinctive
+     first name carries most of it. A name with nothing distinctive in common
+     suggests nobody, and the search box is there for that. */
+  const close = useMemo(() => {
+    const words = [...new Set(u.name.toLowerCase().split(/\s+/).filter(w => w.length > 2))];
+    const shared = Object.fromEntries(words.map(w =>
+      [w, people.filter(p => p.name.toLowerCase().includes(w)).length]));
+    return people
+      .map(p => {
+        const hit = words.filter(w => p.name.toLowerCase().includes(w));
+        /* 1/n per word: one of one is worth a point, one of forty is worth
+           two and a half hundredths. */
+        const score = hit.reduce((a, w) => a + 1 / Math.max(1, shared[w]), 0);
+        return { p, score, hit: hit.length };
+      })
+      /* Distinctive enough to be worth showing: a word almost nobody else has,
+         or more than one word in common. */
+      .filter(x => x.score >= 0.34 || x.hit >= 2)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 5)
+      .map(x => x.p);
+  }, [people, u.name]);
+
+  const asKnown = async (pid) => {
+    setBusy(true);
+    const r = await identifyPayLine(u.runId, u.lineId, { kind: "known", pid });
+    setBusy(false);
+    if (r) { toast(`${u.month}: that payslip is ${(people.find(p => p.id === pid) || {}).name}'s.`, "green"); onClose(); }
+  };
+
+  const problems = [];
+  if (!f.dept) problems.push("Which department did they work in?");
+  if (!f.office) problems.push("Which site were they posted at?");
+  if (!f.lastDay) problems.push("When was their last day?");
+  if (!f.reason) problems.push("Why did they leave?");
+  if (f.note.trim().length < 10) problems.push("Say how you established this. It goes on their record.");
+
+  const asFormer = async () => {
+    setBusy(true);
+    const r = await identifyPayLine(u.runId, u.lineId, {
+      kind: "former", dept: f.dept, type: f.type, office: f.office,
+      lastDay: fromPicker(f.lastDay), reason: f.reason,
+      joined: f.joined ? fromPicker(f.joined) : "",
+      note: f.note.trim(),
+    });
+    setBusy(false);
+    if (r) { toast(`${u.name} recorded as a former employee — ${r.person ? r.person.id : ""}.`, "green"); onClose(); }
+  };
+
+  return (
+    <Overlay onClose={onClose} width={640}>
+      <div style={{ padding: mob ? 18 : 26 }}>
+        <Eyebrow color={C.amber}>Paid, and not on the register</Eyebrow>
+        <h2 style={{ font: `400 23px ${serif}`, margin: "6px 0 4px" }}>Who is {u.name}?</h2>
+        <div style={{ font: `12.5px ${sans}`, color: C.inkSoft, lineHeight: 1.6, marginBottom: 16 }}>
+          Paid {inr(u.payable ?? u.gross)} by {u.companyName} in {u.month}
+          {u.designation ? `, as ${u.designation}` : ""}. Nobody on the employee register answers to
+          that name.
+        </div>
+
+        {!how && (
+          <div style={{ display: "grid", gap: 10 }}>
+            <button onClick={() => setHow("known")} style={{ textAlign: "left", cursor: "pointer",
+              border: `1px solid ${C.line}`, borderRadius: 12, padding: 15, background: "#fff" }}>
+              <div style={{ font: `600 13px ${sans}`, color: C.ink }}>They are on our rolls</div>
+              <div style={{ font: `11.5px ${sans}`, color: C.stone, marginTop: 3, lineHeight: 1.5 }}>
+                The salary book spelt their name differently. Nothing new is created — the payslip is
+                attached to the person it belongs to.
+              </div>
+            </button>
+            <button onClick={() => setHow("former")} style={{ textAlign: "left", cursor: "pointer",
+              border: `1px solid ${C.line}`, borderRadius: 12, padding: 15, background: "#fff" }}>
+              <div style={{ font: `600 13px ${sans}`, color: C.ink }}>They worked here and have left</div>
+              <div style={{ font: `11.5px ${sans}`, color: C.stone, marginTop: 3, lineHeight: 1.5 }}>
+                They were never enrolled. A record is made from what the book carries and what you
+                can establish, marked as having left. Nothing is guessed at.
+              </div>
+            </button>
+            <div style={{ font: `11.5px ${sans}`, color: C.stone, lineHeight: 1.55, marginTop: 2 }}>
+              If it is neither — a payment nobody can account for — leave it here and take it to the
+              management. It is not a thing to tidy away.
+            </div>
+          </div>
+        )}
+
+        {how === "known" && (
+          <>
+            {close.length === 0 && (
+              <div style={{ font: `12px ${sans}`, color: C.inkSoft, lineHeight: 1.55, marginBottom: 12 }}>
+                Nothing on the register reads like that name. Search for them below — and if nobody
+                is there, they were never enrolled.
+              </div>
+            )}
+            {close.length > 0 && (
+              <div style={{ marginBottom: 14 }}>
+                <label style={lbl}>Closest names on the register</label>
+                <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginTop: 7 }}>
+                  {close.map(p => (
+                    <button key={p.id} disabled={busy} onClick={() => asKnown(p.id)}
+                      style={{ cursor: "pointer", border: `1px solid ${C.line}`, borderRadius: 8, background: C.paper,
+                        font: `11.5px ${sans}`, color: C.ink, padding: "7px 11px", textAlign: "left" }}>
+                      {p.name}<span style={{ color: C.stone }}> · {p.designation} · {p.id}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            <label style={lbl}>Or search the register</label>
+            <input autoFocus value={q} onChange={e => setQ(e.target.value)} placeholder="Name or Employee ID…" style={{ ...inp, margin: "6px 0 10px" }} />
+            {hits.map(p => (
+              <button key={p.id} disabled={busy} onClick={() => asKnown(p.id)}
+                style={{ width: "100%", textAlign: "left", cursor: "pointer", border: `1px solid ${C.line}`,
+                  background: "#fff", borderRadius: 10, padding: "10px 12px", marginBottom: 6 }}>
+                <span style={{ display: "block", font: `600 12.5px ${sans}`, color: C.ink }}>{p.name}</span>
+                <span style={{ display: "block", font: `11px ${sans}`, color: C.stone }}>{p.id} · {p.designation} · {p.dept}</span>
+              </button>
+            ))}
+            <button onClick={() => setHow("")} style={{ ...softBtn, marginTop: 6 }}>Back</button>
+          </>
+        )}
+
+        {how === "former" && (
+          <>
+            <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr" : "1fr 1fr", gap: 12 }}>
+              <div>
+                <label style={lbl}>Department</label>
+                <select value={f.dept} onChange={e => set("dept", e.target.value)} style={{ ...sel, margin: "6px 0 0" }}>
+                  <option value="">— choose —</option>
+                  {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={lbl}>Kind of employee</label>
+                <select value={f.type} onChange={e => set("type", e.target.value)} style={{ ...sel, margin: "6px 0 0" }}>
+                  {P_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={lbl}>Posted at</label>
+                <select value={f.office} onChange={e => set("office", e.target.value)} style={{ ...sel, margin: "6px 0 0" }}>
+                  <option value="">— choose —</option>
+                  {offices.map(o => <option key={o.id} value={o.id}>{o.short || o.name}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={lbl}>Why did they leave</label>
+                <select value={f.reason} onChange={e => set("reason", e.target.value)} style={{ ...sel, margin: "6px 0 0" }}>
+                  <option value="">— choose —</option>
+                  {EXIT_REASONS.map(r => <option key={r} value={r}>{r}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={lbl}>Last working day</label>
+                <input type="date" value={f.lastDay} onChange={e => set("lastDay", e.target.value)} style={{ ...inp, margin: "6px 0 0" }} />
+              </div>
+              <div>
+                <label style={lbl}>Joining date, if it is known</label>
+                <input type="date" value={f.joined} onChange={e => set("joined", e.target.value)} style={{ ...inp, margin: "6px 0 0" }} />
+                <div style={{ font: `10.5px ${sans}`, color: C.stone, marginTop: 4, lineHeight: 1.45 }}>
+                  Leave it empty if nobody knows. It stays empty — a made-up date would be read as a
+                  fact by every letter and report.
+                </div>
+              </div>
+            </div>
+            <div style={{ marginTop: 12 }}>
+              <Field label="How did you establish this?" area value={f.note} onChange={v => set("note", v)}
+                hint="It goes on their record and is what gets read back if anybody asks."
+                placeholder="Site supervisor confirmed he worked at Royce until the end of July and did not return after the break." />
+            </div>
+            <div style={{ font: `11.5px ${sans}`, color: C.inkSoft, lineHeight: 1.55, marginBottom: 12 }}>
+              Their name and designation are taken from the salary book. No date of birth, no
+              mobile number and no salary structure is created — nobody has those.
+            </div>
+            {problems.length > 0 && (
+              <div style={{ background: "#FFF9E0", border: `1px solid ${C.line}`, borderRadius: 9, padding: 12, marginBottom: 12 }}>
+                {problems.map((x, i) => <div key={i} style={{ font: `11.5px ${sans}`, color: C.ink, lineHeight: 1.6 }}>· {x}</div>)}
+              </div>
+            )}
+            <div style={{ display: "flex", gap: 9, flexWrap: "wrap" }}>
+              <GoldButton disabled={busy || problems.length > 0} onClick={asFormer}>
+                {busy ? "Recording…" : "Record them as a former employee"}
+              </GoldButton>
+              <button onClick={() => setHow("")} style={softBtn}>Back</button>
+            </div>
+          </>
+        )}
+      </div>
+    </Overlay>
+  );
+}
+
 function ExitsView() {
   const mob = useIsMobile();
-  const { people, exits, openExit, ledger, chainVerified, chainFault } = useProc();
+  const { people, exits, payRuns = [], companies = [], ledger, chainVerified, chainFault } = useProc();
+  const [claim, setClaim] = useState(null);   // an unclaimed payslip being answered
   const [pick, setPick] = useState(false);
   const [run, setRun] = useState(null);
   const [q, setQ] = useState("");
@@ -12807,6 +13033,28 @@ function ExitsView() {
   const chk = verifyLedger(ledger, chainVerified, chainFault);
   const running = exits.filter(e => e.stage !== "closed");
   const finished = exits.filter(e => e.stage === "closed");
+
+  /* WHO HAS LEFT. Everybody the register says has gone, newest first, with
+     whatever the deboarding recorded about it beside them. */
+  const left = people
+    .filter(p => p.status === "exited")
+    .map(p => ({ p, ex: exits.find(e => e.pid === p.id) }))
+    .sort((a, b) => String(b.p.exitedOn || "").localeCompare(String(a.p.exitedOn || "")));
+
+  /* AND THE NAMES NOBODY HAS ACCOUNTED FOR.
+     A payslip with nobody on the register behind it is a person the company
+     paid and cannot name. Some of them are people already on the rolls, spelt
+     differently on the book. Some worked here, were never enrolled, and have
+     since left — which is where somebody who left goes when nothing recorded
+     that they ever arrived. Either way the question is open until it is
+     answered, so it is asked here rather than left on a payroll screen. */
+  const unclaimed = payRuns.flatMap(r =>
+    (r.lines || []).filter(l => !l.pid).map(l => ({
+      runId: r.id, lineId: l.id, month: r.month, company: r.company,
+      companyName: (companies.find(c => c.id === r.company) || {}).name || r.company,
+      name: l.name, designation: l.designation, gross: l.gross, payable: l.payable,
+    })),
+  ).sort((a, b) => a.name.localeCompare(b.name));
 
   return (
     <div>
@@ -12882,6 +13130,81 @@ function ExitsView() {
           </div>
         </div>
       )}
+
+      {/* WHO HAS LEFT. The question "three people left — where are they?" has
+          to have an answer on a screen, and until there is a record of somebody
+          leaving there is nothing to show. So this says that plainly rather
+          than being absent. */}
+      <Card pad={mob ? 14 : 18} style={{ marginBottom: 16 }}>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap", marginBottom: left.length ? 10 : 6 }}>
+          <Eyebrow>Who has left</Eyebrow>
+          <Pill tone={left.length ? "stone" : "amber"}>{left.length} on the record</Pill>
+        </div>
+        {left.length === 0 ? (
+          <div style={{ font: `12.5px ${sans}`, color: C.inkSoft, lineHeight: 1.6 }}>
+            Nobody on the register is recorded as having left. All {people.length} people on it are
+            shown as still employed.
+            {unclaimed.length > 0 && <>
+              {" "}That is not the same as nobody having left — it means no deboarding has ever been
+              carried through here. If somebody has gone, they are most likely one of the{" "}
+              <b style={{ color: C.ink }}>{unclaimed.length} names below</b> that the company paid and
+              the register has never heard of.
+            </>}
+          </div>
+        ) : (
+          <div>
+            {left.map(({ p, ex }, i) => (
+              <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 11, padding: "10px 0", borderTop: i ? `1px solid ${C.lineSoft}` : "none", flexWrap: "wrap" }}>
+                <div style={{ width: 30, height: 30, borderRadius: 8, background: C.stone, color: "#fff", display: "grid", placeItems: "center", font: `700 13px ${serif}`, flexShrink: 0 }}>{p.name[0]}</div>
+                <div style={{ flex: 1, minWidth: 140 }}>
+                  <div style={{ font: `600 13px ${sans}`, color: C.ink }}>{p.name}</div>
+                  <div style={{ font: `11px ${sans}`, color: C.stone }}>{p.designation} · {p.dept} · <span style={{ fontFamily: mono }}>{p.id}</span></div>
+                </div>
+                <div style={{ font: `12px ${sans}`, color: C.inkSoft, minWidth: 150 }}>
+                  Last day <b style={{ color: C.ink }}>{p.exitedOn || "not recorded"}</b>
+                  {ex ? <span style={{ color: C.stone }}> · {ex.reason}</span> : null}
+                </div>
+                {ex
+                  ? <Pill tone={ex.stage === "closed" ? "green" : "gold"}>{ex.stage === "closed" ? "settled" : `deboarding at "${ex.stage}"`}</Pill>
+                  : <Pill tone="red">no deboarding</Pill>}
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
+
+      {/* The names the company paid and cannot put a person to. */}
+      {unclaimed.length > 0 && (
+        <Card pad={mob ? 14 : 18} style={{ marginBottom: 16, borderColor: C.amber }}>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap", marginBottom: 6 }}>
+            <Eyebrow color={C.amber}>Paid, and not on the register</Eyebrow>
+            <Pill tone="amber">{unclaimed.length} to answer</Pill>
+          </div>
+          <div style={{ font: `12.5px ${sans}`, color: C.inkSoft, lineHeight: 1.6, marginBottom: 12 }}>
+            The company paid each of these and the employee register has never heard of them. Each
+            one is either somebody already on the rolls under a different spelling, or somebody who
+            worked here and was never enrolled — and some of those have since left. Answer it and
+            they stop being a name on a sheet.
+          </div>
+          <div style={{ border: `1px solid ${C.line}`, borderRadius: 11, overflow: "hidden" }}>
+            {unclaimed.map((u, i) => (
+              <div key={u.lineId} style={{ display: "flex", alignItems: "center", gap: 11, padding: "11px 13px",
+                borderTop: i ? `1px solid ${C.lineSoft}` : "none", background: "#fff", flexWrap: "wrap" }}>
+                <div style={{ flex: 1, minWidth: 160 }}>
+                  <div style={{ font: `600 13px ${sans}`, color: C.ink }}>{u.name}</div>
+                  <div style={{ font: `11px ${sans}`, color: C.stone }}>
+                    {u.designation || "no designation on the book"} · {u.companyName} · {u.month}
+                  </div>
+                </div>
+                <div style={{ font: `12px ${mono}`, color: C.inkSoft, minWidth: 90, textAlign: "right" }}>{inr(u.payable ?? u.gross)}</div>
+                <GoldButton small ghost onClick={() => setClaim(u)}>Who is this?</GoldButton>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
+      {claim && <IdentifyPayslip u={claim} onClose={() => setClaim(null)} />}
 
       {finished.length > 0 && (
         <Card pad={mob ? 14 : 18}>

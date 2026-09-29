@@ -432,6 +432,48 @@ export const advanceExitBody = z.object({
   summary: z.string().trim().min(4).max(1000),
 });
 
+/**
+ * A NAME ON A SALARY BOOK THAT NOBODY ON THE REGISTER ANSWERS TO.
+ *
+ * Thirteen people were paid in August whom the employee register has never
+ * heard of. Each one is a person the company paid, so each one is either
+ * somebody already on the rolls under a different spelling, or somebody who
+ * worked here and was never enrolled — and some of those have since left.
+ *
+ * Until it is answered, a payslip exists that nobody can attach to a person,
+ * which is the shape both an unenrolled employee and a payment nobody
+ * authorised take on a sheet.
+ *
+ * Answered one of two ways, and nothing is invented either way.
+ */
+export const identifyPayLineBody = z.union([
+  z.object({
+    /** Somebody already on the rolls. The payslip is theirs; the book spelt it differently. */
+    kind: z.literal('known'),
+    pid: employeeId,
+  }),
+  z.object({
+    /**
+     * Somebody who worked here and was never on the register. A record is made
+     * for them from what the salary book carries and what HR can establish —
+     * and NOTHING ELSE. The joining date is theirs to give only if it is known:
+     * a made-up one would put a length of service on a record and be read as a
+     * fact by everything downstream.
+     */
+    kind: z.literal('former'),
+    dept: department,
+    type: employeeType,
+    office: slug,
+    /** Their last day. This is what makes them a leaver rather than a mystery. */
+    lastDay: displayDate,
+    reason: z.enum(EXIT_REASONS),
+    /** Blank when nobody knows. It stays blank — it is not guessed at. */
+    joined: z.union([displayDate, z.literal('')]).default(''),
+    /** What HR established, and how. It goes on the record. */
+    note: z.string().trim().min(10).max(600),
+  }),
+]);
+
 /* --------------------------------------------------------- payroll, devices */
 
 /**
@@ -816,6 +858,7 @@ export type AdvanceExitBody = z.infer<typeof advanceExitBody>;
 export type SalaryBody = z.infer<typeof salaryBody>;
 export type PayRunBody = z.infer<typeof payRunBody>;
 export type PayLineBody = z.infer<typeof payLineBody>;
+export type IdentifyPayLineBody = z.infer<typeof identifyPayLineBody>;
 export type DeductionHeadBody = z.infer<typeof deductionHeadBody>;
 export type AllowanceHeadBody = z.infer<typeof allowanceHeadBody>;
 export type SalaryAtJoining = z.infer<typeof salaryAtJoining>;

@@ -1120,6 +1120,21 @@ export function ProcurementProvider({ children, toast }: Props) {
         return r?.id ?? null;
       },
 
+      /* Saying who a payslip belongs to when the register has never heard of
+         the name on it. Through `server` because it can create a person, and
+         because on a released run the answer has to come from the server or
+         the browser is guessing at somebody's employee id. */
+      identifyPayLine: (runId: string, lineId: string, body: Record<string, unknown>) =>
+        server(
+          () => api.post<any>(`/pay-runs/${runId}/lines/${lineId}/identify`, body),
+          (r, x) => x,
+        ).then(async (r) => {
+          // It writes a person and a pay line at once; re-reading is simpler
+          // and safer than mirroring both by hand.
+          if (r) await load();
+          return r;
+        }),
+
       /* A notice period gets extended, or somebody turns out to have stopped
          coming in earlier than they said. It changes what they are paid, so the
          reason goes on the ledger with both dates. */
