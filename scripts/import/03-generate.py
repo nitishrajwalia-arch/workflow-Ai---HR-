@@ -1,3 +1,9 @@
+#
+# © 2026 Marbella Group. All rights reserved.
+#
+# Proprietary and confidential. Not to be used, copied, modified or
+# distributed without the written permission of the management. See LICENSE.
+#
 """Generate apps/api/prisma/real-data.ts from the extracted workbooks."""
 import json, re
 SP = '/tmp/claude-0/-home-user/cb0a2051-f78c-52c0-9f1b-2651df4d7e3e/scratchpad'

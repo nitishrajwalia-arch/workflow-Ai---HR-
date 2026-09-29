@@ -2,6 +2,8 @@
   "name": "@marbella/api",
   "version": "1.0.0",
   "private": true,
+  "license": "UNLICENSED",
+  "author": "Marbella Group",
   "type": "module",
   "main": "dist/server.js",
   "scripts": {

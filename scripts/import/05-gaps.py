@@ -1,3 +1,9 @@
+#
+# © 2026 Marbella Group. All rights reserved.
+#
+# Proprietary and confidential. Not to be used, copied, modified or
+# distributed without the written permission of the management. See LICENSE.
+#
 """
 Fold HR's filled-in data-gap workbook back into the seed.
 

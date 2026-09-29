@@ -2,6 +2,8 @@
   "name": "@marbella/web",
   "version": "1.0.0",
   "private": true,
+  "license": "UNLICENSED",
+  "author": "Marbella Group",
   "type": "module",
   "scripts": {
     "dev": "vite",

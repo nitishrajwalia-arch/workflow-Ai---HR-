@@ -1,3 +1,9 @@
+/*
+ * © 2026 Marbella Group. All rights reserved.
+ *
+ * Proprietary and confidential. Not to be used, copied, modified or
+ * distributed without the written permission of the management. See LICENSE.
+ */
 /**
  * Prove the ledger tamper-check actually detects tampering.\n *\n * Corrupts the ledger on its way into the browser, five different ways, and\n * reads back what the running UI says about each. A detector that cannot fail\n * is not a detector.
  *

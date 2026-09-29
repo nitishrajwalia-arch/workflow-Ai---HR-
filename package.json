@@ -2,6 +2,8 @@
   "name": "marbella-hr",
   "version": "1.0.0",
   "private": true,
+  "license": "UNLICENSED",
+  "author": "Marbella Group",
   "description": "Marbella HR \u2014 production full-stack people system. React front end, Fastify + PostgreSQL back end.",
   "type": "module",
   "engines": {

@@ -1,3 +1,9 @@
+/*
+ * © 2026 Marbella Group. All rights reserved.
+ *
+ * Proprietary and confidential. Not to be used, copied, modified or
+ * distributed without the written permission of the management. See LICENSE.
+ */
 /**
  * Walk every screen of every desk and report anything the console complains\n * about — errors, React warnings, failed requests, 5xx responses, blank pages —\n * and check that a page reload keeps you signed in.
  *

@@ -1,5 +1,11 @@
 # Marbella Procurement OS
 
+> **© 2026 Marbella Group. All rights reserved.**
+> Proprietary and confidential. This repository, its code and its schema may not
+> be used, copied, modified or distributed without the written permission of the
+> management. Anyone given access holds it in confidence and returns or destroys
+> every copy when their engagement ends. See [LICENSE](LICENSE).
+
 Purchasing, stores, accounts, the gate and the people system for Marbella
 Group, as one real full-stack application.
 

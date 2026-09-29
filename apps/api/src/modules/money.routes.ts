@@ -1,3 +1,9 @@
+/*
+ * © 2026 Marbella Group. All rights reserved.
+ *
+ * Proprietary and confidential. Not to be used, copied, modified or
+ * distributed without the written permission of the management. See LICENSE.
+ */
 /**
  * Money: vendor invoices, expenses, sales, payment reminders, banks, cards and
  * the master company list.

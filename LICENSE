@@ -1,0 +1,50 @@
+MARBELLA GROUP — PROPRIETARY SOFTWARE LICENCE
+
+Copyright © 2026 Marbella Group. All rights reserved.
+
+This software, its source code, its database schema, its documentation and
+every file in this repository (together, "the Software") are the confidential
+and proprietary property of Marbella Group ("the Company").
+
+NO LICENCE IS GRANTED.
+
+Except where the Company has given its prior written permission, signed by a
+person authorised to give it, no person may:
+
+  1. use, run, host or operate the Software, in whole or in part;
+  2. copy, reproduce, publish or store the Software outside the Company's own
+     systems, including on a personal computer, a personal account, a public
+     or private code-hosting service, or any cloud or AI service;
+  3. modify, adapt, translate or create derivative works from the Software;
+  4. distribute, sell, licence, sub-licence, rent, lend or otherwise make the
+     Software available to any other person or organisation;
+  5. decompile, disassemble or reverse-engineer any compiled or minified form
+     of the Software; or
+  6. remove, obscure or alter this notice, the copyright headers in the source
+     files, or any other mark of ownership.
+
+CONFIDENTIALITY. The Software is a trade secret of the Company. Anyone given
+access to it — employee, contractor, consultant, auditor or vendor — receives
+it in confidence, must keep it confidential, must not disclose it, and must
+return or destroy every copy in their possession when their engagement with
+the Company ends or when the Company asks, whichever is sooner.
+
+DATA. This repository is the software only. The employee records, payroll,
+attendance, identity documents and every other record held or produced by the
+Software belong to the Company and to the individuals they describe, and are
+regulated personal data under the Digital Personal Data Protection Act, 2023.
+Access to the Software is not permission to access, copy, export or retain
+that data.
+
+NO WARRANTY. The Software is provided as it is. The Company makes no warranty
+of any kind about it, and is not liable for any loss arising from its use.
+
+GOVERNING LAW. This licence is governed by the laws of India. The courts at
+Chandigarh have exclusive jurisdiction over any dispute arising from it.
+
+Unauthorised use, copying or distribution of the Software is an infringement
+of copyright under the Copyright Act, 1957, and may be a criminal offence
+under the Information Technology Act, 2000. The Company will pursue it.
+
+Written permission, and questions about this licence, come from the
+management of Marbella Group.

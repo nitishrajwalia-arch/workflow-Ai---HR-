@@ -1,3 +1,9 @@
+/*
+ * © 2026 Marbella Group. All rights reserved.
+ *
+ * Proprietary and confidential. Not to be used, copied, modified or
+ * distributed without the written permission of the management. See LICENSE.
+ */
 /**
  * The columns the bulk intake reads, and how a real sheet's headers are matched
  * to them.
