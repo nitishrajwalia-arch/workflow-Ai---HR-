@@ -25,7 +25,7 @@ Read in this order if you have never seen it before.
 
 A Fastify 5 / Prisma 7 / PostgreSQL 16 API and a React front end, in an npm
 workspaces monorepo. One database, one API process, no queue, no object store.
-418 tests against a real database, no mocks. CI runs all of it on every push.
+421 tests against a real database, no mocks. CI runs all of it on every push.
 
 ```bash
 npm run setup     # install, generate the Prisma client, build shared

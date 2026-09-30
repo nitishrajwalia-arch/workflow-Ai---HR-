@@ -1127,6 +1127,75 @@ export const payrollRoutes: FastifyPluginAsyncZod = async (app) => {
         return { line: saved, person: { id: person.id, name: person.name } };
       }
 
+      if (b.kind === 'current') {
+        /* SOMEBODY WHO WORKS HERE NOW AND WAS NEVER ENROLLED.
+           Enrolled as active, and the SALARY IS CARRIED OVER FROM THE PAYSLIP
+           rather than typed again: every figure on it was agreed and paid
+           already, so re-entering it is a chance to get it wrong — and without
+           a salary on file they would be left out of the next pay run and
+           named after it, which is how they came to be on this list. */
+        const made = await db.$transaction(async (tx) => {
+          const pid = await nextEmployeeId(tx, b.dept);
+          const person = await tx.person.create({
+            data: {
+              id: pid,
+              name: line.name,
+              designation: line.designation || 'Not recorded',
+              dept: b.dept,
+              type: b.type,
+              joined: b.joined,
+              joinedOn: b.joined ? parseDisplayDate(b.joined) : null,
+              officeId: b.office,
+              employerId: line.run.companyId,
+              status: 'active',
+              reportsToNote: b.reportsToNote,
+            },
+          });
+          await tx.salary.create({
+            data: {
+              personId: pid,
+              gross: line.gross,
+              basic: line.basic,
+              hra: line.hra,
+              travel: line.travel,
+              medical: line.medical,
+              special: line.special,
+              /* Whether the statutory heads apply to them is a fact about the
+                 person, and the only evidence here is what the book did: it
+                 deducted neither. Turning one on because most people have it
+                 would change what they are paid on a guess. */
+              esiOn: line.dEsi > 0,
+              pfOn: line.dPf > 0,
+              note: `Taken from the ${line.run.month} salary book of ${line.run.company.name}.`,
+            },
+          });
+          await tx.personNote.create({
+            data: {
+              personId: pid,
+              when: nowStamp(),
+              text:
+                `Enrolled from the ${line.run.month} salary book of ${line.run.company.name}, ` +
+                `where they were paid as "${line.name}" and no employee record existed. ` +
+                `${b.note}` +
+                (b.joined ? '' : ' Their joining date is not known and has been left blank.') +
+                ` — ${me.name}`,
+            },
+          });
+          await tx.payRunLine.update({ where: { id: lineId }, data: { personId: pid } });
+          await appendInTx(tx, {
+            kind: 'payroll',
+            subject: pid,
+            detail:
+              `"${line.name}" on the ${line.run.month} book of ${line.run.company.name} works here ` +
+              `and had never been enrolled. Recorded as ${pid}` +
+              (b.reportsToNote ? ` — ${b.reportsToNote}` : '') + '.',
+            who: me.name,
+          });
+          return person;
+        });
+        return { person: { id: made.id, name: made.name, status: made.status } };
+      }
+
       /* Somebody who worked here and was never enrolled. A record is made from
          what the salary book carries and what HR can establish, and NOTHING
          ELSE — no joining date unless it is known, no date of birth, no salary

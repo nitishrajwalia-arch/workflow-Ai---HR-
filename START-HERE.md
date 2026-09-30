@@ -69,7 +69,7 @@ for showing someone the screens before there is anywhere to deploy it.
 ## Checking it for yourself
 
 ```bash
-npm run check                 # format, lint, typecheck, 418 tests — what CI runs
+npm run check                 # format, lint, typecheck, 421 tests — what CI runs
 npm run build                 # production build of all three packages
 ```
 

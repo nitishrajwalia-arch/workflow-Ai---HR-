@@ -14,6 +14,16 @@
 
 /** Department -> employee-ID infix. `MB-PUR-0012` is Purchase employee 12. */
 export const DEPT_CODES = {
+  /**
+   * People who answer to the management directly rather than to a department
+   * head. Their own series, because that is the fact about them: MB-MGT-0001
+   * says at a glance what MB-SAL-0012 would hide.
+   *
+   * It is not a department in the sense the other twelve are — nobody runs it
+   * and it has no hours of its own. It is where the register puts somebody
+   * whose reporting line goes straight upstairs.
+   */
+  Management: 'MGT',
   Sales: 'SAL',
   CRM: 'CRM',
   Accounts: 'ACC',
@@ -274,6 +284,19 @@ export const roleAtLeast = (role: Role, min: Role): boolean => ROLES[role].rank 
 export const COMPANY_DOMAINS = ['marbellagroup.in', 'marbella.in'] as const;
 
 export const ZONES_BY_DEPT: Record<Department, string[]> = {
+  /* Everywhere the card system knows about. Somebody who answers to the
+     management is not kept out of a room by their department. */
+  Management: [
+    'Main gate',
+    'Site office',
+    'Store & yard',
+    'Accounts room',
+    'Server room',
+    'Sales office',
+    'Club house',
+    'Tower floors',
+    'Basement plant',
+  ],
   Admin: ['Main gate', 'Site office', 'Store & yard', 'Accounts room', 'Server room', 'Club house'],
   HR: ['Main gate', 'Site office', 'Accounts room'],
   Accounts: ['Main gate', 'Site office', 'Accounts room'],

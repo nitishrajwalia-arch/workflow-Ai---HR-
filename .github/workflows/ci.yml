@@ -1,7 +1,7 @@
 name: CI
 
 # Runs on every push and every pull request. If this is green, the branch
-# builds, typechecks, lints and passes 418 tests against a real PostgreSQL.
+# builds, typechecks, lints and passes 421 tests against a real PostgreSQL.
 # If it is red, do not deploy it.
 
 on:

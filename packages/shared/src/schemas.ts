@@ -454,6 +454,34 @@ export const identifyPayLineBody = z.union([
   }),
   z.object({
     /**
+     * SOMEBODY WHO WORKS HERE NOW AND WAS NEVER PUT ON THE REGISTER.
+     *
+     * The case this route first went out without, and the most common one of
+     * the three: not a misspelling and not a leaver, just a person the company
+     * pays whom nobody enrolled. Two of Marbella's thirteen were exactly this.
+     *
+     * They are enrolled as an ACTIVE employee, and the salary is carried over
+     * from the payslip rather than typed again — every figure on it was
+     * already agreed and paid, so re-entering it is a chance to get it wrong.
+     * Without it they would be left out of the next pay run and named after it.
+     */
+    kind: z.literal('current'),
+    dept: department,
+    type: employeeType,
+    office: slug,
+    /** Blank when nobody knows. It stays blank — it is not guessed at. */
+    joined: z.union([displayDate, z.literal('')]).default(''),
+    /**
+     * Who they answer to when that is not an employee — the line the register
+     * has no other way to hold. "Reports directly to the management" is the
+     * answer for somebody whose line goes straight upstairs.
+     */
+    reportsToNote: z.string().trim().max(200).default(''),
+    /** What HR established, and how. It goes on the record. */
+    note: z.string().trim().min(10).max(600),
+  }),
+  z.object({
+    /**
      * Somebody who worked here and was never on the register. A record is made
      * for them from what the salary book carries and what HR can establish —
      * and NOTHING ELSE. The joining date is theirs to give only if it is known:

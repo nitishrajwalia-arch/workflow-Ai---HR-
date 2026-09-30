@@ -220,3 +220,107 @@ describe('saying who a payslip belongs to', () => {
     }
   });
 });
+
+describe('somebody who works here now and was never enrolled', () => {
+  let app: App;
+  let db: PrismaClient;
+  let token: string;
+
+  beforeEach(async () => {
+    ({ app, db } = await makeApp());
+    ({ token } = await signIn(app));
+  });
+
+  const CURRENT = {
+    kind: 'current',
+    dept: 'Management',
+    type: 'Staff',
+    office: 'grand',
+    reportsToNote: 'Reports directly to the management',
+    note: 'The management confirmed they work here and answer to the board directly.',
+  };
+
+  it('enrols them as active, with the salary carried off the payslip', async () => {
+    let made: string | null = null;
+    try {
+      const { run, line } = await stage(db);
+      const res = await identify(app, token, run.id, line.id, CURRENT);
+      expect(res.statusCode, res.body.slice(0, 400)).toBe(200);
+      made = res.json<{ person: { id: string } }>().person.id;
+
+      const p = await db.person.findUniqueOrThrow({
+        where: { id: made },
+        include: { notes: true, salary: true },
+      });
+      expect(p.status, 'they have not left — they work here').toBe('active');
+      expect(p.exitedOn).toBeNull();
+      expect(p.name).toBe('Kishan Lal');
+      expect(p.reportsToNote).toBe('Reports directly to the management');
+      // Their own series, so the reporting line is visible in the ID itself.
+      expect(made).toMatch(/^MB-MGT-\d{4}$/);
+
+      /* THE SALARY COMES OFF THE PAYSLIP. Every figure on it was agreed and
+         paid already; typing it again is a chance to get it wrong, and without
+         it they are left out of the next run and named after it — which is how
+         they came to be on this list. */
+      expect(p.salary?.gross).toBe(32_000);
+      expect(p.salary?.note).toContain('Mar 2024 salary book');
+
+      expect(p.joined, 'nobody knew it, so it stays blank').toBe('');
+      expect(p.notes[0]!.text).toContain('joining date is not known');
+      expect((await db.payRunLine.findUniqueOrThrow({ where: { id: line.id } })).personId).toBe(made);
+    } finally {
+      if (made) await db.person.delete({ where: { id: made } }).catch(() => undefined);
+      await db.payRun.deleteMany({ where: { companyId: COMPANY, month: MONTH } });
+      await app.close();
+      await db.$disconnect();
+    }
+  });
+
+  it('does not switch on a statutory head the book never deducted', async () => {
+    let made: string | null = null;
+    try {
+      const { run, line } = await stage(db);
+      made = (await identify(app, token, run.id, line.id, CURRENT)).json<{ person: { id: string } }>().person.id;
+      const s = await db.salary.findUniqueOrThrow({ where: { personId: made } });
+      // The only evidence is what the book did, and it deducted neither.
+      // Turning one on because most people have it changes their pay on a guess.
+      expect(s.esiOn).toBe(false);
+      expect(s.pfOn).toBe(false);
+    } finally {
+      if (made) await db.person.delete({ where: { id: made } }).catch(() => undefined);
+      await db.payRun.deleteMany({ where: { companyId: COMPANY, month: MONTH } });
+      await app.close();
+      await db.$disconnect();
+    }
+  });
+
+  it('puts them on the next pay run, which is the point', async () => {
+    let made: string | null = null;
+    try {
+      const { run, line } = await stage(db);
+      made = (await identify(app, token, run.id, line.id, CURRENT)).json<{ person: { id: string } }>().person.id;
+
+      await db.payRun.deleteMany({ where: { companyId: COMPANY, month: 'Apr 2024' } });
+      const next = await app.inject({
+        method: 'POST',
+        url: '/api/v1/pay-runs',
+        headers: auth(token),
+        payload: { month: 'Apr 2024', company: COMPANY, monthDays: 30, attendanceMonth: '' },
+      });
+      expect(next.statusCode, next.body.slice(0, 300)).toBe(200);
+      const paid = next
+        .json<{ run: { lines: Array<{ pid: string | null; gross: number }> } }>()
+        .run.lines.find((l) => l.pid === made);
+      expect(paid, 'they are on the run now, not a name beside it').toBeTruthy();
+      expect(paid!.gross).toBe(32_000);
+
+      await db.payRun.deleteMany({ where: { companyId: COMPANY, month: 'Apr 2024' } });
+    } finally {
+      if (made) await db.person.delete({ where: { id: made } }).catch(() => undefined);
+      await db.payRun.deleteMany({ where: { companyId: COMPANY, month: MONTH } });
+      await app.close();
+      await db.$disconnect();
+    }
+  });
+});

@@ -8,6 +8,7 @@ import React, { useState, useMemo, useEffect } from "react";
 import { ProcCtx, useProc } from "../proc/context.js";
 import { api } from "../lib/api.js";
 import {
+  DEPT_CODES,
   INTAKE_FIELDS, INTAKE_UPDATE_FIELDS, aadhaarCheck, matchColumns, panCheck, payrollReport,
   proposeBreakUp, reductionsFor, reportToXlsx, accountsFile, xlsxToSheet,
 } from "@marbella/shared";
@@ -282,20 +283,17 @@ const desk = (k) => USERS[k] || { name: "", role: k || "User", tier: 3, key: k |
 /* Headcount and department count are computed from the live roster where they
    are shown; only the two nobody can derive are kept here. */
 const HEAD = { admins: 4, open: 3 };
-/* Department -> employee-ID infix, the same map the server keeps in
-   packages/shared/src/constants.ts. It is declared here, above the list that
-   derives from it: a `const` read before its initialiser is a ReferenceError at
-   load, and this file had it 7,000 lines further down. */
-const DEPT_CODES = {
-  Sales: "SAL", CRM: "CRM", Accounts: "ACC", IT: "IT", Admin: "ADM", Pantry: "PAN",
-  HR: "HR", Marketing: "MKT", Project: "PRJ", Purchase: "PUR", Maintenance: "MNT",
-  Horticulture: "HRT",
-};
-/* Marbella's twelve departments, in the order the company's own register lists
-   them. This map used to carry Store, Security, Site Engineering, QA / QC and
-   Labour — five departments the company does not have — and was missing Sales,
-   CRM, IT, Pantry, Project and Horticulture, which it does. Every list below
-   derives from here, so a department invented here was invented on six screens. */
+/* Department -> employee-ID infix. IMPORTED, not copied.
+   This used to be a hand-written duplicate of the map in
+   packages/shared/src/constants.ts, with a comment saying it was "the same
+   map" — and the moment a department was added on the server the two stopped
+   being the same. The department did not appear in a single dropdown here,
+   the server accepted it, and the screen simply could not offer it.
+
+   It also used to carry Store, Security, Site Engineering, QA / QC and Labour
+   — five departments the company does not have — and to be missing Sales, CRM,
+   IT, Pantry, Project and Horticulture, which it does. Every list below derives
+   from here, so a department invented here was invented on six screens. */
 const DEPARTMENTS = Object.keys(DEPT_CODES);
 
 /* EDIT 2 of 23: this was `[["Admin", 4], ["Purchase", 9], …]` — eight
@@ -12818,6 +12816,7 @@ function IdentifyPayslip({ u, onClose }) {
   const [busy, setBusy] = useState(false);
   const [f, setF] = useState({
     dept: "", type: "Site", office: "", lastDay: todayPicker(), reason: "", joined: "", note: "",
+    reportsToNote: "",
   });
   const set = (k, v) => setF(s => ({ ...s, [k]: v }));
 
@@ -12860,6 +12859,23 @@ function IdentifyPayslip({ u, onClose }) {
     if (r) { toast(`${u.month}: that payslip is ${(people.find(p => p.id === pid) || {}).name}'s.`, "green"); onClose(); }
   };
 
+  const currentProblems = [];
+  if (!f.dept) currentProblems.push("Which department are they in?");
+  if (!f.office) currentProblems.push("Which site are they posted at?");
+  if (f.note.trim().length < 10) currentProblems.push("Say how you established this. It goes on their record.");
+
+  const asCurrent = async () => {
+    setBusy(true);
+    const r = await identifyPayLine(u.runId, u.lineId, {
+      kind: "current", dept: f.dept, type: f.type, office: f.office,
+      joined: f.joined ? fromPicker(f.joined) : "",
+      reportsToNote: f.reportsToNote.trim(),
+      note: f.note.trim(),
+    });
+    setBusy(false);
+    if (r) { toast(`${u.name} enrolled${r.person ? ` as ${r.person.id}` : ""} — they are on the next pay run.`, "green"); onClose(); }
+  };
+
   const problems = [];
   if (!f.dept) problems.push("Which department did they work in?");
   if (!f.office) problems.push("Which site were they posted at?");
@@ -12892,6 +12908,14 @@ function IdentifyPayslip({ u, onClose }) {
 
         {!how && (
           <div style={{ display: "grid", gap: 10 }}>
+            <button onClick={() => setHow("current")} style={{ textAlign: "left", cursor: "pointer",
+              border: `1px solid ${C.line}`, borderRadius: 12, padding: 15, background: "#fff" }}>
+              <div style={{ font: `600 13px ${sans}`, color: C.ink }}>They work here and were never enrolled</div>
+              <div style={{ font: `11.5px ${sans}`, color: C.stone, marginTop: 3, lineHeight: 1.5 }}>
+                Somebody the company pays whom nobody put on the register. They are enrolled as they
+                are, with the salary taken off this payslip, and they are on the next pay run.
+              </div>
+            </button>
             <button onClick={() => setHow("known")} style={{ textAlign: "left", cursor: "pointer",
               border: `1px solid ${C.line}`, borderRadius: 12, padding: 15, background: "#fff" }}>
               <div style={{ font: `600 13px ${sans}`, color: C.ink }}>They are on our rolls</div>
@@ -12948,6 +12972,69 @@ function IdentifyPayslip({ u, onClose }) {
               </button>
             ))}
             <button onClick={() => setHow("")} style={{ ...softBtn, marginTop: 6 }}>Back</button>
+          </>
+        )}
+
+        {how === "current" && (
+          <>
+            <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr" : "1fr 1fr", gap: 12 }}>
+              <div>
+                <label style={lbl}>Department</label>
+                <select value={f.dept} onChange={e => set("dept", e.target.value)} style={{ ...sel, margin: "6px 0 0" }}>
+                  <option value="">— choose —</option>
+                  {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
+                </select>
+                <div style={{ font: `10.5px ${sans}`, color: C.stone, marginTop: 4, lineHeight: 1.45 }}>
+                  Choose <b>Management</b> for somebody who answers to the board rather than to a
+                  department head. It gives them their own MB-MGT series.
+                </div>
+              </div>
+              <div>
+                <label style={lbl}>Kind of employee</label>
+                <select value={f.type} onChange={e => set("type", e.target.value)} style={{ ...sel, margin: "6px 0 0" }}>
+                  {P_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={lbl}>Posted at</label>
+                <select value={f.office} onChange={e => set("office", e.target.value)} style={{ ...sel, margin: "6px 0 0" }}>
+                  <option value="">— choose —</option>
+                  {offices.map(o => <option key={o.id} value={o.id}>{o.short || o.name}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={lbl}>Joining date, if it is known</label>
+                <input type="date" value={f.joined} onChange={e => set("joined", e.target.value)} style={{ ...inp, margin: "6px 0 0" }} />
+                <div style={{ font: `10.5px ${sans}`, color: C.stone, marginTop: 4, lineHeight: 1.45 }}>
+                  Leave it empty if nobody knows. It stays empty.
+                </div>
+              </div>
+            </div>
+            <div style={{ marginTop: 12 }}>
+              <Field label="Who do they answer to?" value={f.reportsToNote} onChange={v => set("reportsToNote", v)}
+                hint="Only when it is not another employee — a director, or the board. Leave it blank and set their manager on their record afterwards."
+                placeholder="Reports directly to the management" />
+              <Field label="How did you establish this?" area value={f.note} onChange={v => set("note", v)}
+                hint="It goes on their record and is what gets read back if anybody asks."
+                placeholder="The management confirmed they work here and answer to the board directly." />
+            </div>
+            <div style={{ background: C.greenSoft, border: `1px solid ${C.green}`, borderRadius: 9, padding: 12, marginBottom: 12 }}>
+              <div style={{ font: `11.5px ${sans}`, color: C.ink, lineHeight: 1.6 }}>
+                Their salary is taken off this payslip — {inr(u.gross)} a month, with the same
+                breakup the book paid. It is not typed again, and they are on the next pay run.
+              </div>
+            </div>
+            {currentProblems.length > 0 && (
+              <div style={{ background: "#FFF9E0", border: `1px solid ${C.line}`, borderRadius: 9, padding: 12, marginBottom: 12 }}>
+                {currentProblems.map((x, i) => <div key={i} style={{ font: `11.5px ${sans}`, color: C.ink, lineHeight: 1.6 }}>· {x}</div>)}
+              </div>
+            )}
+            <div style={{ display: "flex", gap: 9, flexWrap: "wrap" }}>
+              <GoldButton disabled={busy || currentProblems.length > 0} onClick={asCurrent}>
+                {busy ? "Enrolling…" : "Enrol them"}
+              </GoldButton>
+              <button onClick={() => setHow("")} style={softBtn}>Back</button>
+            </div>
           </>
         )}
 

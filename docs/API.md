@@ -368,6 +368,13 @@ on it. Thirteen people were paid in August in exactly that position.
   "note": "How this was established." }
 ```
 
+`current` enrols somebody who works here and was never put on the register. The
+commonest of the three, and the one this route first went out without. They are
+enrolled as an **active** employee and the salary is carried over from the
+payslip rather than typed again — every figure on it was agreed and paid
+already. Without a salary on file they would be left out of the next run and
+named after it, which is how they came to be on this list.
+
 `known` attaches the line to somebody already on the rolls and creates nothing.
 Two payslips for one person in one month is a **409** — that is the thing this
 exists to catch, not to record.

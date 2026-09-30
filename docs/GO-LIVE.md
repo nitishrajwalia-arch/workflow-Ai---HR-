@@ -61,7 +61,7 @@ Known gaps, in the order they cost something:
 
 | Gap | Where it shows |
 | --- | --- |
-| **13 people paid in August whom the register has never heard of** (₹7,97,380 in net pay) | Exits & F&F → *Paid, and not on the register*. Each one is answerable: an employee under a different spelling, or somebody never enrolled who has since left. |
+| **11 people paid in August whom the register has never heard of** (Manya and Sumedha of the original 13 are now enrolled) | Exits & F&F → *Paid, and not on the register*. Each one is answerable: an employee under a different spelling, or somebody never enrolled who has since left. |
 | **Nobody is recorded as having left** | Exits & F&F says so plainly. Until a deboarding is carried through, the register shows all 126 as employed. |
 | **7 active people with no salary on file** | They are left out of a pay run and named after it. |
 | **126 people with no photograph** | ID cards print without one. |
@@ -124,7 +124,7 @@ What is still on you:
 npm ci
 npm run typecheck     # 0 errors
 npm run lint          # 0 errors (warnings are allowed)
-npm test              # 418 tests, all passing
+npm test              # 421 tests, all passing
 python3 scripts/leak-check.py    # 0 found
 ```
 
