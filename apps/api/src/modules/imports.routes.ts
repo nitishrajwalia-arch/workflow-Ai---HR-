@@ -20,7 +20,15 @@
  * refused one: nobody can tell which half.
  */
 
-import { emailCheck, imeiCheck, normDate, phoneCheck, readGender, schemas } from '@marbella/shared';
+import {
+  INTAKE_FIELDS,
+  emailCheck,
+  imeiCheck,
+  normDate,
+  phoneCheck,
+  readGender,
+  schemas,
+} from '@marbella/shared';
 import type { ImportRow, ImportUpdateRow } from '@marbella/shared';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
@@ -209,39 +217,66 @@ export const importsRoutes: FastifyPluginAsyncZod = async (app) => {
         for (const s of staged) {
           await tx.person.create({ data: s.data });
 
-          const money = [s.source.basic, s.source.hra, s.source.special].some(
-            (v) => v != null && v !== '',
-          );
-          if (money) {
+          const parts = {
+            basic: num(s.source.basic),
+            hra: num(s.source.hra),
+            travel: num(s.source.travel),
+            medical: num(s.source.medical),
+            special: num(s.source.special),
+          };
+          const partsTotal = Object.values(parts).reduce((a, b) => a + b, 0);
+          /* THE GROSS. Taken from the sheet when it gives one, and added up
+             from the parts when it does not — but never left at nothing.
+             Payroll skips anybody whose gross is zero, so a person imported
+             without one is a person who is never paid and never asked about:
+             the run does not fail, it quietly pays everybody else. */
+          const gross = num(s.source.gross) || partsTotal;
+          if (gross > 0) {
             await tx.salary.create({
               data: {
                 personId: s.data.id,
-                basic: Number(s.source.basic) || 0,
-                hra: Number(s.source.hra) || 0,
-                special: Number(s.source.special) || 0,
-                pf: 1800,
-                pt: 200,
-                note: 'imported',
+                gross,
+                ...parts,
+                esiOn: yesNo(s.source.esiOn),
+                pfOn: yesNo(s.source.pfOn),
+                /* Only when this person's is not the company's standard. Zero
+                   means "use the policy", which is what almost everybody is. */
+                pfWages: num(s.source.pfWages),
+                note: 'Taken from a bulk intake sheet.',
               },
             });
           }
-          if (s.source.phone || s.source.email) {
+          if (s.source.phone || s.source.email || s.source.workEmail) {
             await tx.contact.create({
               data: {
                 personId: s.data.id,
                 phone: s.source.phone ?? '',
                 email: s.source.email ?? '',
+                workEmail: s.source.workEmail ?? '',
               },
             });
           }
-          if (s.source.imei) {
+          if (s.source.pan || s.source.aadhaar) {
+            await tx.kyc.create({
+              data: {
+                personId: s.data.id,
+                pan: (s.source.pan ?? '').toUpperCase(),
+                aadhaar: (s.source.aadhaar ?? '').replace(/\D/g, ''),
+              },
+            });
+          }
+          /* A SIM WITH NO HANDSET IS STILL A THING ISSUED. This used to require
+             an IMEI, so a company number recorded on its own — which is most of
+             them, because the SIM is issued long before anybody notes the
+             handset — was dropped on the floor. */
+          if (s.source.imei || s.source.sim) {
             await tx.device.create({
               data: {
                 personId: s.data.id,
-                type: 'Phone',
-                model: 'imported',
-                imei: s.source.imei,
-                sim: s.source.sim ?? '—',
+                type: s.source.imei ? 'Phone' : 'SIM',
+                model: s.source.imei ? 'From a bulk intake sheet' : 'Company number',
+                imei: s.source.imei ?? '',
+                sim: s.source.sim ?? '',
                 issued: s.data.joined,
               },
             });
@@ -570,103 +605,32 @@ export const importsRoutes: FastifyPluginAsyncZod = async (app) => {
         response: { 200: z.any() },
       },
     },
-    async () => IMPORT_FIELDS,
+    async () => INTAKE_FIELDS,
   );
 };
 
-/** Header aliases, including the ones people actually type. */
-const IMPORT_FIELDS = [
-  {
-    key: 'name',
-    label: 'Full name',
-    required: true,
-    aliases: ['name', 'employee name', 'full name', 'staff name', 'emp name'],
-  },
-  {
-    key: 'id',
-    label: 'Employee ID',
-    required: false,
-    aliases: ['id', 'employee id', 'emp id', 'code', 'empcode', 'employee code', 'emp no'],
-  },
-  {
-    key: 'desig',
-    label: 'Designation',
-    required: true,
-    aliases: ['designation', 'role', 'post', 'title', 'job title', 'position'],
-  },
-  {
-    key: 'dept',
-    label: 'Department',
-    required: true,
-    aliases: ['department', 'dept', 'division', 'section'],
-  },
-  {
-    key: 'office',
-    label: 'Office / site',
-    required: false,
-    aliases: ['office', 'site', 'location', 'posting', 'branch', 'place'],
-  },
-  {
-    key: 'joined',
-    label: 'Date of joining',
-    required: true,
-    aliases: ['doj', 'date of joining', 'joining date', 'joined', 'start date', 'date joined'],
-  },
-  {
-    key: 'dob',
-    label: 'Date of birth',
-    required: false,
-    aliases: ['dob', 'date of birth', 'birth date', 'birthday', 'born'],
-  },
-  {
-    key: 'gender',
-    label: 'Gender',
-    required: false,
-    aliases: ['gender', 'sex', 'm/f', 'male/female'],
-  },
-  {
-    key: 'phone',
-    label: 'Personal mobile',
-    required: false,
-    aliases: [
-      'mobile',
-      'phone',
-      'personal mobile',
-      'contact',
-      'cell',
-      'personal number',
-      'mobile no',
-    ],
-  },
-  {
-    key: 'email',
-    label: 'Personal email',
-    required: false,
-    aliases: ['email', 'personal email', 'e-mail', 'mail id', 'email id'],
-  },
-  {
-    key: 'imei',
-    label: 'Phone IMEI',
-    required: false,
-    aliases: ['imei', 'imei no', 'device imei'],
-  },
-  {
-    key: 'sim',
-    label: 'SIM number',
-    required: false,
-    aliases: ['sim', 'sim no', 'company number'],
-  },
-  {
-    key: 'basic',
-    label: 'Basic',
-    required: false,
-    aliases: ['basic', 'basic pay', 'basic salary'],
-  },
-  { key: 'hra', label: 'HRA', required: false, aliases: ['hra', 'house rent allowance'] },
-  {
-    key: 'special',
-    label: 'Special allowance',
-    required: false,
-    aliases: ['special', 'special allowance', 'other allowance'],
-  },
-];
+/** A figure off a sheet. Blank, a dash and a stray comma all mean nothing. */
+const num = (v: unknown): number => {
+  const n = Number(String(v ?? '').replace(/[,\s₹]/g, ''));
+  return Number.isFinite(n) && n > 0 ? Math.round(n) : 0;
+};
+
+/**
+ * A yes/no column, as people actually fill one in.
+ *
+ * Anything that is plainly no is no; anything that is plainly yes is yes; and
+ * ANYTHING ELSE IS NO — a blank cell must not switch somebody's provident fund
+ * on, and nor must the word "maybe".
+ */
+const yesNo = (v: unknown): boolean => {
+  const s = String(v ?? '').trim().toLowerCase();
+  return ['yes', 'y', 'true', '1', 'applicable', 'applies', 'on'].includes(s);
+};
+
+/* IMPORT_FIELDS used to live here: a third hand-written copy of the column
+   aliases, after the one in packages/shared and the one the browser matches
+   with. This endpoint published it as "the columns we recognise", so the list
+   the UI was shown and the list that actually matched had already drifted
+   apart — it still advertised no work email, no travelling, no medical and no
+   PAN long after the matcher read all four. There is one list now. */
+

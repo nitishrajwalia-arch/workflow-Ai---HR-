@@ -97,6 +97,73 @@ export const INTAKE_FIELDS: readonly IntakeField[] = [
     aliases: ['special', 'special allowance', 'other', 'allowance', 'allowances', 'conveyance'],
   },
   {
+    k: 'gross',
+    label: 'Monthly gross',
+    req: false,
+    aliases: ['gross', 'monthly gross', 'ctc', 'gross salary', 'total salary', 'monthly salary'],
+  },
+  {
+    k: 'travel',
+    label: 'Travelling allowance',
+    req: false,
+    aliases: ['travelling', 'travel', 'travelling allowance', 'conveyance allowance', 'ta'],
+  },
+  {
+    k: 'medical',
+    label: 'Medical allowance',
+    req: false,
+    aliases: ['medical', 'medical allowance'],
+  },
+  {
+    k: 'pfOn',
+    label: 'P.F. applies',
+    req: false,
+    /* NOT a bare 'pf'. It is a substring of "PF Percent" and "PF Wage Ceiling",
+       and a rate of 12 read into a yes/no field is a person whose provident
+       fund was switched on by a number that meant something else. A heading of
+       exactly "PF" now matches nothing and is reported as unread, which is the
+       safe way round. */
+    aliases: ['pf enabled', 'pf applies', 'pf applicable', 'provident fund'],
+  },
+  {
+    k: 'pfWages',
+    label: 'P.F. wage, if theirs is different',
+    req: false,
+    aliases: ['pf wage', 'pf wages', 'pf wage ceiling', 'pf wage cap'],
+  },
+  {
+    k: 'esiOn',
+    label: 'E.S.I. applies',
+    req: false,
+    /* Bare 'esi' left out for the same reason as 'pf' above. */
+    aliases: ['esi enabled', 'esi applies', 'esi applicable'],
+  },
+  {
+    k: 'pan',
+    label: 'PAN',
+    req: false,
+    aliases: ['pan', 'pan no', 'pan number', 'pan card'],
+  },
+  {
+    k: 'aadhaar',
+    label: 'Aadhaar',
+    req: false,
+    aliases: ['aadhaar', 'aadhar', 'adhaar', 'aadhaar no', 'aadhaar number', 'uid'],
+  },
+  {
+    k: 'workEmail',
+    label: 'Work email',
+    req: false,
+    aliases: [
+      'work email',
+      'company email',
+      'official email',
+      'office email',
+      'work mail',
+      'company mail',
+    ],
+  },
+  {
     k: 'imei',
     label: 'Device IMEI',
     req: false,
@@ -104,9 +171,20 @@ export const INTAKE_FIELDS: readonly IntakeField[] = [
   },
   {
     k: 'sim',
-    label: 'SIM number',
+    label: 'Work phone (company SIM)',
     req: false,
-    aliases: ['sim', 'sim no', 'sim number', 'company number', 'official number'],
+    aliases: [
+      'sim',
+      'sim no',
+      'sim number',
+      'company number',
+      'official number',
+      'work phone',
+      'company phone',
+      'official mobile',
+      'work mobile',
+      'company mobile',
+    ],
   },
 ];
 
@@ -158,6 +236,67 @@ export const INTAKE_UPDATE_FIELDS: readonly IntakeField[] = [
     aliases: ['reports to', 'reporting to', 'manager', 'manager id', 'reports to id', 'supervisor'],
   },
   {
+    k: 'gross',
+    label: 'Monthly gross',
+    req: false,
+    aliases: ['gross', 'monthly gross', 'ctc', 'gross salary', 'total salary', 'monthly salary'],
+  },
+  {
+    k: 'travel',
+    label: 'Travelling allowance',
+    req: false,
+    aliases: ['travelling', 'travel', 'travelling allowance', 'conveyance allowance', 'ta'],
+  },
+  {
+    k: 'medical',
+    label: 'Medical allowance',
+    req: false,
+    aliases: ['medical', 'medical allowance'],
+  },
+  {
+    k: 'pfOn',
+    label: 'P.F. applies',
+    req: false,
+    aliases: ['pf enabled', 'pf applies', 'pf applicable', 'pf', 'provident fund'],
+  },
+  {
+    k: 'pfWages',
+    label: 'P.F. wage, if theirs is different',
+    req: false,
+    aliases: ['pf wage', 'pf wages', 'pf wage ceiling', 'pf wage cap'],
+  },
+  {
+    k: 'esiOn',
+    label: 'E.S.I. applies',
+    req: false,
+    aliases: ['esi enabled', 'esi applies', 'esi applicable', 'esi'],
+  },
+  {
+    k: 'pan',
+    label: 'PAN',
+    req: false,
+    aliases: ['pan', 'pan no', 'pan number', 'pan card'],
+  },
+  {
+    k: 'aadhaar',
+    label: 'Aadhaar',
+    req: false,
+    aliases: ['aadhaar', 'aadhar', 'adhaar', 'aadhaar no', 'aadhaar number', 'uid'],
+  },
+  {
+    k: 'workEmail',
+    label: 'Work email',
+    req: false,
+    aliases: [
+      'work email',
+      'company email',
+      'official email',
+      'office email',
+      'work mail',
+      'company mail',
+    ],
+  },
+  {
     k: 'imei',
     label: 'Device IMEI',
     req: false,
@@ -165,9 +304,20 @@ export const INTAKE_UPDATE_FIELDS: readonly IntakeField[] = [
   },
   {
     k: 'sim',
-    label: 'SIM number',
+    label: 'Work phone (company SIM)',
     req: false,
-    aliases: ['sim', 'sim no', 'sim number', 'company number', 'official number'],
+    aliases: [
+      'sim',
+      'sim no',
+      'sim number',
+      'company number',
+      'official number',
+      'work phone',
+      'company phone',
+      'official mobile',
+      'work mobile',
+      'company mobile',
+    ],
   },
   { k: 'basic', label: 'Basic pay', req: false, aliases: ['basic', 'basic pay', 'basic salary'] },
   { k: 'hra', label: 'HRA', req: false, aliases: ['hra', 'house rent', 'house rent allowance'] },
@@ -190,13 +340,38 @@ export function matchColumns(
   fields: readonly IntakeField[] = INTAKE_FIELDS,
 ): Record<string, number> {
   const out: Record<string, number> = {};
-  headers.forEach((h, i) => {
-    const s = h
+  const tidy = (h: string): string =>
+    h
       .toLowerCase()
       .replace(/[^a-z ]/g, '')
       .trim();
-    const f = fields.find((f) => f.aliases.some((a) => s === a || s.includes(a)));
+  const clean = headers.map(tidy);
+
+  /* AN EXACT HEADING WINS, AND IT IS MATCHED FIRST.
+     This used to be one pass that took the first field with an alias the
+     heading CONTAINED, which let a short alias steal a column from a longer
+     one: "PF Wage Ceiling" contains "pf", so it matched the P.F.-applies field
+     — and because that field was already taken by "PF Enabled", the column was
+     claimed by nothing and silently dropped. */
+  clean.forEach((s, i) => {
+    if (!s) return;
+    const f = fields.find((f) => f.aliases.includes(s));
     if (f && out[f.k] === undefined) out[f.k] = i;
+  });
+
+  /* Then the loose ones — "emp mobile no" is nobody's exact alias and is
+     plainly the mobile. The LONGEST alias that fits wins, so a heading that
+     mentions two things goes to the more specific of them. */
+  clean.forEach((s, i) => {
+    if (!s || Object.values(out).includes(i)) return;
+    let best: { f: IntakeField; len: number } | null = null;
+    for (const f of fields) {
+      if (out[f.k] !== undefined) continue;
+      for (const a of f.aliases) {
+        if (s.includes(a) && (!best || a.length > best.len)) best = { f, len: a.length };
+      }
+    }
+    if (best) out[best.f.k] = i;
   });
   return out;
 }

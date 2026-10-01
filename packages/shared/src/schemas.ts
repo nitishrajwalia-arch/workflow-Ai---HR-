@@ -777,11 +777,29 @@ export const importRow = z.object({
   gender: z.string().trim().max(40).optional(),
   phone: z.string().trim().max(20).optional(),
   email: z.string().trim().max(255).optional(),
+  /** The company account. Issued on joining and revoked on leaving, like the SIM. */
+  workEmail: z.string().trim().max(255).optional(),
   imei: z.string().trim().max(20).optional(),
+  /** The company SIM. A work phone with no handset against it is still a thing issued. */
   sim: z.string().trim().max(40).optional(),
+  pan: z.string().trim().max(20).optional(),
+  aadhaar: z.string().trim().max(20).optional(),
+  /**
+   * The monthly gross. Given on the sheet, or added up from the parts — but
+   * never left at nothing: payroll skips anybody whose gross is zero, so a row
+   * imported without one is a person who is never paid and never asked about.
+   */
+  gross: z.union([z.string(), z.number()]).optional(),
   basic: z.union([z.string(), z.number()]).optional(),
   hra: z.union([z.string(), z.number()]).optional(),
+  travel: z.union([z.string(), z.number()]).optional(),
+  medical: z.union([z.string(), z.number()]).optional(),
   special: z.union([z.string(), z.number()]).optional(),
+  /** Free text off the sheet — "yes", "Y", "1", "no". Read server-side. */
+  pfOn: z.union([z.string(), z.number(), z.boolean()]).optional(),
+  esiOn: z.union([z.string(), z.number(), z.boolean()]).optional(),
+  /** Only when this person's P.F. wage is not the company's standard one. */
+  pfWages: z.union([z.string(), z.number()]).optional(),
 });
 
 /**

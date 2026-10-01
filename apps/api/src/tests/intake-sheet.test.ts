@@ -78,7 +78,9 @@ describe('the master sheet', () => {
     // reaches a hundred payslips at once. Salary is set on the person, one
     // figure, and the company's policy splits it. This is a decision, so it is
     // asserted rather than left to whoever next opens the workbook.
-    expect(missing.sort()).toEqual(['basic', 'hra', 'special']);
+    expect(missing.sort()).toEqual([
+      'basic', 'esiOn', 'gross', 'hra', 'medical', 'pfOn', 'pfWages', 'special', 'travel',
+    ]);
   });
 
   it('matches every required column to the right one, not a neighbour', async () => {
@@ -93,8 +95,35 @@ describe('the master sheet', () => {
     // company's, and a sheet that swaps them puts a company SIM in a private
     // contacts table.
     expect(header[m.phone as number]).toBe('Personal Mobile');
-    expect(header[m.sim as number]).toBe('Official Number');
+    expect(header[m.sim as number]).toBe('Work Phone');
     expect(header[m.office as number]).toBe('Site');
+    // And the two emails, for the same reason: one is theirs and survives them
+    // leaving, the other is the company's and is revoked when they do.
+    expect(header[m.email as number]).toBe('Personal Email');
+    expect(header[m.workEmail as number]).toBe('Work Email');
+  });
+
+  it('has every column on it land somewhere, with one deliberate exception', async () => {
+    /* THE TEST THAT KEEPS THE SHEET AND THE IMPORTER TOGETHER.
+       A column on the sheet that the importer does not read is worse than a
+       missing one: HR fills it in, the upload reports no error, and what she
+       typed is gone. */
+    for (const [tab, fields, allowed] of [
+      ['New people', INTAKE_FIELDS, [] as string[]],
+      // "Employee Name" is on the fill-in tab so HR can see whose row she is
+      // on. It is deliberately not read — the row is matched on the ID, and a
+      // name in a spreadsheet must never rename somebody on the register.
+      ['Fill in blanks', INTAKE_UPDATE_FIELDS, ['Employee Name']],
+    ] as const) {
+      const header = (await readXlsx(bytes(MASTER), tab))[1] as string[];
+      const m = matchColumns(header, fields);
+      const taken = new Set(Object.values(m));
+      const orphans = header.filter((h, i) => h && !taken.has(i) && !allowed.includes(h));
+      expect(orphans, `${tab}: columns nothing reads — ${orphans.join(', ')}`).toHaveLength(0);
+      // And no two fields on one column, which silently loses the other.
+      const used = Object.values(m);
+      expect(new Set(used).size, `${tab}: one column, one field`).toBe(used.length);
+    }
   });
 
   it('lists the real departments and sites for the dropdowns', async () => {

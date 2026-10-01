@@ -375,10 +375,23 @@ model Applicant {
 }
 
 model Contact {
-  personId  String   @id
-  person    Person   @relation(fields: [personId], references: [id], onDelete: Cascade)
-  phone     String   @default("")
-  email     String   @default("")
+  personId String @id
+  person   Person @relation(fields: [personId], references: [id], onDelete: Cascade)
+
+  /// THEIR OWN. A @marbellagroup.in address is refused here on purpose: the
+  /// company account closes the day they leave, which is exactly when these
+  /// details are needed.
+  phone String @default("")
+  email String @default("")
+
+  /// WHAT THE COMPANY ISSUED THEM. The opposite of the two above: a work email
+  /// and a company SIM are things handed out on joining and taken back on
+  /// leaving, and the deboarding's assets stage is where that happens.
+  ///
+  /// The SIM itself lives on Device, because a SIM comes in a handset and the
+  /// handset has its own IMEI. This is the mailbox.
+  workEmail String @default("")
+
   vPhone    Boolean  @default(false)
   vEmail    Boolean  @default(false)
   updatedAt DateTime @updatedAt
