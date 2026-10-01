@@ -12814,8 +12814,18 @@ function IdentifyPayslip({ u, onClose }) {
   const [how, setHow] = useState("");
   const [q, setQ] = useState("");
   const [busy, setBusy] = useState(false);
+  /* THE LAST WORKING DAY STARTS EMPTY, AND IT USED TO START AT TODAY.
+     Everything else on this form that is not known starts blank and is guarded,
+     because the whole premise of the screen is that nothing is guessed at — and
+     then the one field that defines a leaver arrived pre-filled with today's
+     date. Today is never the answer here: this is a person being reconstructed
+     from a salary book months after the fact. Worse, the guard below could not
+     fire, because the field was never empty, so clicking straight through
+     stamped today on the record and the final settlement was worked out from
+     it. Navneet Singh Sarwara was paid for five days of a thirty-one day
+     August; recording him today would put his last day almost two months late. */
   const [f, setF] = useState({
-    dept: "", type: "Site", office: "", lastDay: todayPicker(), reason: "", joined: "", note: "",
+    dept: "", type: "Site", office: "", lastDay: "", reason: "", joined: "", note: "",
     reportsToNote: "",
   });
   const set = (k, v) => setF(s => ({ ...s, [k]: v }));
