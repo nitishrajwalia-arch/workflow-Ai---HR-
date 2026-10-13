@@ -10606,7 +10606,27 @@ function CoachLayer({ userKey }) {
    signs in securely (Google/Facebook = OAuth, Claude = API key) — the live handshake is a
    small backend step your developer finishes; the buttons here are the real entry point. */
 
-const TODAY = "2026-08-02";
+/*
+ * TODAY, AND IT USED TO BE THE STRING "2026-08-02".
+ *
+ * The whole calendar hangs off this one value: which month opens, which square
+ * is ringed as today, what the "for you today" banner shows, and what counts as
+ * "coming up" (everything on or after it). Frozen, it was ten weeks behind by
+ * October — so the calendar opened on August, every event since August read as
+ * still to come, and relDay() called a fortnight-old meeting "in 3 days".
+ *
+ * Worst of all, the new-event form defaulted its date to it: every event HR
+ * created was filed on 2 August unless she noticed and changed it, which put it
+ * in the past and out of "coming up" the moment she saved it.
+ *
+ * Local date, not toISOString(): that is UTC, and between midnight and half
+ * past five in the morning here it still reads yesterday.
+ */
+const TODAY = (() => {
+  const d = new Date();
+  const p2 = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`;
+})();
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const WD = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const PRIO = {
