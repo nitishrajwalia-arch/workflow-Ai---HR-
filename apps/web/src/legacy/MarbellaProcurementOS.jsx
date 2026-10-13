@@ -10244,8 +10244,17 @@ function PackageCreate({ onClose }) {
 }
 
 function IncentivesView({ userKey }) {
-  const mob = useIsMobile(); const { packages, people, att, hrTasks, approvePackage, declinePackage, issueBonus } = useProc();
+  const mob = useIsMobile(); const { packages, people, att, hrTasks, me, approvePackage, declinePackage, issueBonus } = useProc();
+  /* THE DESK DECIDES WHO PROPOSES. THE ROLE DECIDES WHO APPROVES.
+     Deciding a package — approve, decline, issue — is ADMIN on the server, and
+     this screen used to hide all three behind the admin DESK instead. The only
+     account the company has holds ADMIN and sits at the HR desk, so the button
+     was never drawn for the one person allowed to press it: a package went to
+     "awaiting Chairman" and stayed there, and because a bonus can only be
+     issued once a package is live, nothing could ever be paid out either.
+     Same rule the sidebar already follows for the Access console. */
   const isAdmin = userKey === "admin";
+  const mayDecide = !!(me && me.role === "ADMIN");
   const [make, setMake] = useState(false);
   const board = (pk) => {
     const pool = people.filter(p => p.status === "active" && (pk.dept === "All" || p.dept === pk.dept));
@@ -10273,7 +10282,7 @@ function IncentivesView({ userKey }) {
               </div>
               <div style={{ font: `12px ${sans}`, color: C.inkSoft, lineHeight: 1.5, marginBottom: 12 }}>{pk.how}</div>
 
-              {isAdmin && pk.status === "proposed" && (
+              {mayDecide && pk.status === "proposed" && (
                 <div style={{ display: "flex", gap: 8, marginBottom: 6 }}>
                   <GoldButton small onClick={() => { approvePackage(pk.id); toast("Approved — now live on dashboards", "green"); }}>Approve &amp; go live</GoldButton>
                   <GoldButton small ghost onClick={() => declinePackage(pk.id)}>Decline</GoldButton>
@@ -10291,7 +10300,7 @@ function IncentivesView({ userKey }) {
                         <div style={{ flex: 1, minWidth: 0 }}><div style={{ font: `600 13px ${sans}`, color: C.ink }}>{p.name} {win && <Pill tone="gold">most deserving</Pill>}</div><div style={{ font: `11px ${sans}`, color: C.stone }}>{p.designation}</div></div>
                         <div style={{ width: 90, height: 7, background: C.lineSoft, borderRadius: 4, overflow: "hidden" }}><div style={{ width: `${score * 10}%`, height: "100%", background: ok ? C.green : C.amber }} /></div>
                         <div style={{ font: `600 13px ${mono}`, color: ok ? C.green : C.ink, width: 44, textAlign: "right" }}>{score.toFixed(1)}</div>
-                        {!isAdmin && pk.status === "live" && ok && win && <GoldButton small onClick={() => { issueBonus(pk.id, p.name); toast(`Bonus issued to ${p.name}`, "gold"); }}>Issue</GoldButton>}
+                        {mayDecide && pk.status === "live" && ok && win && <GoldButton small onClick={() => { issueBonus(pk.id, p.name); toast(`Bonus issued to ${p.name}`, "gold"); }}>Issue</GoldButton>}
                       </div>
                     );
                   })}
